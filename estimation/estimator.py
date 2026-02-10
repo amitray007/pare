@@ -28,7 +28,7 @@ async def estimate(data: bytes, config: OptimizationConfig | None = None) -> Est
     # Layer 3: thumbnail compression for JPEG only.
     # WebP skipped: thumbnail measures decoded-pixel compressibility, not
     # re-compression of an already-compressed file, causing overestimates.
-    if fmt == ImageFormat.JPEG:
+    if fmt == ImageFormat.JPEG and prediction.method == "jpegtran":
         thumbnail_ratio = await _thumbnail_compress(data, fmt, config.quality)
         if thumbnail_ratio is not None:
             prediction = _combine_with_thumbnail(

@@ -79,6 +79,10 @@ def _predict_png(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     if info.has_metadata_chunks and config.strip_metadata:
         reduction += 3.0
 
+    # Tiny-file cap: PNG header overhead (~100-150B) dominates at small sizes
+    if info.file_size < 500:
+        reduction = min(reduction, 20.0)
+
     estimated_size = int(info.file_size * (1 - reduction / 100))
     return Prediction(
         estimated_size=estimated_size,
@@ -282,15 +286,32 @@ def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _predict_svg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """SVG heuristics — metadata and editor bloat drive savings."""
-    if info.has_metadata_chunks:
-        reduction = 30.0
-        potential = "high"
-        already_optimized = False
+    """SVG heuristics — bloat-ratio tiered predictions."""
+    ratio = info.svg_bloat_ratio
+
+    if ratio is not None:
+        if ratio > 0.30:
+            reduction = 50.0
+            potential = "high"
+        elif ratio > 0.15:
+            reduction = 25.0
+            potential = "medium"
+        elif ratio > 0.05:
+            reduction = 12.0
+            potential = "low"
+        else:
+            reduction = 5.0
+            potential = "low"
     else:
-        reduction = 8.0
-        potential = "low"
-        already_optimized = True
+        # Fallback: old binary logic
+        if info.has_metadata_chunks:
+            reduction = 30.0
+            potential = "high"
+        else:
+            reduction = 8.0
+            potential = "low"
+
+    already_optimized = reduction <= 5.0
 
     return Prediction(
         estimated_size=int(info.file_size * (1 - reduction / 100)),
@@ -303,15 +324,25 @@ def _predict_svg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _predict_svgz(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """SVGZ heuristics — already gzip-compressed, limited savings."""
-    reduction = 8.0 if info.has_metadata_chunks else 5.0
+    """SVGZ heuristics — already gzip-compressed, halved reductions."""
+    ratio = info.svg_bloat_ratio
+
+    if ratio is not None:
+        if ratio > 0.30:
+            reduction = 15.0
+        elif ratio > 0.15:
+            reduction = 8.0
+        else:
+            reduction = 3.0
+    else:
+        reduction = 8.0 if info.has_metadata_chunks else 5.0
 
     return Prediction(
         estimated_size=int(info.file_size * (1 - reduction / 100)),
         reduction_percent=round(reduction, 1),
         potential="low",
         method="scour",
-        already_optimized=not info.has_metadata_chunks,
+        already_optimized=reduction <= 3.0,
         confidence="medium",
     )
 

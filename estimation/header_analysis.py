@@ -24,6 +24,7 @@ class HeaderInfo:
     color_count: Optional[int] = None  # PNG palette mode only
     has_metadata_chunks: bool = False  # PNG text chunks, SVG comments
     unique_color_ratio: Optional[float] = None  # PNG non-palette: unique colors / total pixels
+    svg_bloat_ratio: Optional[float] = None  # SVG: removable bytes / total bytes
     frame_count: int = 1  # 1 for static, >1 for animated
     file_size: int = 0
 
@@ -151,12 +152,13 @@ def estimate_jpeg_quality_from_qtable(avg_q: float) -> int:
       For q < 50:  scale = 5000 / quality    → quality = 5000 / scale
 
     The average quantization value approximates scale/100 of the base table,
-    so avg_q ≈ base_avg * scale / 100 where base_avg ≈ 25 for luminance.
+    so avg_q ≈ base_avg * scale / 100 where base_avg ≈ 57.625 for the
+    standard IJG luminance table.
     """
     if avg_q <= 0.5:
         return 100
-    # Derive approximate scale factor (base luminance table avg ≈ 25)
-    scale = (avg_q / 25.0) * 100.0
+    # Derive approximate scale factor from IJG luminance base table avg
+    scale = (avg_q / 57.625) * 100.0
     if scale < 100:
         quality = int((200 - scale) / 2)
     else:
@@ -214,4 +216,52 @@ def _analyze_svg(data: bytes, fmt: ImageFormat, info: HeaderInfo) -> HeaderInfo:
     has_editor = 'xmlns:inkscape' in text or 'xmlns:sodipodi' in text or 'adobe' in text.lower()
     info.has_metadata_chunks = has_comments or has_metadata or has_editor
 
+    # Compute SVG bloat ratio: estimate removable bytes
+    info.svg_bloat_ratio = _compute_svg_bloat_ratio(text)
+
     return info
+
+
+def _compute_svg_bloat_ratio(text: str) -> float:
+    """Estimate fraction of SVG text that is removable bloat."""
+    import re
+
+    total = len(text)
+    if total == 0:
+        return 0.0
+
+    removable = 0
+
+    # Comment bytes: <!-- ... -->
+    for m in re.finditer(r'<!--[\s\S]*?-->', text):
+        removable += len(m.group())
+
+    # XML prolog: <?xml ...?>
+    for m in re.finditer(r'<\?xml[^?]*\?>', text):
+        removable += len(m.group())
+
+    # Metadata elements: <metadata>...</metadata>
+    for m in re.finditer(r'<metadata[\s\S]*?</metadata>', text, re.IGNORECASE):
+        removable += len(m.group())
+
+    # Editor namespace declarations and prefixed attributes
+    for m in re.finditer(r'xmlns:(inkscape|sodipodi)="[^"]*"', text):
+        removable += len(m.group())
+    for m in re.finditer(r'(inkscape|sodipodi):[a-zA-Z-]+="[^"]*"', text):
+        removable += len(m.group())
+    # Adobe-specific namespace/attributes
+    for m in re.finditer(r'xmlns:x="[^"]*adobe[^"]*"', text, re.IGNORECASE):
+        removable += len(m.group())
+
+    # Long IDs: savings from shortening (len(id) - 2 per long id)
+    for m in re.finditer(r'id="([^"]+)"', text):
+        id_val = m.group(1)
+        if len(id_val) > 2:
+            removable += len(id_val) - 2
+
+    # Redundant attributes
+    for pattern in [r'stroke="none"', r'stroke-width="0"', r'opacity="1"']:
+        for m in re.finditer(pattern, text):
+            removable += len(m.group())
+
+    return min(removable / total, 1.0)
