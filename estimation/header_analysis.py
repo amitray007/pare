@@ -23,6 +23,7 @@ class HeaderInfo:
     is_palette_mode: bool = False  # PNG only
     color_count: Optional[int] = None  # PNG palette mode only
     has_metadata_chunks: bool = False  # PNG text chunks, SVG comments
+    unique_color_ratio: Optional[float] = None  # PNG non-palette: unique colors / total pixels
     frame_count: int = 1  # 1 for static, >1 for animated
     file_size: int = 0
 
@@ -89,7 +90,7 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
 
 
 def _analyze_png_extra(data: bytes, info: HeaderInfo) -> None:
-    """PNG-specific: check palette mode, color count, metadata chunks."""
+    """PNG-specific: check palette mode, color count, color complexity, metadata chunks."""
     info.is_palette_mode = info.color_type == "palette"
 
     if info.is_palette_mode:
@@ -102,6 +103,9 @@ def _analyze_png_extra(data: bytes, info: HeaderInfo) -> None:
                 info.color_count = chunk_len // 3  # 3 bytes per color
                 break
             offset += 4 + 4 + chunk_len + 4
+    else:
+        # Non-palette: sample unique colors via 64x64 thumbnail
+        info.unique_color_ratio = _sample_unique_color_ratio(data)
 
     # Check for text metadata chunks
     text_types = {b"tEXt", b"iTXt", b"zTXt"}
@@ -115,6 +119,28 @@ def _analyze_png_extra(data: bytes, info: HeaderInfo) -> None:
         if chunk_type == b"IDAT":
             break
         offset += 4 + 4 + chunk_len + 4
+
+
+def _sample_unique_color_ratio(data: bytes) -> Optional[float]:
+    """Compute unique-color ratio from a 64x64 thumbnail.
+
+    Returns unique_colors / total_pixels. Low values (~0.01) indicate
+    flat graphics amenable to pngquant; high values (~0.8+) indicate
+    photographic content where pngquant will fail (exit code 99).
+    """
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.thumbnail((64, 64))
+        # Convert to RGB to normalize (drop alpha for color counting)
+        rgb = img.convert("RGB")
+        pixels = list(rgb.getdata())
+        total = len(pixels)
+        if total == 0:
+            return None
+        unique = len(set(pixels))
+        return unique / total
+    except Exception:
+        return None
 
 
 def _analyze_jpeg_extra(data: bytes, img: Image.Image, info: HeaderInfo) -> None:

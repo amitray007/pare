@@ -39,22 +39,26 @@ def predict_reduction(info: HeaderInfo, fmt: ImageFormat) -> Prediction:
 def _predict_png(info: HeaderInfo) -> Prediction:
     """PNG heuristics.
 
-    - Non-palette with < 256 colors: pngquant very effective (~70%)
-    - Already palette mode: limited room (~5-10%)
+    - Palette mode: limited room (~5-10%)
+    - Non-palette, low color complexity: pngquant very effective (~55-80%)
+    - Non-palette, high color complexity (photos): pngquant fails, oxipng-only (~3-5%)
     - Has metadata chunks: metadata removal adds a few %
     """
     if info.is_palette_mode:
+        # Already indexed — re-quantization has moderate effect
         if info.color_count and info.color_count < 16:
-            reduction = 10.0
+            reduction = 15.0
             potential = "low"
         else:
-            reduction = 8.0
-            potential = "low"
+            reduction = 40.0
+            potential = "medium"
         already_optimized = not info.has_metadata_chunks
+        method = "pngquant + oxipng"
+        confidence = "medium"
     else:
-        # Non-palette PNG — pngquant can achieve massive reductions
-        reduction = 70.0
-        potential = "high"
+        reduction, potential, method, confidence = _predict_png_by_complexity(
+            info.unique_color_ratio
+        )
         already_optimized = False
 
     if info.has_metadata_chunks:
@@ -65,10 +69,41 @@ def _predict_png(info: HeaderInfo) -> Prediction:
         estimated_size=estimated_size,
         reduction_percent=round(reduction, 1),
         potential=potential,
-        method="pngquant + oxipng",
+        method=method,
         already_optimized=already_optimized,
-        confidence="medium",
+        confidence=confidence,
     )
+
+
+def _predict_png_by_complexity(
+    color_ratio: float | None,
+) -> tuple[float, str, str, str]:
+    """Predict PNG reduction based on unique-color ratio.
+
+    Low ratio = flat graphics (pngquant succeeds).
+    High ratio = photographic content (pngquant exit 99, oxipng-only).
+
+    Returns (reduction%, potential, method, confidence).
+    """
+    if color_ratio is None:
+        # Could not sample — conservative fallback
+        return 20.0, "medium", "pngquant + oxipng", "low"
+
+    if color_ratio < 0.005:
+        # Truly solid / near-solid (1-2 colors): pngquant crushes these
+        return 85.0, "high", "pngquant + oxipng", "high"
+    elif color_ratio < 0.05:
+        # Very low complexity (simple screenshots, icons): high but variable
+        return 55.0, "high", "pngquant + oxipng", "medium"
+    elif color_ratio < 0.20:
+        # Graphics / screenshots with some color variation
+        return 55.0, "high", "pngquant + oxipng", "medium"
+    elif color_ratio < 0.50:
+        # Mixed content — pngquant may or may not succeed
+        return 30.0, "medium", "pngquant + oxipng", "low"
+    else:
+        # Photo / gradient / noise — pngquant will fail (exit 99)
+        return 3.0, "low", "oxipng", "medium"
 
 
 def _predict_apng(info: HeaderInfo) -> Prediction:
