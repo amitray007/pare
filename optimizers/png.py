@@ -41,13 +41,23 @@ class PngOptimizer(BaseOptimizer):
         # Lossy path: pngquant then oxipng
         pngquant_result, success = await self._run_pngquant(data_clean, config.quality)
 
+        # Always try oxipng on original as a baseline
+        oxipng_only = self._run_oxipng(data_clean)
+
         if success and pngquant_result:
             # Squeeze extra bytes from the lossy result
-            optimized = self._run_oxipng(pngquant_result)
-            method = "pngquant + oxipng"
+            lossy_optimized = self._run_oxipng(pngquant_result)
+            # Pick the smaller of lossy and lossless paths — pngquant can
+            # produce a larger file when dithering inflates palette PNGs.
+            if len(lossy_optimized) <= len(oxipng_only):
+                optimized = lossy_optimized
+                method = "pngquant + oxipng"
+            else:
+                optimized = oxipng_only
+                method = "oxipng"
         else:
             # pngquant couldn't meet quality threshold — lossless only
-            optimized = self._run_oxipng(data_clean)
+            optimized = oxipng_only
             method = "oxipng"
 
         return self._build_result(data, optimized, method)

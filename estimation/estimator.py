@@ -25,15 +25,14 @@ async def estimate(data: bytes, config: OptimizationConfig | None = None) -> Est
     header_info = analyze_header(data, fmt)
     prediction = predict_reduction(header_info, fmt, config)
 
-    # Layer 3: thumbnail compression for JPEG only.
-    # WebP skipped: thumbnail measures decoded-pixel compressibility, not
-    # re-compression of an already-compressed file, causing overestimates.
-    if fmt == ImageFormat.JPEG and prediction.method == "jpegtran":
-        thumbnail_ratio = await _thumbnail_compress(data, fmt, config.quality)
-        if thumbnail_ratio is not None:
-            prediction = _combine_with_thumbnail(
-                prediction, thumbnail_ratio, header_info
-            )
+    # Layer 3: thumbnail compression — disabled for now.
+    # The calibrated heuristic model for JPEG (mozjpeg encoder bonus +
+    # piecewise delta curve + jpegtran source-quality scaling) is accurate
+    # enough without content-specific correction. The thumbnail probe
+    # measures q100→target compression ratio which doesn't correlate well
+    # with mozjpeg re-encoding savings at the source's existing quality.
+    # WebP is also skipped: decoded-pixel compressibility doesn't predict
+    # re-compression of an already-compressed WebP file.
 
     return EstimateResponse(
         original_size=len(data),
@@ -91,17 +90,19 @@ def _combine_with_thumbnail(
 ) -> Prediction:
     """Adjust prediction using thumbnail compression ratio.
 
-    If thumbnail and heuristics agree → high confidence.
-    If they diverge → average them, medium confidence.
+    Weighted average: 70% heuristic, 30% thumbnail. The heuristic
+    captures format-specific knowledge (mozjpeg encoder bonus, quality
+    delta curves) while the thumbnail provides content-specific correction
+    (smooth paintings compress more, noisy photos less).
     """
     thumbnail_reduction = round((1 - thumbnail_ratio) * 100, 1)
 
     heuristic_reduction = prediction.reduction_percent
 
-    # Average the two estimates
-    combined_reduction = round((heuristic_reduction + thumbnail_reduction) / 2, 1)
+    combined_reduction = round(
+        heuristic_reduction * 0.7 + thumbnail_reduction * 0.3, 1
+    )
 
-    # Confidence: if they agree within 15%, high confidence
     if abs(heuristic_reduction - thumbnail_reduction) < 15:
         confidence = "high"
     else:

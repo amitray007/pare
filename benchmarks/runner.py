@@ -49,34 +49,39 @@ class BenchmarkSuite:
 
 
 async def run_single(case: BenchmarkCase, config: OptimizationConfig, preset_name: str = "") -> BenchmarkResult:
-    """Run optimize + estimate on a single benchmark case."""
+    """Run optimize + estimate on a single benchmark case.
+
+    Optimization and estimation run concurrently since they're independent.
+    """
     result = BenchmarkResult(case=case, preset_name=preset_name)
 
-    # Run optimization
-    try:
-        t0 = time.perf_counter()
-        opt_result = await optimize_image(case.data, config)
-        elapsed_s = time.perf_counter() - t0
-        result.opt_time_ms = elapsed_s * 1000
-        result.optimized_size = opt_result.optimized_size
-        result.reduction_pct = opt_result.reduction_percent
-        result.method = opt_result.method
-        if elapsed_s > 0:
-            result.bytes_per_second = len(case.data) / elapsed_s
-    except Exception as e:
-        result.opt_error = str(e)
+    async def _optimize():
+        try:
+            t0 = time.perf_counter()
+            opt_result = await optimize_image(case.data, config)
+            elapsed_s = time.perf_counter() - t0
+            result.opt_time_ms = elapsed_s * 1000
+            result.optimized_size = opt_result.optimized_size
+            result.reduction_pct = opt_result.reduction_percent
+            result.method = opt_result.method
+            if elapsed_s > 0:
+                result.bytes_per_second = len(case.data) / elapsed_s
+        except Exception as e:
+            result.opt_error = str(e)
 
-    # Run estimation
-    try:
-        t0 = time.perf_counter()
-        est_result = await run_estimate(case.data, config)
-        result.est_time_ms = (time.perf_counter() - t0) * 1000
-        result.est_size = est_result.estimated_optimized_size
-        result.est_reduction_pct = est_result.estimated_reduction_percent
-        result.est_potential = est_result.optimization_potential
-        result.est_confidence = est_result.confidence
-    except Exception as e:
-        result.est_error = str(e)
+    async def _estimate():
+        try:
+            t0 = time.perf_counter()
+            est_result = await run_estimate(case.data, config)
+            result.est_time_ms = (time.perf_counter() - t0) * 1000
+            result.est_size = est_result.estimated_optimized_size
+            result.est_reduction_pct = est_result.estimated_reduction_percent
+            result.est_potential = est_result.optimization_potential
+            result.est_confidence = est_result.confidence
+        except Exception as e:
+            result.est_error = str(e)
+
+    await asyncio.gather(_optimize(), _estimate())
 
     # Estimation accuracy
     if not result.opt_error and not result.est_error:
@@ -126,20 +131,33 @@ async def run_suite(
     done = 0
     t_start = time.perf_counter()
 
+    # Semaphore limits concurrent tasks to avoid overwhelming CPU/subprocesses
+    sem = asyncio.Semaphore(4)
+
+    async def _run_with_sem(case, opt_config, preset_name):
+        async with sem:
+            return await run_single(case, opt_config, preset_name=preset_name)
+
     for preset_name, opt_config in run_list:
         if progress and len(run_list) > 1:
             print(f"\n  Preset: {preset_name}", file=sys.stderr)
 
-        for i, case in enumerate(cases, 1):
-            done += 1
-            if progress:
-                print(f"\r  [{done}/{total}] {preset_name}: {case.name}...", end="", flush=True, file=sys.stderr)
+        # Launch all cases for this preset concurrently (bounded by semaphore)
+        tasks = []
+        for case in cases:
+            tasks.append(_run_with_sem(case, opt_config, preset_name))
 
-            result = await run_single(case, opt_config, preset_name=preset_name)
+        results = await asyncio.gather(*tasks)
+
+        for result in results:
             suite.results.append(result)
             suite.cases_run += 1
             if result.opt_error:
                 suite.cases_failed += 1
+
+        if progress:
+            done += len(cases)
+            print(f"\r  [{done}/{total}] {preset_name}: done" + " " * 30, end="", flush=True, file=sys.stderr)
 
     suite.total_time_s = time.perf_counter() - t_start
 

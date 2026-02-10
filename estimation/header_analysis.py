@@ -24,7 +24,11 @@ class HeaderInfo:
     color_count: Optional[int] = None  # PNG palette mode only
     has_metadata_chunks: bool = False  # PNG text chunks, SVG comments
     unique_color_ratio: Optional[float] = None  # PNG non-palette: unique colors / total pixels
+    png_quantize_ratio: Optional[float] = None  # PNG: quantized_size / original_size (thumbnail)
+    oxipng_probe_ratio: Optional[float] = None  # PNG: oxipng_size / pillow_size (center crop)
+    png_lossy_proxy_ratio: Optional[float] = None  # PNG: quantize+oxipng / original (actual file)
     svg_bloat_ratio: Optional[float] = None  # SVG: removable bytes / total bytes
+    flat_pixel_ratio: Optional[float] = None  # Fraction of adjacent pixel pairs with diff < threshold
     frame_count: int = 1  # 1 for static, >1 for animated
     file_size: int = 0
 
@@ -86,6 +90,19 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
         _analyze_png_extra(data, info)
     elif fmt == ImageFormat.JPEG:
         _analyze_jpeg_extra(data, img, info)
+        # Content classification from center crop (preserves pixel-level detail)
+        try:
+            w = info.dimensions.get("width", 0)
+            h = info.dimensions.get("height", 0)
+            crop_size = min(64, w, h)
+            if crop_size >= 8:
+                cx, cy = w // 2, h // 2
+                half = crop_size // 2
+                crop_img = Image.open(io.BytesIO(data))
+                crop = crop_img.crop((cx - half, cy - half, cx + half, cy + half))
+                info.flat_pixel_ratio = _flat_pixel_ratio(crop.convert("RGB"))
+        except Exception:
+            pass
 
     return info
 
@@ -105,8 +122,8 @@ def _analyze_png_extra(data: bytes, info: HeaderInfo) -> None:
                 break
             offset += 4 + 4 + chunk_len + 4
     else:
-        # Non-palette: sample unique colors via 64x64 thumbnail
-        info.unique_color_ratio = _sample_unique_color_ratio(data)
+        # Non-palette: run content probes (color ratio, quantize, oxipng, flatness)
+        _analyze_png_content(data, info)
 
     # Check for text metadata chunks
     text_types = {b"tEXt", b"iTXt", b"zTXt"}
@@ -122,24 +139,174 @@ def _analyze_png_extra(data: bytes, info: HeaderInfo) -> None:
         offset += 4 + 4 + chunk_len + 4
 
 
-def _sample_unique_color_ratio(data: bytes) -> Optional[float]:
-    """Compute unique-color ratio from a 64x64 thumbnail.
+def _analyze_png_content(data: bytes, info: HeaderInfo) -> None:
+    """Compute content probes for non-palette PNG images.
 
-    Returns unique_colors / total_pixels. Low values (~0.01) indicate
-    flat graphics amenable to pngquant; high values (~0.8+) indicate
-    photographic content where pngquant will fail (exit code 99).
+    Sets on info: unique_color_ratio, png_quantize_ratio,
+    flat_pixel_ratio, oxipng_probe_ratio, png_lossy_proxy_ratio.
+
+    For small files (< 50KB), runs oxipng on the actual file for an exact
+    lossless compression measurement. For small images (< 250K pixels),
+    also runs a lossy proxy (quantize + oxipng) on the actual image.
+    For larger files, uses a 64x64 center crop probe.
+    Both paths compute flat_pixel_ratio from the center crop.
     """
     try:
+        # For small files: run oxipng on actual data (fast, in-process).
+        # This gives exact lossless savings measurement.
+        if len(data) < 50000:
+            try:
+                import oxipng
+
+                optimized = oxipng.optimize_from_memory(data)
+                info.oxipng_probe_ratio = len(optimized) / len(data)
+            except Exception:
+                pass
+
         img = Image.open(io.BytesIO(data))
+        orig_w, orig_h = img.size
+
+        # Center crop at original resolution for pixel-level metrics.
+        crop_size = min(64, orig_w, orig_h)
+        if crop_size >= 8:
+            cx, cy = orig_w // 2, orig_h // 2
+            half = crop_size // 2
+            crop = img.crop((cx - half, cy - half, cx + half, cy + half))
+            rgb_crop = crop.convert("RGB")
+            info.flat_pixel_ratio = _flat_pixel_ratio(rgb_crop)
+            # Crop-based oxipng probe only if full-file probe wasn't done
+            if info.oxipng_probe_ratio is None:
+                info.oxipng_probe_ratio = _oxipng_probe(rgb_crop)
+
+        # Lossy proxy: quantize actual image + oxipng for small images.
+        # Simulates pngquant+oxipng without subprocess, giving a direct
+        # measurement of lossy optimization potential.
+        if len(data) < 50000 and orig_w * orig_h < 250000:
+            info.png_lossy_proxy_ratio = _lossy_proxy_probe(img, len(data))
+
+        # Thumbnail for color ratio and quantize ratio
         img.thumbnail((64, 64))
-        # Convert to RGB to normalize (drop alpha for color counting)
         rgb = img.convert("RGB")
         pixels = list(rgb.getdata())
         total = len(pixels)
         if total == 0:
-            return None
+            return
         unique = len(set(pixels))
-        return unique / total
+        info.unique_color_ratio = unique / total
+        info.png_quantize_ratio = _quantize_probe(rgb)
+    except Exception:
+        pass
+
+
+def _flat_pixel_ratio(rgb: Image.Image, threshold: int = 24) -> float:
+    """Fraction of adjacent pixel pairs with L1 color distance below threshold.
+
+    Measures local uniformity in an RGB thumbnail. High values (>0.85)
+    indicate screenshot/UI content with large flat regions; low values
+    (<0.50) indicate photographic or noisy content.
+
+    Args:
+        rgb: RGB mode Pillow image (typically 64x64 thumbnail).
+        threshold: Sum-of-channels difference below which a pair is "flat".
+    """
+    pixels = list(rgb.getdata())
+    w, h = rgb.size
+    if w < 2 or h < 2:
+        return 0.0
+
+    flat = 0
+    total = 0
+
+    # Horizontal neighbors
+    for y in range(h):
+        off = y * w
+        for x in range(w - 1):
+            p1 = pixels[off + x]
+            p2 = pixels[off + x + 1]
+            if abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]) + abs(p1[2] - p2[2]) < threshold:
+                flat += 1
+            total += 1
+
+    # Vertical neighbors
+    for y in range(h - 1):
+        off = y * w
+        off2 = (y + 1) * w
+        for x in range(w):
+            p1 = pixels[off + x]
+            p2 = pixels[off2 + x]
+            if abs(p1[0] - p2[0]) + abs(p1[1] - p2[1]) + abs(p1[2] - p2[2]) < threshold:
+                flat += 1
+            total += 1
+
+    return flat / total if total > 0 else 0.0
+
+
+def _oxipng_probe(rgb_crop: Image.Image) -> Optional[float]:
+    """Measure oxipng optimization potential on a center crop.
+
+    Saves the crop as PNG via Pillow, runs oxipng in-process (pyoxipng),
+    returns oxipng_size / pillow_size. Low ratios mean the content is
+    highly compressible with optimized PNG encoding.
+    """
+    try:
+        import oxipng
+
+        buf = io.BytesIO()
+        rgb_crop.save(buf, format="PNG")
+        pillow_png = buf.getvalue()
+        pillow_size = len(pillow_png)
+        if pillow_size == 0:
+            return None
+
+        optimized = oxipng.optimize_from_memory(pillow_png)
+        return len(optimized) / pillow_size
+    except Exception:
+        return None
+
+
+def _lossy_proxy_probe(img: Image.Image, original_size: int) -> Optional[float]:
+    """Simulate pngquant+oxipng: quantize to 256 colors, save PNG, run oxipng.
+
+    Returns optimized_quantized_size / original_file_size. This directly
+    measures what the lossy optimization path would achieve, without
+    running pngquant as a subprocess.
+
+    Only called for small images (< 250K pixels) to keep latency low.
+    """
+    try:
+        import oxipng
+
+        rgb = img.convert("RGB")
+        quantized = rgb.quantize(colors=256)
+        buf = io.BytesIO()
+        quantized.save(buf, format="PNG")
+        quant_png = buf.getvalue()
+        optimized = oxipng.optimize_from_memory(quant_png)
+        return len(optimized) / original_size
+    except Exception:
+        return None
+
+
+def _quantize_probe(rgb: Image.Image) -> Optional[float]:
+    """Measure how well a thumbnail quantizes to 256 colors.
+
+    Saves the RGB thumbnail as PNG, quantizes to 256 colors, saves again,
+    and returns quantized_size / original_size. Low ratios (~0.3-0.5) mean
+    spatially coherent content that pngquant will compress well.
+    """
+    try:
+        orig_buf = io.BytesIO()
+        rgb.save(orig_buf, format="PNG")
+        orig_size = orig_buf.tell()
+        if orig_size == 0:
+            return None
+
+        quantized = rgb.quantize(colors=256)
+        quant_buf = io.BytesIO()
+        quantized.save(quant_buf, format="PNG")
+        quant_size = quant_buf.tell()
+
+        return quant_size / orig_size
     except Exception:
         return None
 
