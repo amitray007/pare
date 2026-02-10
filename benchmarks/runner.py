@@ -69,7 +69,7 @@ async def run_single(case: BenchmarkCase, config: OptimizationConfig, preset_nam
     # Run estimation
     try:
         t0 = time.perf_counter()
-        est_result = await run_estimate(case.data)
+        est_result = await run_estimate(case.data, config)
         result.est_time_ms = (time.perf_counter() - t0) * 1000
         result.est_size = est_result.estimated_optimized_size
         result.est_reduction_pct = est_result.estimated_reduction_percent

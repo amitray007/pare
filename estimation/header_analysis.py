@@ -143,32 +143,35 @@ def _sample_unique_color_ratio(data: bytes) -> Optional[float]:
         return None
 
 
+def estimate_jpeg_quality_from_qtable(avg_q: float) -> int:
+    """Estimate JPEG quality from average quantization table value.
+
+    Uses the inverse of the IJG (Independent JPEG Group) formula:
+      For q >= 50: scale = 200 - 2*quality  → quality = (200 - scale) / 2
+      For q < 50:  scale = 5000 / quality    → quality = 5000 / scale
+
+    The average quantization value approximates scale/100 of the base table,
+    so avg_q ≈ base_avg * scale / 100 where base_avg ≈ 25 for luminance.
+    """
+    if avg_q <= 0.5:
+        return 100
+    # Derive approximate scale factor (base luminance table avg ≈ 25)
+    scale = (avg_q / 25.0) * 100.0
+    if scale < 100:
+        quality = int((200 - scale) / 2)
+    else:
+        quality = int(5000 / scale)
+    return max(1, min(100, quality))
+
+
 def _analyze_jpeg_extra(data: bytes, img: Image.Image, info: HeaderInfo) -> None:
     """JPEG-specific: estimate quality, check progressive."""
-    # Estimate quality from quantization tables
     try:
         qtables = img.quantization
         if qtables:
             table = qtables[0] if 0 in qtables else list(qtables.values())[0]
             avg_q = sum(table) / len(table)
-            if avg_q <= 1:
-                info.estimated_quality = 100
-            elif avg_q <= 2:
-                info.estimated_quality = 95
-            elif avg_q <= 5:
-                info.estimated_quality = 90
-            elif avg_q <= 10:
-                info.estimated_quality = 80
-            elif avg_q <= 20:
-                info.estimated_quality = 70
-            elif avg_q <= 40:
-                info.estimated_quality = 60
-            elif avg_q <= 60:
-                info.estimated_quality = 50
-            elif avg_q <= 80:
-                info.estimated_quality = 40
-            else:
-                info.estimated_quality = 30
+            info.estimated_quality = estimate_jpeg_quality_from_qtable(avg_q)
     except Exception:
         info.estimated_quality = None
 

@@ -1,9 +1,11 @@
+import json
+
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from config import settings
 from estimation.estimator import estimate as run_estimate
 from exceptions import BadRequestError, FileTooLargeError
-from schemas import EstimateResponse
+from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import detect_format
 from utils.url_fetch import fetch_image
 
@@ -50,5 +52,13 @@ async def estimate(
     # Validate format
     detect_format(data)
 
+    # Parse optimization config from options field
+    config = OptimizationConfig()
+    if options:
+        try:
+            config = OptimizationConfig(**json.loads(options))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
     # Run estimation (no semaphore needed — lightweight)
-    return await run_estimate(data)
+    return await run_estimate(data, config)

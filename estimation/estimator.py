@@ -4,11 +4,11 @@ from PIL import Image
 
 from estimation.header_analysis import HeaderInfo, analyze_header
 from estimation.heuristics import Prediction, predict_reduction
-from schemas import EstimateResponse
+from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
 
 
-async def estimate(data: bytes) -> EstimateResponse:
+async def estimate(data: bytes, config: OptimizationConfig | None = None) -> EstimateResponse:
     """Estimate compression savings without full compression.
 
     Three-layer estimation:
@@ -18,13 +18,18 @@ async def estimate(data: bytes) -> EstimateResponse:
 
     Target latency: ~20-50ms.
     """
+    if config is None:
+        config = OptimizationConfig()
+
     fmt = detect_format(data)
     header_info = analyze_header(data, fmt)
-    prediction = predict_reduction(header_info, fmt)
+    prediction = predict_reduction(header_info, fmt, config)
 
-    # Layer 3: thumbnail compression for JPEG/WebP only
-    if fmt in (ImageFormat.JPEG, ImageFormat.WEBP):
-        thumbnail_ratio = await _thumbnail_compress(data, fmt)
+    # Layer 3: thumbnail compression for JPEG only.
+    # WebP skipped: thumbnail measures decoded-pixel compressibility, not
+    # re-compression of an already-compressed file, causing overestimates.
+    if fmt == ImageFormat.JPEG:
+        thumbnail_ratio = await _thumbnail_compress(data, fmt, config.quality)
         if thumbnail_ratio is not None:
             prediction = _combine_with_thumbnail(
                 prediction, thumbnail_ratio, header_info
@@ -45,7 +50,9 @@ async def estimate(data: bytes) -> EstimateResponse:
     )
 
 
-async def _thumbnail_compress(data: bytes, fmt: ImageFormat) -> float | None:
+async def _thumbnail_compress(
+    data: bytes, fmt: ImageFormat, quality: int
+) -> float | None:
     """Resize to 64x64, compress with actual tool, return compression ratio.
 
     Only used for JPEG and WebP where thumbnail compression
@@ -58,15 +65,15 @@ async def _thumbnail_compress(data: bytes, fmt: ImageFormat) -> float | None:
         img = Image.open(io.BytesIO(data))
         img.thumbnail((64, 64))
 
-        # Save at default quality to get baseline
+        # Save at q100 to get baseline
         original_buf = io.BytesIO()
         thumb_format = "JPEG" if fmt == ImageFormat.JPEG else "WEBP"
         img.save(original_buf, format=thumb_format, quality=100)
         original_size = original_buf.tell()
 
-        # Save at target quality (80 = default)
+        # Save at target quality from config
         compressed_buf = io.BytesIO()
-        img.save(compressed_buf, format=thumb_format, quality=80)
+        img.save(compressed_buf, format=thumb_format, quality=quality)
         compressed_size = compressed_buf.tell()
 
         if original_size == 0:

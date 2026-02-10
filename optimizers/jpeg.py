@@ -2,6 +2,7 @@ import io
 
 from PIL import Image
 
+from estimation.header_analysis import estimate_jpeg_quality_from_qtable
 from optimizers.base import BaseOptimizer
 from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat
@@ -13,76 +14,29 @@ class JpegOptimizer(BaseOptimizer):
     """JPEG optimization: MozJPEG cjpeg (lossy) + jpegtran (lossless).
 
     Pipeline:
-    1. Estimate input quality from quantization tables
-    2. If input quality <= target → jpegtran only (lossless Huffman optimization)
-    3. If input quality > target → decode to BMP, pipe to cjpeg for lossy re-encode
-    4. Enforce optimization guarantee
+    1. Always try lossy mozjpeg at target quality
+    2. Always try lossless jpegtran (Huffman optimization)
+    3. Pick smallest result
+    4. Enforce optimization guarantee (output <= input)
     """
 
     format = ImageFormat.JPEG
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        input_quality = self._estimate_jpeg_quality(data)
+        # Always try lossy mozjpeg at target quality
+        bmp_data = self._decode_to_bmp(data, config.strip_metadata)
+        mozjpeg_out = await self._run_cjpeg(
+            bmp_data, config.quality, config.progressive_jpeg
+        )
 
-        if input_quality <= config.quality:
-            # Already at or below target quality — lossless only
-            optimized = await self._run_jpegtran(data, config.progressive_jpeg)
-            method = "jpegtran"
-        else:
-            # Lossy re-encode via MozJPEG
-            bmp_data = self._decode_to_bmp(data, config.strip_metadata)
-            optimized = await self._run_cjpeg(
-                bmp_data, config.quality, config.progressive_jpeg
-            )
-            method = "mozjpeg"
+        # Always try lossless jpegtran
+        jpegtran_out = await self._run_jpegtran(data, config.progressive_jpeg)
 
-        return self._build_result(data, optimized, method)
+        # Pick smallest
+        candidates = [(mozjpeg_out, "mozjpeg"), (jpegtran_out, "jpegtran")]
+        best_data, best_method = min(candidates, key=lambda x: len(x[0]))
 
-    def _estimate_jpeg_quality(self, data: bytes) -> int:
-        """Estimate input JPEG quality from quantization tables.
-
-        Compares the image's quantization table values against
-        standard JPEG quantization matrices to estimate quality.
-
-        Returns:
-            Estimated quality (1-100). Returns 100 if cannot determine.
-        """
-        try:
-            img = Image.open(io.BytesIO(data))
-            qtables = img.quantization
-            if not qtables:
-                return 100
-
-            # Use the luminance table (table 0) to estimate quality.
-            # Standard JPEG quality formula: the average quantization
-            # value inversely correlates with quality.
-            table = qtables[0] if 0 in qtables else list(qtables.values())[0]
-            avg_q = sum(table) / len(table)
-
-            # Approximate mapping: avg_q ~1 = q100, avg_q ~50 = q50, avg_q ~100 = q1
-            # This is a rough heuristic — exact mapping depends on the encoder.
-            if avg_q <= 1:
-                return 100
-            elif avg_q <= 2:
-                return 95
-            elif avg_q <= 5:
-                return 90
-            elif avg_q <= 10:
-                return 80
-            elif avg_q <= 20:
-                return 70
-            elif avg_q <= 40:
-                return 60
-            elif avg_q <= 60:
-                return 50
-            elif avg_q <= 80:
-                return 40
-            elif avg_q <= 100:
-                return 30
-            else:
-                return 20
-        except Exception:
-            return 100  # Can't determine — assume high quality
+        return self._build_result(data, best_data, best_method)
 
     def _decode_to_bmp(self, data: bytes, strip_metadata: bool) -> bytes:
         """Decode JPEG to BMP format for cjpeg input.
