@@ -37,3 +37,6 @@ htmlcov/
 
 # Distribution
 *.whl
+
+# Custom Ignores
+nul
