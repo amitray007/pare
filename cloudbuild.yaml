@@ -1,0 +1,24 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/pare:$COMMIT_SHA', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/pare:$COMMIT_SHA']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'pare'
+      - '--image=gcr.io/$PROJECT_ID/pare:$COMMIT_SHA'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--memory=2Gi'
+      - '--cpu=4'
+      - '--min-instances=1'
+      - '--max-instances=32'
+      - '--timeout=300'
+      - '--concurrency=80'
+      - '--set-env-vars=WORKERS=4,LOG_LEVEL=ERROR'
+      - '--set-secrets=API_KEY=pare-api-key:latest,REDIS_URL=pare-redis-url:latest'

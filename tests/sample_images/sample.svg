@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <metadata>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>Test SVG</dc:title>
+        <dc:creator>Test Creator</dc:creator>
+      </rdf:Description>
+    </rdf:RDF>
+  </metadata>
+  <title>Test Image</title>
+  <desc>A test SVG image for compression testing</desc>
+  <rect width="200" height="200" fill="#f0f0f0"/>
+  <circle cx="100" cy="100" r="80" fill="#4a90d9" stroke="#2c5f8a" stroke-width="3"/>
+  <circle cx="100" cy="100" r="50" fill="#7ab5e8" stroke="#4a90d9" stroke-width="2"/>
+  <circle cx="100" cy="100" r="20" fill="#b3d4f0"/>
+  <text x="100" y="105" text-anchor="middle" font-family="Arial" font-size="14" fill="#333">Test</text>
+</svg>
