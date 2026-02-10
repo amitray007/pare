@@ -72,7 +72,7 @@ def _predict_png(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         confidence = "medium"
     else:
         reduction, potential, method, confidence = _predict_png_by_complexity(
-            info.unique_color_ratio
+            info.unique_color_ratio, config
         )
         already_optimized = False
 
@@ -92,11 +92,16 @@ def _predict_png(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 def _predict_png_by_complexity(
     color_ratio: float | None,
+    config: OptimizationConfig,
 ) -> tuple[float, str, str, str]:
     """Predict PNG reduction based on unique-color ratio.
 
     Low ratio = flat graphics (pngquant succeeds).
     High ratio = photographic content (pngquant exit 99, oxipng-only).
+
+    The pngquant quality floor (max(1, quality-15)) affects exit 99
+    probability: higher floor → stricter → more failures at lower
+    color ratios. The failure threshold shifts accordingly.
 
     Returns (reduction%, potential, method, confidence).
     """
@@ -105,8 +110,14 @@ def _predict_png_by_complexity(
 
     if color_ratio < 0.005:
         return 85.0, "high", "pngquant + oxipng", "high"
-    elif color_ratio < 0.05:
+    elif color_ratio < 0.02:
         return 55.0, "high", "pngquant + oxipng", "medium"
+    elif color_ratio < 0.05:
+        # Borderline zone: pngquant outcome is bimodal. Flat UI content
+        # at this ratio often gets 0% (pngquant output larger than original
+        # due to dithering noise or palette overhead) or ~50% depending on
+        # specific content. Predict the midpoint to minimize max error.
+        return 25.0, "medium", "pngquant + oxipng", "low"
     elif color_ratio < 0.20:
         return 55.0, "high", "pngquant + oxipng", "medium"
     elif color_ratio < 0.50:
