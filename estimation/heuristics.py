@@ -1,5 +1,8 @@
+import io
+import subprocess
 from dataclasses import dataclass
 from math import exp as _exp
+from typing import Optional
 
 from estimation.header_analysis import HeaderInfo
 from schemas import OptimizationConfig
@@ -120,7 +123,7 @@ def _predict_png_by_complexity(
     """
     opr = info.oxipng_probe_ratio
     qpr = info.png_quantize_ratio
-    lpr = info.png_lossy_proxy_ratio
+    ppr = info.png_pngquant_probe_ratio
     fpr = info.flat_pixel_ratio
     cr = info.unique_color_ratio
     is_full_file_probe = info.file_size < 50000
@@ -146,31 +149,30 @@ def _predict_png_by_complexity(
     # --- Lossy path ---
     lossy_reduction = 0.0
 
-    if lpr is not None and is_full_file_probe:
-        # Direct lossy proxy measurement (quantize + oxipng on actual image).
-        # This is the most accurate predictor — use it directly, gated by
-        # content type and quality to account for pngquant exit-99 cases.
-        lossy_proxy_reduction = (1.0 - lpr) * 100.0
+    if ppr is not None and is_full_file_probe:
+        # Direct pngquant + oxipng measurement on actual file.
+        # Probe uses quality 0-100 (most permissive). No quality
+        # correction — the probe's estimate is reasonably accurate
+        # across quality settings, and content variation dominates.
+        probe_reduction = (1.0 - ppr) * 100.0
 
         if is_flat:
             # Flat content: pngquant almost always succeeds (palette-friendly).
-            # Gradients have qpr > 2.0 and lossy proxy is typically worse
-            # than lossless, so max() below handles them naturally.
-            lossy_reduction = lossy_proxy_reduction
+            # Gradients have high ppr (quantization inflates) so max() below
+            # naturally picks lossless for them.
+            lossy_reduction = probe_reduction
         elif is_photo:
             # Photos: pngquant only succeeds at aggressive quality settings.
             if config.quality <= 50:
-                lossy_reduction = lossy_proxy_reduction
+                lossy_reduction = probe_reduction
         else:
             # Graphics/artwork: pngquant works at most quality levels
-            lossy_reduction = lossy_proxy_reduction
+            lossy_reduction = probe_reduction
 
     elif is_full_file_probe and qpr is not None:
-        # Small file with thumbnail probes but no lossy proxy (> 250K pixels).
+        # Small file with thumbnail probes but no pngquant probe (> 250K pixels).
         # Fall back to thumbnail-based estimation with content gating.
         if is_flat:
-            # Flat content without proxy: can't predict pngquant bonus reliably.
-            # Use lossless only (max() below handles this naturally).
             lossy_reduction = 0.0
         elif is_photo:
             if config.quality <= 50 and qpr < 0.60:
@@ -199,7 +201,7 @@ def _predict_png_by_complexity(
 
     reduction = max(0.0, min(95.0, reduction))
 
-    if lpr is not None and is_full_file_probe:
+    if ppr is not None and is_full_file_probe:
         confidence = "high"
     elif opr is not None and is_full_file_probe:
         confidence = "high"
@@ -311,15 +313,14 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     if info.is_progressive:
         reduction *= 0.95
 
-    # Tiny-file adjustment: JPEG headers (markers, quantization + Huffman
-    # tables) are fixed overhead. For very small files (<2KB), the overhead
-    # is proportionally larger than the 700B baseline because coding
-    # efficiency drops and minimum table sizes dominate.
-    if info.file_size < 5000:
-        overhead = 700 + max(0, 2000 - info.file_size) * 0.3
-        overhead_ratio = overhead / info.file_size
-        max_reduction = (1 - overhead_ratio) * 100
-        reduction = min(reduction, max(0, max_reduction))
+    # Small-file probe: run actual mozjpeg + jpegtran on the file for an
+    # exact measurement. The heuristic model is calibrated for normal-sized
+    # files and underperforms on tiny files where fixed overhead dominates.
+    if info.raw_data is not None and info.file_size < 10000:
+        probe_reduction = _jpeg_probe(info.raw_data, config.quality)
+        if probe_reduction is not None:
+            reduction = probe_reduction
+            method = "mozjpeg+jpegtran probe"
 
     potential = "high" if reduction >= 40 else ("medium" if reduction >= 15 else "low")
     already_optimized = delta < 0 and not info.has_exif
@@ -331,8 +332,47 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         potential=potential,
         method=method,
         already_optimized=already_optimized,
-        confidence="medium",
+        confidence="high" if info.raw_data is not None and info.file_size < 10000 else "medium",
     )
+
+
+def _jpeg_probe(data: bytes, target_quality: int) -> Optional[float]:
+    """Run mozjpeg cjpeg + jpegtran on actual file to measure compression.
+
+    Returns reduction percentage (0-100), or None on failure.
+    Only called for small JPEG files (< 10KB) where the heuristic
+    model is least accurate due to fixed overhead effects.
+    """
+    from PIL import Image
+
+    try:
+        # Decode to BMP for cjpeg input
+        img = Image.open(io.BytesIO(data))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        bmp_buf = io.BytesIO()
+        img.save(bmp_buf, format="BMP")
+        bmp_data = bmp_buf.getvalue()
+
+        # Run mozjpeg cjpeg at target quality
+        r1 = subprocess.run(
+            ["cjpeg", "-quality", str(target_quality)],
+            input=bmp_data, capture_output=True, timeout=5,
+        )
+        moz_size = len(r1.stdout) if r1.returncode == 0 else len(data)
+
+        # Run jpegtran for lossless optimization
+        r2 = subprocess.run(
+            ["jpegtran", "-optimize", "-copy", "none"],
+            input=data, capture_output=True, timeout=5,
+        )
+        jt_size = len(r2.stdout) if r2.returncode == 0 else len(data)
+
+        # Optimizer picks smallest (matching actual optimizer behavior)
+        best_size = min(moz_size, jt_size, len(data))
+        return (1 - best_size / len(data)) * 100
+    except Exception:
+        return None
 
 
 def _bpp_to_quality(bpp: float) -> int:

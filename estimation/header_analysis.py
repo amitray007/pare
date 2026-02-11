@@ -26,11 +26,12 @@ class HeaderInfo:
     unique_color_ratio: Optional[float] = None  # PNG non-palette: unique colors / total pixels
     png_quantize_ratio: Optional[float] = None  # PNG: quantized_size / original_size (thumbnail)
     oxipng_probe_ratio: Optional[float] = None  # PNG: oxipng_size / pillow_size (center crop)
-    png_lossy_proxy_ratio: Optional[float] = None  # PNG: quantize+oxipng / original (actual file)
+    png_pngquant_probe_ratio: Optional[float] = None  # PNG: pngquant+oxipng / original (actual file)
     svg_bloat_ratio: Optional[float] = None  # SVG: removable bytes / total bytes
     flat_pixel_ratio: Optional[float] = None  # Fraction of adjacent pixel pairs with diff < threshold
     frame_count: int = 1  # 1 for static, >1 for animated
     file_size: int = 0
+    raw_data: Optional[bytes] = None  # Raw file bytes for small files (< 10KB), used for probes
 
 
 def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
@@ -40,6 +41,10 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
     formats. PNG chunks are parsed directly for extra detail.
     """
     info = HeaderInfo(format=fmt, file_size=len(data))
+
+    # Store raw data for small files so heuristics can run quality-dependent probes
+    if len(data) < 10000:
+        info.raw_data = data
 
     if fmt in (ImageFormat.SVG, ImageFormat.SVGZ):
         return _analyze_svg(data, fmt, info)
@@ -143,11 +148,11 @@ def _analyze_png_content(data: bytes, info: HeaderInfo) -> None:
     """Compute content probes for non-palette PNG images.
 
     Sets on info: unique_color_ratio, png_quantize_ratio,
-    flat_pixel_ratio, oxipng_probe_ratio, png_lossy_proxy_ratio.
+    flat_pixel_ratio, oxipng_probe_ratio, png_pngquant_probe_ratio.
 
     For small files (< 50KB), runs oxipng on the actual file for an exact
     lossless compression measurement. For small images (< 250K pixels),
-    also runs a lossy proxy (quantize + oxipng) on the actual image.
+    also runs pngquant + oxipng on the actual file to measure lossy potential.
     For larger files, uses a 64x64 center crop probe.
     Both paths compute flat_pixel_ratio from the center crop.
     """
@@ -178,11 +183,10 @@ def _analyze_png_content(data: bytes, info: HeaderInfo) -> None:
             if info.oxipng_probe_ratio is None:
                 info.oxipng_probe_ratio = _oxipng_probe(rgb_crop)
 
-        # Lossy proxy: quantize actual image + oxipng for small images.
-        # Simulates pngquant+oxipng without subprocess, giving a direct
-        # measurement of lossy optimization potential.
+        # Pngquant probe: run pngquant + oxipng on actual file for small images.
+        # Gives exact lossy optimization measurement (~25ms for small files).
         if len(data) < 50000 and orig_w * orig_h < 250000:
-            info.png_lossy_proxy_ratio = _lossy_proxy_probe(img, len(data))
+            info.png_pngquant_probe_ratio = _pngquant_probe(data)
 
         # Thumbnail for color ratio and quantize ratio
         img.thumbnail((64, 64))
@@ -264,25 +268,30 @@ def _oxipng_probe(rgb_crop: Image.Image) -> Optional[float]:
         return None
 
 
-def _lossy_proxy_probe(img: Image.Image, original_size: int) -> Optional[float]:
-    """Simulate pngquant+oxipng: quantize to 256 colors, save PNG, run oxipng.
+def _pngquant_probe(data: bytes) -> Optional[float]:
+    """Run pngquant + oxipng on actual file to measure lossy optimization.
 
-    Returns optimized_quantized_size / original_file_size. This directly
-    measures what the lossy optimization path would achieve, without
-    running pngquant as a subprocess.
+    Uses permissive quality range (0-100) so pngquant always succeeds
+    if the image can be quantized at all. The heuristics layer applies
+    quality gating to account for stricter ranges at runtime.
 
-    Only called for small images (< 250K pixels) to keep latency low.
+    Returns pngquant_oxipng_size / original_file_size, or None on failure.
+    Only called for small images (< 250K pixels) to keep latency low (~25ms).
     """
+    import subprocess
+
     try:
+        result = subprocess.run(
+            ["pngquant", "--quality", "0-100", "-", "--output", "-"],
+            input=data, capture_output=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+
         import oxipng
 
-        rgb = img.convert("RGB")
-        quantized = rgb.quantize(colors=256)
-        buf = io.BytesIO()
-        quantized.save(buf, format="PNG")
-        quant_png = buf.getvalue()
-        optimized = oxipng.optimize_from_memory(quant_png)
-        return len(optimized) / original_size
+        optimized = oxipng.optimize_from_memory(result.stdout)
+        return len(optimized) / len(data)
     except Exception:
         return None
 
