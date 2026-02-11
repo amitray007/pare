@@ -169,6 +169,9 @@ def _predict_png_by_complexity(
     2. Lossy: pngquant + oxipng -> from quantize probe, gated by content type
     Picks the better path (max reduction).
 
+    Optimizer uses floor=1 (pngquant always succeeds) and quality < 50
+    uses 128 max colors for more aggressive compression.
+
     Returns (reduction%, potential, method, confidence).
     """
     opr = info.oxipng_probe_ratio
@@ -197,13 +200,13 @@ def _predict_png_by_complexity(
         lossless_reduction = 5.0
 
     # --- Lossy path ---
+    # With floor=1, pngquant always succeeds (no exit 99), so lossy
+    # prediction applies to all content types including photos.
     lossy_reduction = 0.0
 
     if ppr is not None and is_full_file_probe:
         # Direct pngquant + oxipng measurement on actual file.
-        # Probe uses quality 0-100 (most permissive). No quality
-        # correction — the probe's estimate is reasonably accurate
-        # across quality settings, and content variation dominates.
+        # Probe uses quality 0-100 (most permissive) and 256 colors.
         probe_reduction = (1.0 - ppr) * 100.0
 
         if is_flat:
@@ -211,12 +214,9 @@ def _predict_png_by_complexity(
             # Gradients have high ppr (quantization inflates) so max() below
             # naturally picks lossless for them.
             lossy_reduction = probe_reduction
-        elif is_photo:
-            # Photos: pngquant only succeeds at aggressive quality settings.
-            if config.quality <= 50:
-                lossy_reduction = probe_reduction
         else:
-            # Graphics/artwork: pngquant works at most quality levels
+            # Photos, graphics, artwork: floor=1 means pngquant always
+            # succeeds. Probe gives a good estimate.
             lossy_reduction = probe_reduction
 
     elif is_full_file_probe and qpr is not None:
@@ -224,22 +224,29 @@ def _predict_png_by_complexity(
         # Fall back to thumbnail-based estimation with content gating.
         if is_flat:
             lossy_reduction = 0.0
-        elif is_photo:
-            if config.quality <= 50 and qpr < 0.60:
-                lossy_reduction = (1.0 - qpr) * 100.0
         elif qpr < 0.70:
             lossy_reduction = (1.0 - qpr) * 100.0
 
     elif not is_full_file_probe:
         # Large files: heuristic for lossy path
-        if is_flat or is_photo:
+        if is_flat:
             lossy_reduction = 0.0
+        elif is_photo:
+            # Photos: pngquant with floor=1 always succeeds. 256 colors
+            # on photo content gives ~66%, 128 colors ~71%.
+            lossy_reduction = 66.0
         elif cr is not None and cr < 0.005:
             lossy_reduction = 90.0
         elif cr is not None and cr < 0.20:
             lossy_reduction = 55.0
         elif qpr is not None and qpr < 0.50:
             lossy_reduction = 55.0
+
+    # 128-color bonus: quality < 50 uses fewer colors → ~4% more compression
+    # on content with many unique colors (photos, complex graphics).
+    if config.quality < 50 and lossy_reduction > 0:
+        if is_photo or (cr is not None and cr > 0.20):
+            lossy_reduction = min(95.0, lossy_reduction + 4.0)
 
     # Pick the better path (matches optimizer: picks smallest output)
     if lossy_reduction > lossless_reduction:

@@ -16,6 +16,11 @@ class PngOptimizer(BaseOptimizer):
     2. If png_lossy=False → oxipng only (user requested lossless)
     3. Otherwise → pngquant → oxipng on result
     4. pngquant exit code 99 (quality threshold not met) → fallback to oxipng on original
+
+    Quality controls aggressiveness:
+    - quality < 50:  128 max colors, floor=1 (aggressive, always succeeds)
+    - quality < 70:  256 max colors, floor=1 (moderate, always succeeds)
+    - quality >= 70: lossless only (png_lossy=False at this preset)
     """
 
     format = ImageFormat.PNG
@@ -40,9 +45,15 @@ class PngOptimizer(BaseOptimizer):
             method = "oxipng"
             return self._build_result(data, optimized, method)
 
+        # Quality-dependent pngquant settings
+        if config.quality < 50:
+            max_colors = 128
+        else:
+            max_colors = 256
+
         # Lossy path: run pngquant and oxipng-baseline concurrently
         (pngquant_result, success), oxipng_only = await asyncio.gather(
-            self._run_pngquant(data_clean, config.quality),
+            self._run_pngquant(data_clean, config.quality, max_colors),
             asyncio.to_thread(self._run_oxipng, data_clean),
         )
 
@@ -67,24 +78,26 @@ class PngOptimizer(BaseOptimizer):
         return self._build_result(data, optimized, method)
 
     async def _run_pngquant(
-        self, data: bytes, quality: int
+        self, data: bytes, quality: int, max_colors: int = 256,
     ) -> tuple[bytes | None, bool]:
-        """Run pngquant with quality range.
+        """Run pngquant with quality-dependent settings.
 
-        The quality floor is max(1, quality - 15) and ceiling is quality.
-        Example: quality=80 → --quality 65-80
+        Uses floor=1 so pngquant always succeeds (never exit 99).
+        Max colors varies by quality: 128 for aggressive, 256 for moderate.
 
         Returns:
             (output_bytes, success). success=False when exit code 99
             (quality threshold cannot be met).
         """
-        q_floor = max(1, quality - 15)
-        q_ceil = quality
+        cmd = [
+            "pngquant",
+            str(max_colors),
+            "--quality", f"1-{quality}",
+            "-", "--output", "-",
+        ]
 
         stdout, stderr, returncode = await run_tool(
-            ["pngquant", "--quality", f"{q_floor}-{q_ceil}", "-", "--output", "-"],
-            data,
-            allowed_exit_codes={99},
+            cmd, data, allowed_exit_codes={99},
         )
 
         if returncode == 99:
