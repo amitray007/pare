@@ -11,6 +11,11 @@ from utils.format_detect import ImageFormat
 class SvgOptimizer(BaseOptimizer):
     """SVG/SVGZ optimization via scour (in-process Python library).
 
+    Pipeline varies by quality setting:
+    - quality < 50:  Aggressive — strip metadata, precision=3, shorten IDs
+    - quality < 70:  Moderate  — strip metadata, precision=5, shorten IDs
+    - quality >= 70: Gentle    — keep metadata, no precision reduction
+
     SVG:  Input → sanitize → scour → Output
     SVGZ: Input → gunzip → sanitize → scour → gzip → Output
     """
@@ -29,7 +34,7 @@ class SvgOptimizer(BaseOptimizer):
         svg_bytes = sanitize_svg(svg_bytes)
         svg_text = svg_bytes.decode("utf-8", errors="replace")
 
-        optimized_text = self._run_scour(svg_text)
+        optimized_text = self._run_scour(svg_text, config)
         optimized_bytes = optimized_text.encode("utf-8")
 
         if is_svgz:
@@ -41,26 +46,31 @@ class SvgOptimizer(BaseOptimizer):
         self.format = fmt
         return self._build_result(data, optimized_bytes, "scour")
 
-    def _run_scour(self, svg_text: str) -> str:
-        """Run scour in-process.
+    def _run_scour(self, svg_text: str, config: OptimizationConfig) -> str:
+        """Run scour with quality-dependent options.
 
-        Scour options:
-        - remove-metadata: Strip editor metadata
-        - enable-viewboxing: Add viewBox if missing
-        - strip-xml-prolog: Remove <?xml?> declaration
-        - remove-descriptive-elements: Remove <title>, <desc>, <metadata>
-        - enable-comment-stripping: Remove XML comments
-        - shorten-ids: Shorten element IDs
-        - indent=none: Remove indentation
+        Higher quality (>= 70): minimal changes, preserve metadata.
+        Lower quality (< 50): aggressive — strip everything, reduce precision.
         """
-        scour_options = scour_parse_args([
-            "--remove-metadata",
+        args = [
             "--enable-viewboxing",
-            "--strip-xml-prolog",
-            "--remove-descriptive-elements",
-            "--enable-comment-stripping",
-            "--shorten-ids",
             "--indent=none",
-        ])
+        ]
 
+        if config.strip_metadata:
+            args += [
+                "--remove-metadata",
+                "--strip-xml-prolog",
+                "--remove-descriptive-elements",
+                "--enable-comment-stripping",
+                "--shorten-ids",
+            ]
+
+        # Coordinate precision reduction for aggressive presets
+        if config.quality < 50:
+            args.append("--set-precision=3")
+        elif config.quality < 70:
+            args.append("--set-precision=5")
+
+        scour_options = scour_parse_args(args)
         return scourString(svg_text, options=scour_options)

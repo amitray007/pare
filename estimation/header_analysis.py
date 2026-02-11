@@ -128,6 +128,15 @@ def _analyze_png_extra(data: bytes, info: HeaderInfo) -> None:
                 info.color_count = chunk_len // 3  # 3 bytes per color
                 break
             offset += 4 + 4 + chunk_len + 4
+        # Run oxipng probe for small palette PNGs to measure lossless potential
+        if len(data) < 50000:
+            try:
+                import oxipng
+
+                optimized = oxipng.optimize_from_memory(data)
+                info.oxipng_probe_ratio = len(optimized) / len(data)
+            except Exception:
+                pass
     else:
         # Non-palette: run content probes (color ratio, quantize, oxipng, flatness)
         _analyze_png_content(data, info)

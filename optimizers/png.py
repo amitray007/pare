@@ -51,7 +51,9 @@ class PngOptimizer(BaseOptimizer):
             lossy_optimized = await asyncio.to_thread(self._run_oxipng, pngquant_result)
             # Pick the smaller of lossy and lossless paths — pngquant can
             # produce a larger file when dithering inflates palette PNGs.
-            if len(lossy_optimized) <= len(oxipng_only):
+            use_lossy = len(lossy_optimized) <= len(oxipng_only)
+
+            if use_lossy:
                 optimized = lossy_optimized
                 method = "pngquant + oxipng"
             else:

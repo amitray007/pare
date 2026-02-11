@@ -7,20 +7,30 @@ from utils.subprocess_runner import run_tool
 class GifOptimizer(BaseOptimizer):
     """GIF optimization via gifsicle.
 
-    gifsicle --optimize=3 performs:
-    - Shrinks frame bounding boxes
-    - Optimizes frame disposal methods
-    - Re-compresses LZW per frame
+    Pipeline varies by quality setting:
+    - quality < 50:  --optimize=3 --lossy=80 (aggressive lossy)
+    - quality < 70:  --optimize=3 --lossy=30 (moderate lossy)
+    - quality >= 70: --optimize=3 (lossless only)
 
-    Quality parameter is ignored — gifsicle is lossless optimization only.
-    Handles both static and animated GIFs transparently.
+    gifsicle --optimize=3 performs lossless optimization (frame bbox
+    shrinking, disposal method optimization, LZW recompression).
+    --lossy enables lossy LZW compression that modifies pixel values
+    slightly for better compression ratios.
     """
 
     format = ImageFormat.GIF
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        stdout, stderr, rc = await run_tool(
-            ["gifsicle", "--optimize=3"],
-            data,
-        )
-        return self._build_result(data, stdout, "gifsicle")
+        cmd = ["gifsicle", "--optimize=3"]
+
+        if config.quality < 50:
+            cmd.append("--lossy=80")
+            method = "gifsicle --lossy=80"
+        elif config.quality < 70:
+            cmd.append("--lossy=30")
+            method = "gifsicle --lossy=30"
+        else:
+            method = "gifsicle"
+
+        stdout, stderr, rc = await run_tool(cmd, data)
+        return self._build_result(data, stdout, method)

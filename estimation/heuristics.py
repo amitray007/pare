@@ -39,7 +39,45 @@ def predict_reduction(
         ImageFormat.BMP: _predict_bmp,
     }
     predictor = dispatch.get(fmt, _predict_bmp)
-    return predictor(info, config)
+    prediction = predictor(info, config)
+
+    # Apply max_reduction cap for lossy formats (matches optimizer behavior)
+    if config.max_reduction is not None and prediction.reduction_percent > config.max_reduction:
+        if fmt == ImageFormat.JPEG:
+            # JPEG optimizer caps mozjpeg (lossy) but not jpegtran (lossless).
+            # Estimate jpegtran reduction to see if lossless dominates.
+            source_q = info.estimated_quality or 85
+            jt_red = 6.75 + 0.194 * (100 - source_q)
+            if source_q > 90:
+                jt_red += 0.668 * _exp(0.293 * (source_q - 90))
+            # Screenshots: jpegtran gives much higher savings (flat blocks
+            # produce many zero AC coefficients → better Huffman coding).
+            # Calibrated: 800x600 screenshot ~46%, 1920x1080 ~58%.
+            if info.flat_pixel_ratio is not None and info.flat_pixel_ratio > 0.75:
+                w = info.dimensions.get("width", 1)
+                h = info.dimensions.get("height", 1)
+                jt_red = max(jt_red, 38.0 + min(25.0, w * h / 100000))
+            # Optimizer picks the better of capped-mozjpeg and uncapped-jpegtran
+            effective = max(jt_red, config.max_reduction)
+            prediction = Prediction(
+                estimated_size=int(info.file_size * (1 - effective / 100)),
+                reduction_percent=round(effective, 1),
+                potential=prediction.potential,
+                method="jpegtran" if jt_red > config.max_reduction else prediction.method,
+                already_optimized=prediction.already_optimized,
+                confidence=prediction.confidence,
+            )
+        elif fmt == ImageFormat.WEBP:
+            # WebP optimizer binary-searches quality to hit the cap
+            prediction = Prediction(
+                estimated_size=int(info.file_size * (1 - config.max_reduction / 100)),
+                reduction_percent=round(config.max_reduction, 1),
+                potential=prediction.potential,
+                method=prediction.method,
+                already_optimized=prediction.already_optimized,
+                confidence=prediction.confidence,
+            )
+    return prediction
 
 
 def _predict_png(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
@@ -49,14 +87,27 @@ def _predict_png(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     config.png_lossy=False → predict oxipng-only (lossless recompression, 2-8%)
     """
     if not config.png_lossy:
-        # Lossless only: oxipng recompression
-        reduction = 5.0
+        # Lossless only: oxipng recompression.
+        # Use probe data for content-aware prediction. Solid/flat content
+        # compresses dramatically better than photo content even losslessly.
+        opr = info.oxipng_probe_ratio
+        if opr is not None:
+            is_full_file = info.file_size < 50000
+            if is_full_file:
+                reduction = (1.0 - opr) * 100.0
+            else:
+                # Crop probe: discount for size-dependent scaling mismatch
+                reduction = (1.0 - opr) * 100.0 * 0.6
+        else:
+            reduction = 5.0
         if info.has_metadata_chunks and config.strip_metadata:
             reduction += 3.0
+        reduction = max(0.0, min(99.0, reduction))
+        potential = "high" if reduction >= 40 else ("medium" if reduction >= 15 else "low")
         return Prediction(
             estimated_size=int(info.file_size * (1 - reduction / 100)),
             reduction_percent=round(reduction, 1),
-            potential="low",
+            potential=potential,
             method="oxipng",
             already_optimized=reduction < 3.0,
             confidence="medium",
@@ -472,8 +523,10 @@ def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     Uses bytes-per-pixel to distinguish gradient/photographic content
     (high bpp, low gifsicle savings) from flat graphics (low bpp,
-    high savings). File size further adjusts: smaller files have less
-    redundancy for gifsicle to exploit.
+    high savings). Quality controls lossy mode:
+    - quality < 50:  --lossy=80 → ~2× lossless savings
+    - quality < 70:  --lossy=30 → ~1.5× lossless savings
+    - quality >= 70: lossless only
     """
     if info.frame_count > 1:
         reduction = 15.0
@@ -493,13 +546,28 @@ def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         else:
             reduction = 12.0 if info.file_size < 2500 else 15.0
 
+        # Lossy mode bonus — only helps gradient/photo content (high bpp).
+        # Graphic content (low bpp) already compresses well; lossy can't
+        # find additional redundancy.
+        if bpp >= 0.05:
+            if config.quality < 50:
+                reduction += 8.0
+            elif config.quality < 70:
+                reduction += 4.0
+
         potential = "medium" if reduction >= 10 else "low"
+
+    method = "gifsicle"
+    if config.quality < 50:
+        method = "gifsicle --lossy=80"
+    elif config.quality < 70:
+        method = "gifsicle --lossy=30"
 
     return Prediction(
         estimated_size=int(info.file_size * (1 - reduction / 100)),
         reduction_percent=round(reduction, 1),
         potential=potential,
-        method="gifsicle",
+        method=method,
         already_optimized=False,
         confidence="medium",
     )
@@ -509,20 +577,55 @@ def _predict_svg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     """SVG heuristics — bytes-based continuous model.
 
     Estimates absolute bytes saved from scour structural optimization
-    (base) plus bloat removal, then converts to percentage.
+    (base) plus bloat removal, then converts to percentage. Quality
+    controls aggressiveness:
+    - quality < 50:  strip metadata + precision=3 (aggressive)
+    - quality < 70:  strip metadata + precision=5 (moderate)
+    - quality >= 70: minimal stripping, no precision change (gentle)
     """
     ratio = info.svg_bloat_ratio
 
     if ratio is not None:
-        base_bytes = 28.0
-        bloat_bytes = info.file_size * ratio * 0.98
-        total_saved = base_bytes + bloat_bytes
-        reduction = max(3.0, min(60.0, (total_saved / max(1, info.file_size)) * 100))
-    else:
-        if info.has_metadata_chunks:
-            reduction = 30.0
+        # Base structural savings. When stripping metadata, scour removes
+        # prolog/comments/descriptive elements (~28 bytes even on tiny SVGs).
+        # Without metadata stripping, only structural changes which scale
+        # with file size.
+        if config.strip_metadata:
+            base_bytes = 28.0
         else:
+            base_bytes = min(28.0, info.file_size * 0.02)
+        if config.strip_metadata:
+            # Structural optimization + metadata/comment/ID stripping
+            bloat_bytes = info.file_size * ratio * 0.98
+        else:
+            # Structural optimization only (viewboxing, indent removal)
+            # still removes significant bloat — calibrated at ~60% of full
+            bloat_bytes = info.file_size * ratio * 0.60
+        total_saved = base_bytes + bloat_bytes
+
+        # Precision reduction bonus — most SVGs have short coordinates
+        # so precision truncation adds minimal savings.
+        if config.quality < 50:
+            total_saved += info.file_size * 0.02
+        elif config.quality < 70:
+            total_saved += info.file_size * 0.01
+
+        reduction = max(3.0, min(70.0, (total_saved / max(1, info.file_size)) * 100))
+    else:
+        if config.strip_metadata and info.has_metadata_chunks:
+            reduction = 30.0
+        elif config.strip_metadata:
             reduction = 8.0
+        elif info.has_metadata_chunks:
+            # Structural optimization without metadata stripping
+            reduction = 18.0
+        else:
+            reduction = 5.0
+
+        if config.quality < 50:
+            reduction += 2.0
+        elif config.quality < 70:
+            reduction += 1.0
 
     potential = "high" if reduction >= 30 else ("medium" if reduction >= 10 else "low")
     already_optimized = reduction <= 5.0
@@ -543,11 +646,26 @@ def _predict_svgz(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     if ratio is not None:
         base_bytes = 5.0
-        bloat_bytes = info.file_size * ratio * 0.38
+        if config.strip_metadata:
+            bloat_bytes = info.file_size * ratio * 0.38
+        else:
+            # Structural optimization still works after gzip re-compression
+            bloat_bytes = info.file_size * ratio * 0.22
         total_saved = base_bytes + bloat_bytes
+
+        if config.quality < 50:
+            total_saved += info.file_size * 0.008
+        elif config.quality < 70:
+            total_saved += info.file_size * 0.004
+
         reduction = max(2.0, min(30.0, (total_saved / max(1, info.file_size)) * 100))
     else:
-        reduction = 8.0 if info.has_metadata_chunks else 5.0
+        if config.strip_metadata and info.has_metadata_chunks:
+            reduction = 8.0
+        elif config.strip_metadata:
+            reduction = 5.0
+        else:
+            reduction = 2.0
 
     return Prediction(
         estimated_size=int(info.file_size * (1 - reduction / 100)),

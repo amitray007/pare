@@ -24,20 +24,59 @@ class JpegOptimizer(BaseOptimizer):
     format = ImageFormat.JPEG
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        # Always try lossy mozjpeg at target quality
         bmp_data = self._decode_to_bmp(data, config.strip_metadata)
 
-        # Run mozjpeg and jpegtran concurrently (both are subprocesses)
+        # Run mozjpeg and jpegtran concurrently
         mozjpeg_out, jpegtran_out = await asyncio.gather(
             self._run_cjpeg(bmp_data, config.quality, config.progressive_jpeg),
             self._run_jpegtran(data, config.progressive_jpeg),
         )
 
-        # Pick smallest
+        # Cap mozjpeg (lossy) if max_reduction is set.
+        # Jpegtran (lossless) is never capped — no quality loss.
+        if config.max_reduction is not None:
+            moz_red = (1 - len(mozjpeg_out) / len(data)) * 100
+            if moz_red > config.max_reduction:
+                mozjpeg_out = await self._cap_mozjpeg(bmp_data, data, config)
+
+        # Pick smallest between (possibly capped) mozjpeg and jpegtran
         candidates = [(mozjpeg_out, "mozjpeg"), (jpegtran_out, "jpegtran")]
         best_data, best_method = min(candidates, key=lambda x: len(x[0]))
 
         return self._build_result(data, best_data, best_method)
+
+    async def _cap_mozjpeg(
+        self, bmp_data: bytes, original: bytes, config: OptimizationConfig,
+    ) -> bytes:
+        """Binary search cjpeg quality to cap lossy reduction at max_reduction.
+
+        Returns the cjpeg output at the lowest quality that stays within
+        the cap, or the original bytes if even q=100 exceeds the cap.
+        """
+        target = config.max_reduction
+        orig_size = len(original)
+
+        out_100 = await self._run_cjpeg(bmp_data, 100, config.progressive_jpeg)
+        red_100 = (1 - len(out_100) / orig_size) * 100
+        if red_100 > target:
+            return original  # mozjpeg can't help within cap
+
+        lo, hi = config.quality, 100
+        best_out = out_100
+
+        for _ in range(5):
+            if hi - lo <= 1:
+                break
+            mid = (lo + hi) // 2
+            out_mid = await self._run_cjpeg(bmp_data, mid, config.progressive_jpeg)
+            red_mid = (1 - len(out_mid) / orig_size) * 100
+            if red_mid > target:
+                lo = mid
+            else:
+                hi = mid
+                best_out = out_mid
+
+        return best_out
 
     def _decode_to_bmp(self, data: bytes, strip_metadata: bool) -> bytes:
         """Decode JPEG to BMP format for cjpeg input.

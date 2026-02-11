@@ -10,6 +10,11 @@ class OptimizationConfig(BaseModel):
     strip_metadata: bool = True
     progressive_jpeg: bool = False
     png_lossy: bool = True
+    max_reduction: Optional[float] = Field(
+        default=None, ge=0, le=100,
+        description="Cap size reduction at this percentage. The optimizer will "
+        "search for the highest quality that stays within this limit.",
+    )
 
 
 class StorageConfig(BaseModel):
