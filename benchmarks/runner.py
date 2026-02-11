@@ -5,15 +5,18 @@ collecting timing and result data for analysis.
 """
 
 import asyncio
+import os
 import sys
 import time
 from dataclasses import dataclass, field
 
 from benchmarks.cases import BenchmarkCase, build_all_cases
 from benchmarks.constants import ALL_PRESETS, QualityPreset
-from estimation.estimator import estimate as run_estimate
+from estimation.header_analysis import HeaderInfo, analyze_header
+from estimation.heuristics import predict_reduction
 from optimizers.router import optimize_image
 from schemas import OptimizationConfig
+from utils.format_detect import ImageFormat, detect_format
 
 
 @dataclass
@@ -48,10 +51,34 @@ class BenchmarkSuite:
     presets_used: list[str] = field(default_factory=list)
 
 
-async def run_single(case: BenchmarkCase, config: OptimizationConfig, preset_name: str = "") -> BenchmarkResult:
+def _precompute_headers(cases: list[BenchmarkCase]) -> dict[int, tuple[ImageFormat, HeaderInfo]]:
+    """Pre-compute header analysis for each unique case.
+
+    Header analysis (probes, oxipng, quantize) depends only on image data,
+    not on quality settings. Computing once and reusing across presets
+    avoids redundant work.
+    """
+    cache: dict[int, tuple[ImageFormat, HeaderInfo]] = {}
+    for case in cases:
+        key = id(case.data)
+        if key not in cache:
+            fmt = detect_format(case.data)
+            info = analyze_header(case.data, fmt)
+            cache[key] = (fmt, info)
+    return cache
+
+
+async def run_single(
+    case: BenchmarkCase,
+    config: OptimizationConfig,
+    preset_name: str = "",
+    header_cache: dict[int, tuple[ImageFormat, HeaderInfo]] | None = None,
+) -> BenchmarkResult:
     """Run optimize + estimate on a single benchmark case.
 
     Optimization and estimation run concurrently since they're independent.
+    When header_cache is provided, estimation uses pre-computed headers
+    instead of re-analyzing the image.
     """
     result = BenchmarkResult(case=case, preset_name=preset_name)
 
@@ -72,12 +99,23 @@ async def run_single(case: BenchmarkCase, config: OptimizationConfig, preset_nam
     async def _estimate():
         try:
             t0 = time.perf_counter()
-            est_result = await run_estimate(case.data, config)
+            if header_cache and id(case.data) in header_cache:
+                fmt, header_info = header_cache[id(case.data)]
+                prediction = predict_reduction(header_info, fmt, config)
+            else:
+                from estimation.estimator import estimate as run_estimate
+                est_result = await run_estimate(case.data, config)
+                prediction = type('P', (), {
+                    'estimated_size': est_result.estimated_optimized_size,
+                    'reduction_percent': est_result.estimated_reduction_percent,
+                    'potential': est_result.optimization_potential,
+                    'confidence': est_result.confidence,
+                })()
             result.est_time_ms = (time.perf_counter() - t0) * 1000
-            result.est_size = est_result.estimated_optimized_size
-            result.est_reduction_pct = est_result.estimated_reduction_percent
-            result.est_potential = est_result.optimization_potential
-            result.est_confidence = est_result.confidence
+            result.est_size = prediction.estimated_size
+            result.est_reduction_pct = prediction.reduction_percent
+            result.est_potential = prediction.potential
+            result.est_confidence = prediction.confidence
         except Exception as e:
             result.est_error = str(e)
 
@@ -127,41 +165,54 @@ async def run_suite(
     suite = BenchmarkSuite()
     suite.presets_used = [name for name, _ in run_list]
 
-    total = len(cases) * len(run_list)
+    # Pre-compute header analysis once per unique image (shared across presets)
+    header_cache = _precompute_headers(cases)
+
+    # Flatten all (case, preset) combinations for maximum parallelism
+    all_tasks_args: list[tuple[BenchmarkCase, OptimizationConfig, str]] = []
+    for preset_name, opt_config in run_list:
+        for case in cases:
+            all_tasks_args.append((case, opt_config, preset_name))
+
+    total = len(all_tasks_args)
     done = 0
     t_start = time.perf_counter()
 
-    # Semaphore limits concurrent tasks to avoid overwhelming CPU/subprocesses
-    sem = asyncio.Semaphore(4)
+    # Semaphore limits concurrent tasks; scale with CPU count
+    max_workers = min(os.cpu_count() or 4, 12)
+    sem = asyncio.Semaphore(max_workers)
 
     async def _run_with_sem(case, opt_config, preset_name):
+        nonlocal done
         async with sem:
-            return await run_single(case, opt_config, preset_name=preset_name)
-
-    for preset_name, opt_config in run_list:
-        if progress and len(run_list) > 1:
-            print(f"\n  Preset: {preset_name}", file=sys.stderr)
-
-        # Launch all cases for this preset concurrently (bounded by semaphore)
-        tasks = []
-        for case in cases:
-            tasks.append(_run_with_sem(case, opt_config, preset_name))
-
-        results = await asyncio.gather(*tasks)
-
-        for result in results:
-            suite.results.append(result)
-            suite.cases_run += 1
-            if result.opt_error:
-                suite.cases_failed += 1
-
+            result = await run_single(case, opt_config, preset_name, header_cache)
+        done += 1
         if progress:
-            done += len(cases)
-            print(f"\r  [{done}/{total}] {preset_name}: done" + " " * 30, end="", flush=True, file=sys.stderr)
+            elapsed = time.perf_counter() - t_start
+            rate = done / elapsed if elapsed > 0 else 0
+            eta = (total - done) / rate if rate > 0 else 0
+            print(
+                f"\r  [{done}/{total}] {rate:.0f} cases/s  ETA {eta:.0f}s" + " " * 20,
+                end="", flush=True, file=sys.stderr,
+            )
+        return result
+
+    results = await asyncio.gather(
+        *[_run_with_sem(c, cfg, pn) for c, cfg, pn in all_tasks_args]
+    )
+
+    for result in results:
+        suite.results.append(result)
+        suite.cases_run += 1
+        if result.opt_error:
+            suite.cases_failed += 1
 
     suite.total_time_s = time.perf_counter() - t_start
 
     if progress:
-        print(f"\r  Done: {suite.cases_run} cases in {suite.total_time_s:.1f}s" + " " * 40, file=sys.stderr)
+        print(
+            f"\r  Done: {suite.cases_run} cases in {suite.total_time_s:.1f}s" + " " * 40,
+            file=sys.stderr,
+        )
 
     return suite

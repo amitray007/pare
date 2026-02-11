@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 from PIL import Image
@@ -25,12 +26,12 @@ class JpegOptimizer(BaseOptimizer):
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
         # Always try lossy mozjpeg at target quality
         bmp_data = self._decode_to_bmp(data, config.strip_metadata)
-        mozjpeg_out = await self._run_cjpeg(
-            bmp_data, config.quality, config.progressive_jpeg
-        )
 
-        # Always try lossless jpegtran
-        jpegtran_out = await self._run_jpegtran(data, config.progressive_jpeg)
+        # Run mozjpeg and jpegtran concurrently (both are subprocesses)
+        mozjpeg_out, jpegtran_out = await asyncio.gather(
+            self._run_cjpeg(bmp_data, config.quality, config.progressive_jpeg),
+            self._run_jpegtran(data, config.progressive_jpeg),
+        )
 
         # Pick smallest
         candidates = [(mozjpeg_out, "mozjpeg"), (jpegtran_out, "jpegtran")]
