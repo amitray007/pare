@@ -36,7 +36,7 @@ def strip_metadata_selective(
         return _strip_png_metadata(data, preserve_icc)
     if fmt == ImageFormat.TIFF:
         return _strip_pillow_metadata(data, fmt, preserve_orientation, preserve_icc)
-    # WebP, GIF, SVG, BMP, PSD — metadata is stripped during optimization
+    # WebP, GIF, SVG, BMP — metadata is stripped during optimization
     return data
 
 

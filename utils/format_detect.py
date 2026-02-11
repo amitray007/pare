@@ -17,7 +17,6 @@ class ImageFormat(str, Enum):
     HEIC = "heic"
     TIFF = "tiff"
     BMP = "bmp"
-    PSD = "psd"
 
 
 # MIME type mapping
@@ -33,7 +32,6 @@ MIME_TYPES = {
     ImageFormat.HEIC: "image/heic",
     ImageFormat.TIFF: "image/tiff",
     ImageFormat.BMP: "image/bmp",
-    ImageFormat.PSD: "image/vnd.adobe.photoshop",
 }
 
 
@@ -79,10 +77,6 @@ def detect_format(data: bytes) -> ImageFormat:
     # TIFF: II*\x00 (little-endian) or MM\x00* (big-endian)
     if data[:4] in (b"II\x2a\x00", b"MM\x00\x2a"):
         return ImageFormat.TIFF
-
-    # PSD: 8BPS
-    if data[:4] == b"8BPS":
-        return ImageFormat.PSD
 
     # AVIF / HEIC: ISO BMFF ftyp box
     if len(data) >= 12 and data[4:8] == b"ftyp":

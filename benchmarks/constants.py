@@ -68,10 +68,10 @@ class QualityPreset:
 HIGH = QualityPreset(
     name="HIGH",
     config=OptimizationConfig(
-        quality=40,
-        png_lossy=True,
-        strip_metadata=True,
-        progressive_jpeg=True,
+        quality=80,
+        png_lossy=False,
+        strip_metadata=False,
+        progressive_jpeg=False,
     ),
 )
 
@@ -88,10 +88,10 @@ MEDIUM = QualityPreset(
 LOW = QualityPreset(
     name="LOW",
     config=OptimizationConfig(
-        quality=80,
+        quality=40,
         png_lossy=True,
         strip_metadata=True,
-        progressive_jpeg=False,
+        progressive_jpeg=True,
     ),
 )
 

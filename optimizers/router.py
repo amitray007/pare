@@ -7,7 +7,8 @@ from optimizers.gif import GifOptimizer
 from optimizers.svg import SvgOptimizer
 from optimizers.avif import AvifOptimizer
 from optimizers.heic import HeicOptimizer
-from optimizers.passthrough import PassthroughOptimizer
+from optimizers.tiff import TiffOptimizer
+from optimizers.bmp import BmpOptimizer
 
 
 # Optimizer registry — initialized once at import time
@@ -21,9 +22,8 @@ OPTIMIZERS = {
     ImageFormat.SVGZ: SvgOptimizer(),
     ImageFormat.AVIF: AvifOptimizer(),
     ImageFormat.HEIC: HeicOptimizer(),
-    ImageFormat.TIFF: PassthroughOptimizer(ImageFormat.TIFF),
-    ImageFormat.BMP: PassthroughOptimizer(ImageFormat.BMP),
-    ImageFormat.PSD: PassthroughOptimizer(ImageFormat.PSD),
+    ImageFormat.TIFF: TiffOptimizer(),
+    ImageFormat.BMP: BmpOptimizer(),
 }
 
 

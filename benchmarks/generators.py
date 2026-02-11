@@ -120,7 +120,9 @@ def palette_png(w: int, h: int, seed: int = 42) -> Image.Image:
 # Encoders
 # ---------------------------------------------------------------------------
 
-def encode_image(img: Image.Image, fmt: str, quality: int = 95) -> bytes:
+def encode_image(
+    img: Image.Image, fmt: str, quality: int = 95, compression: str | None = None,
+) -> bytes:
     """Encode a PIL Image to bytes in the given format."""
     buf = io.BytesIO()
     if fmt == "png":
@@ -132,9 +134,14 @@ def encode_image(img: Image.Image, fmt: str, quality: int = 95) -> bytes:
     elif fmt == "gif":
         img.convert("P", palette=Image.ADAPTIVE, colors=256).save(buf, format="GIF")
     elif fmt == "bmp":
-        img.convert("RGB").save(buf, format="BMP")
+        if img.mode not in ("RGB", "RGBA", "L"):
+            img = img.convert("RGB")
+        img.save(buf, format="BMP")
     elif fmt == "tiff":
-        img.convert("RGB").save(buf, format="TIFF")
+        save_kwargs = {"format": "TIFF"}
+        if compression:
+            save_kwargs["compression"] = compression
+        img.convert("RGB").save(buf, **save_kwargs)
     return buf.getvalue()
 
 

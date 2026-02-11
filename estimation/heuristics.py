@@ -35,11 +35,10 @@ def predict_reduction(
         ImageFormat.SVGZ: _predict_svgz,
         ImageFormat.AVIF: _predict_metadata_only,
         ImageFormat.HEIC: _predict_metadata_only,
-        ImageFormat.TIFF: _predict_passthrough,
-        ImageFormat.BMP: _predict_passthrough,
-        ImageFormat.PSD: _predict_passthrough,
+        ImageFormat.TIFF: _predict_tiff,
+        ImageFormat.BMP: _predict_bmp,
     }
-    predictor = dispatch.get(fmt, _predict_passthrough)
+    predictor = dispatch.get(fmt, _predict_bmp)
     return predictor(info, config)
 
 
@@ -577,15 +576,93 @@ def _predict_metadata_only(
     )
 
 
-def _predict_passthrough(
-    info: HeaderInfo, config: OptimizationConfig
-) -> Prediction:
-    """TIFF/BMP/PSD — limited optimization potential."""
+def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
+    """TIFF — predict deflate output size from content type, compare to input.
+
+    The optimizer tries deflate and LZW, picking smallest. Deflate output
+    depends on content (flat vs photo), not on source compression. Model:
+      1. Estimate deflate_ratio (deflate_output / raw_pixels) from flat_pixel_ratio
+      2. reduction = (1 - deflate_ratio * raw_size / file_size) * 100
+
+    Calibrated from benchmark: photo deflate_ratio ~0.91, flat ~0.009.
+    """
+    w = info.dimensions.get("width", 1)
+    h = info.dimensions.get("height", 1)
+    raw_size = w * h * (4 if info.color_type == "rgba" else 3)
+    fpr = info.flat_pixel_ratio
+
+    if fpr is not None:
+        # Content-aware: interpolate deflate ratio from flat_pixel_ratio
+        # Flat content (screenshots ~0.007, graphics ~0.012) → midpoint 0.009
+        if fpr > 0.75:
+            deflate_ratio = 0.009
+        elif fpr < 0.30:
+            deflate_ratio = 0.91
+        else:
+            # Linear interpolation between photo and flat
+            t = (fpr - 0.30) / 0.45
+            deflate_ratio = 0.91 * (1 - t) + 0.01 * t
+        confidence = "high"
+    else:
+        # No content probe — fall back to raw-size ratio heuristic
+        ratio = info.file_size / max(raw_size, 1)
+        if ratio > 0.8:
+            deflate_ratio = 0.50
+        else:
+            deflate_ratio = 0.30
+        confidence = "low"
+
+    deflate_output = raw_size * deflate_ratio
+    reduction = max(0.0, (1 - deflate_output / max(info.file_size, 1)) * 100)
+
+    if info.has_metadata_chunks and config.strip_metadata:
+        reduction += 2.0
+
+    reduction = min(99.5, reduction)
+    potential = "high" if reduction >= 40 else ("medium" if reduction >= 15 else "low")
+    estimated_size = int(info.file_size * (1 - reduction / 100))
+
     return Prediction(
-        estimated_size=info.file_size,
-        reduction_percent=0.0,
-        potential="low",
-        method=f"pillow-{info.format.value}",
-        already_optimized=True,
-        confidence="low",
+        estimated_size=estimated_size,
+        reduction_percent=round(reduction, 1),
+        potential=potential,
+        method="tiff_adobe_deflate",
+        already_optimized=reduction < 3.0,
+        confidence=confidence,
+    )
+
+
+def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
+    """BMP — 32-bit to 24-bit downconversion (~25%) or re-encode (~0%).
+
+    Pillow opens 32-bit BMPs as RGB (drops padding byte) and saves as
+    24-bit, giving ~25% reduction. Detects 32-bit via file size vs
+    expected 24-bit size since Pillow reports both as 'rgb' color_type.
+    """
+    w = info.dimensions.get("width", 1)
+    h = info.dimensions.get("height", 1)
+    # 24-bit BMP row size: padded to 4-byte boundary
+    row_bytes_24 = (w * 3 + 3) & ~3
+    expected_24bit = row_bytes_24 * h + 54  # 54-byte standard header
+
+    if info.file_size > expected_24bit * 1.1:
+        # Likely 32-bit BMP — Pillow re-encode produces 24-bit (~25% savings)
+        reduction = round((1 - expected_24bit / info.file_size) * 100, 1)
+        potential = "medium"
+        already_optimized = False
+        confidence = "high"
+    else:
+        reduction = 0.0
+        potential = "low"
+        already_optimized = True
+        confidence = "low"
+
+    estimated_size = int(info.file_size * (1 - reduction / 100))
+    return Prediction(
+        estimated_size=estimated_size,
+        reduction_percent=round(reduction, 1),
+        potential=potential,
+        method="pillow-bmp",
+        already_optimized=already_optimized,
+        confidence=confidence,
     )

@@ -180,10 +180,15 @@ def _svg_cases() -> list[BenchmarkCase]:
     return cases
 
 
+TIFF_COMPRESSIONS = [None, "tiff_lzw"]  # None = raw/uncompressed
+
+
 def _other_cases() -> list[BenchmarkCase]:
-    """BMP and TIFF — use first small landscape size."""
+    """BMP and TIFF benchmark cases."""
     sname, w, h = sizes_matching("small-l")[0]
     cases = []
+
+    # BMP cases — RGB and RGBA (graphic_like produces RGBA)
     img = screenshot_like(w, h)
     cases.append(BenchmarkCase(
         name=f"BMP screenshot {w}x{h}",
@@ -191,7 +196,25 @@ def _other_cases() -> list[BenchmarkCase]:
     ))
     img = photo_like(w, h)
     cases.append(BenchmarkCase(
-        name=f"TIFF photo {w}x{h}",
-        data=encode_image(img, "tiff"), fmt="tiff", category=sname, content="photo",
+        name=f"BMP photo {w}x{h}",
+        data=encode_image(img, "bmp"), fmt="bmp", category=sname, content="photo",
     ))
+    img = graphic_like(w, h)
+    cases.append(BenchmarkCase(
+        name=f"BMP graphic RGBA {w}x{h}",
+        data=encode_image(img, "bmp"), fmt="bmp", category=sname, content="graphic",
+    ))
+
+    # TIFF cases — each content type × source compression level
+    tiff_content = [("photo", photo_like), ("screenshot", screenshot_like), ("graphic", graphic_like)]
+    for compression in TIFF_COMPRESSIONS:
+        comp_label = compression or "raw"
+        for cname, gen in tiff_content:
+            img = gen(w, h)
+            cases.append(BenchmarkCase(
+                name=f"TIFF {cname} {comp_label} {w}x{h}",
+                data=encode_image(img, "tiff", compression=compression),
+                fmt="tiff", category=sname, content=cname,
+            ))
+
     return cases

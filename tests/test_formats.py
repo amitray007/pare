@@ -96,21 +96,25 @@ async def test_format_webp(sample_webp):
 
 
 @pytest.mark.asyncio
-async def test_format_bmp_passthrough(sample_bmp):
-    """BMP passthrough via Pillow."""
+async def test_format_bmp(sample_bmp):
+    """BMP optimization via Pillow re-encode."""
     config = OptimizationConfig()
     result = await optimize_image(sample_bmp, config)
     assert result.success
     assert result.optimized_size <= result.original_size
+    assert result.format == "bmp"
 
 
 @pytest.mark.asyncio
-async def test_format_tiff_passthrough(sample_tiff):
-    """TIFF passthrough."""
+async def test_format_tiff(sample_tiff):
+    """TIFF optimization via multi-compression trial."""
     config = OptimizationConfig()
     result = await optimize_image(sample_tiff, config)
     assert result.success
     assert result.optimized_size <= result.original_size
+    assert result.format == "tiff"
+    # Should pick a real compression method on uncompressed TIFF
+    assert result.method in ("tiff_adobe_deflate", "tiff_lzw", "none")
 
 
 @pytest.mark.asyncio

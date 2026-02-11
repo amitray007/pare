@@ -95,7 +95,9 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
         _analyze_png_extra(data, info)
     elif fmt == ImageFormat.JPEG:
         _analyze_jpeg_extra(data, img, info)
-        # Content classification from center crop (preserves pixel-level detail)
+
+    # Content classification from center crop for formats that need it
+    if fmt in (ImageFormat.JPEG, ImageFormat.TIFF):
         try:
             w = info.dimensions.get("width", 0)
             h = info.dimensions.get("height", 0)
