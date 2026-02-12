@@ -1,6 +1,5 @@
 """Tests for estimation heuristics — all per-format prediction functions."""
 
-
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
     Prediction,

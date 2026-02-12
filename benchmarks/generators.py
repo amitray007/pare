@@ -158,10 +158,12 @@ def encode_image(
 
 
 def svg_simple(w: int = 800, h: int = 600) -> bytes:
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
+    return (
+        f"""<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
   <rect width="{w}" height="{h}" fill="#f0f0f0"/>
   <circle cx="{w // 2}" cy="{h // 2}" r="{min(w, h) // 3}" fill="#4a90d9"/>
 </svg>""".encode()
+    )
 
 
 def svg_complex(w: int = 800, h: int = 600, seed: int = 42) -> bytes:
@@ -176,13 +178,15 @@ def svg_complex(w: int = 800, h: int = 600, seed: int = 42) -> bytes:
             f'  <path d="M{x1},{y1} Q{cx},{cy} {x2},{y2}" '
             f'stroke="{color}" fill="none" stroke-width="2"/>'
         )
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
+    return (
+        f"""<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
   <metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about=""><dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Complex</dc:title></rdf:Description></rdf:RDF></metadata>
   <title>Test</title>
   <desc>A complex SVG for benchmarking</desc>
   <rect width="{w}" height="{h}" fill="#ffffff"/>
 {chr(10).join(paths)}
 </svg>""".encode()
+    )
 
 
 def svg_bloated(w: int = 800, h: int = 600, seed: int = 42) -> bytes:
