@@ -189,7 +189,7 @@ def _predict_png_by_complexity(
 
     # --- Lossless path ---
     if opr is not None and is_full_file_probe:
-        # Exact measurement from actual file
+        # Exact measurement from actual file (probe uses oxipng level=2)
         lossless_reduction = (1.0 - opr) * 100.0
     elif is_photo:
         lossless_reduction = 3.0
@@ -233,7 +233,7 @@ def _predict_png_by_complexity(
             lossy_reduction = 0.0
         elif is_photo:
             # Photos: pngquant with floor=1 always succeeds. 256 colors
-            # on photo content gives ~66%, 128 colors ~71%.
+            # on photo content gives ~66%, 64 colors ~75%.
             lossy_reduction = 66.0
         elif cr is not None and cr < 0.005:
             lossy_reduction = 90.0
@@ -242,17 +242,30 @@ def _predict_png_by_complexity(
         elif qpr is not None and qpr < 0.50:
             lossy_reduction = 55.0
 
-    # 128-color bonus: quality < 50 uses fewer colors → ~4% more compression
+    # 64-color bonus: quality < 50 uses far fewer colors → ~8% more compression
     # on content with many unique colors (photos, complex graphics).
-    if config.quality < 50 and lossy_reduction > 0:
+    # Files < 1KB excluded: too few pixels for color count to matter.
+    if config.quality < 50 and lossy_reduction > 0 and info.file_size > 1000:
         if is_photo or (cr is not None and cr > 0.20):
-            lossy_reduction = min(95.0, lossy_reduction + 4.0)
+            lossy_reduction = min(95.0, lossy_reduction + 8.0)
 
     # Pick the better path (matches optimizer: picks smallest output)
     if lossy_reduction > lossless_reduction:
         reduction = lossy_reduction
         method = "pngquant + oxipng"
     else:
+        # Lossless path wins at probe (level 2). Apply level bonus since
+        # the optimizer uses level 4/6 for quality < 70, finding better
+        # filter strategies. Only applies when lossless genuinely wins —
+        # graphics where lossy dominates are naturally excluded.
+        if config.quality < 70 and is_full_file_probe and not is_photo:
+            if lossless_reduction < 15 and info.file_size > 300:
+                # Gradients: level 6 finds 15-20% even on small files
+                lossless_reduction = max(lossless_reduction, 18.0)
+            elif is_flat and info.file_size > 1000:
+                # Screenshot content: proportional to headroom
+                bonus = (95.0 - lossless_reduction) * 0.30
+                lossless_reduction = min(95.0, lossless_reduction + bonus)
         reduction = lossless_reduction
         method = "oxipng"
 
@@ -702,34 +715,31 @@ def _predict_metadata_only(
 
 
 def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """TIFF — predict deflate output size from content type, compare to input.
+    """TIFF — predict output size from content type and quality preset.
 
-    The optimizer tries deflate and LZW, picking smallest. Deflate output
-    depends on content (flat vs photo), not on source compression. Model:
-      1. Estimate deflate_ratio (deflate_output / raw_pixels) from flat_pixel_ratio
-      2. reduction = (1 - deflate_ratio * raw_size / file_size) * 100
+    Lossless path (all presets): deflate/LZW re-compression.
+    Lossy path (quality < 70, RGB/L only): JPEG-in-TIFF at config.quality.
+    Optimizer picks smallest across all methods.
 
     Calibrated from benchmark: photo deflate_ratio ~0.91, flat ~0.009.
+    JPEG-in-TIFF on photos: ~90-95% reduction from raw, ~60-80% from deflate.
     """
     w = info.dimensions.get("width", 1)
     h = info.dimensions.get("height", 1)
-    raw_size = w * h * (4 if info.color_type == "rgba" else 3)
+    channels = 4 if info.color_type == "rgba" else 3
+    raw_size = w * h * channels
     fpr = info.flat_pixel_ratio
 
     if fpr is not None:
-        # Content-aware: interpolate deflate ratio from flat_pixel_ratio
-        # Flat content (screenshots ~0.007, graphics ~0.012) → midpoint 0.009
         if fpr > 0.75:
             deflate_ratio = 0.009
         elif fpr < 0.30:
             deflate_ratio = 0.91
         else:
-            # Linear interpolation between photo and flat
             t = (fpr - 0.30) / 0.45
             deflate_ratio = 0.91 * (1 - t) + 0.01 * t
         confidence = "high"
     else:
-        # No content probe — fall back to raw-size ratio heuristic
         ratio = info.file_size / max(raw_size, 1)
         if ratio > 0.8:
             deflate_ratio = 0.50
@@ -738,7 +748,25 @@ def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         confidence = "low"
 
     deflate_output = raw_size * deflate_ratio
-    reduction = max(0.0, (1 - deflate_output / max(info.file_size, 1)) * 100)
+    lossless_reduction = max(0.0, (1 - deflate_output / max(info.file_size, 1)) * 100)
+
+    # Lossy JPEG-in-TIFF for quality < 70 on RGB/L content (not RGBA).
+    # Photos compress dramatically; flat/graphic content JPEG is worse than deflate.
+    lossy_reduction = 0.0
+    is_photo = fpr is not None and fpr < 0.30
+    can_jpeg = config.quality < 70 and info.color_type != "rgba"
+
+    if can_jpeg and is_photo:
+        # JPEG-in-TIFF on photo content: quality controls output size.
+        # Calibrated from benchmark (300x200 photo):
+        #   q=40: 32.6KB out of 180K raw → 0.185 bytes/pixel
+        #   q=60: 47.1KB out of 180K raw → 0.268 bytes/pixel
+        bpp_factor = 0.019 + config.quality * 0.00415
+        jpeg_output = raw_size * bpp_factor
+        lossy_reduction = max(0.0, (1 - jpeg_output / max(info.file_size, 1)) * 100)
+
+    reduction = max(lossless_reduction, lossy_reduction)
+    method = "tiff_jpeg" if lossy_reduction > lossless_reduction else "tiff_adobe_deflate"
 
     if info.has_metadata_chunks and config.strip_metadata:
         reduction += 2.0
@@ -751,18 +779,18 @@ def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         estimated_size=estimated_size,
         reduction_percent=round(reduction, 1),
         potential=potential,
-        method="tiff_adobe_deflate",
+        method=method,
         already_optimized=reduction < 3.0,
         confidence=confidence,
     )
 
 
 def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """BMP — 32-bit to 24-bit downconversion (~25%) or re-encode (~0%).
+    """BMP — quality-aware prediction matching optimizer tiers.
 
-    Pillow opens 32-bit BMPs as RGB (drops padding byte) and saves as
-    24-bit, giving ~25% reduction. Detects 32-bit via file size vs
-    expected 24-bit size since Pillow reports both as 'rgb' color_type.
+    quality >= 70 (LOW):  32→24 bit downconversion only (~0-25%).
+    quality 50-69 (MEDIUM): palette quantization to 8-bit (~66%).
+    quality < 50 (HIGH):  palette + RLE8 (~66-99%, content-dependent).
     """
     w = info.dimensions.get("width", 1)
     h = info.dimensions.get("height", 1)
@@ -770,24 +798,45 @@ def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     row_bytes_24 = (w * 3 + 3) & ~3
     expected_24bit = row_bytes_24 * h + 54  # 54-byte standard header
 
-    if info.file_size > expected_24bit * 1.1:
+    if config.quality < 70:
+        # 8-bit palette BMP: 1 byte/pixel rows padded to 4-byte boundary
+        row_bytes_8 = (w + 3) & ~3
+        expected_8bit = 54 + 1024 + row_bytes_8 * h  # header + palette + pixels
+
+        reduction = round((1 - expected_8bit / info.file_size) * 100, 1)
+
+        if config.quality < 50:
+            # Add conservative RLE bonus (~10%, capped at 20%)
+            rle_bonus = min(10.0, (100.0 - reduction) * 0.2)
+            reduction = round(min(reduction + rle_bonus, 95.0), 1)
+            method = "bmp-rle8"
+        else:
+            method = "pillow-bmp-palette"
+
+        reduction = max(reduction, 0.0)
+        potential = "high" if reduction > 40 else "medium"
+        already_optimized = reduction < 3.0
+        confidence = "medium"
+    elif info.file_size > expected_24bit * 1.1:
         # Likely 32-bit BMP — Pillow re-encode produces 24-bit (~25% savings)
         reduction = round((1 - expected_24bit / info.file_size) * 100, 1)
         potential = "medium"
         already_optimized = False
         confidence = "high"
+        method = "pillow-bmp"
     else:
         reduction = 0.0
         potential = "low"
         already_optimized = True
         confidence = "low"
+        method = "pillow-bmp"
 
     estimated_size = int(info.file_size * (1 - reduction / 100))
     return Prediction(
         estimated_size=estimated_size,
         reduction_percent=round(reduction, 1),
         potential=potential,
-        method="pillow-bmp",
+        method=method,
         already_optimized=already_optimized,
         confidence=confidence,
     )
