@@ -1,10 +1,10 @@
 """Tests for GCS upload integration (mocked)."""
 
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock
 
 import pytest
 
-from schemas import StorageConfig, StorageResult
+from schemas import StorageConfig
 from storage.gcs import GCSUploader
 
 

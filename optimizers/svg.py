@@ -1,6 +1,7 @@
 import gzip
 
-from scour.scour import scourString, parse_args as scour_parse_args
+from scour.scour import parse_args as scour_parse_args
+from scour.scour import scourString
 
 from optimizers.base import BaseOptimizer
 from schemas import OptimizationConfig, OptimizeResult

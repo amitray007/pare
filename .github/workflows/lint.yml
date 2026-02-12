@@ -1,0 +1,31 @@
+name: Lint & Format
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Ruff & Black
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install ruff black
+
+      - name: Run ruff (lint)
+        run: python -m ruff check .
+
+      - name: Run black (format check)
+        run: python -m black --check .

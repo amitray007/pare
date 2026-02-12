@@ -3,12 +3,10 @@
 import gzip
 import io
 import struct
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-
 from PIL import Image
-
 
 # --- optimizers/avif.py + heic.py: _strip_metadata with pillow_heif mock ---
 
@@ -23,9 +21,11 @@ async def test_avif_strip_metadata_with_pillow_heif_mock():
     mock_heif = MagicMock()
     mock_img = MagicMock(spec=Image.Image)
     mock_img.info = {"icc_profile": b"fake_icc_data"}
+
     # Mock save to write small data
     def mock_save(output, **kwargs):
         output.write(b"small_avif")
+
     mock_img.save = mock_save
 
     mock_heif_file = MagicMock()
@@ -49,8 +49,10 @@ async def test_heic_strip_metadata_with_pillow_heif_mock():
     mock_heif = MagicMock()
     mock_img = MagicMock(spec=Image.Image)
     mock_img.info = {}  # No ICC profile
+
     def mock_save(output, **kwargs):
         output.write(b"small_heic")
+
     mock_img.save = mock_save
 
     mock_heif_file = MagicMock()
@@ -164,6 +166,7 @@ async def test_tiff_preserve_exif_and_icc():
 
     opt = TiffOptimizer()
     from PIL import ImageCms
+
     img = Image.new("RGB", (50, 50))
     exif = Image.Exif()
     exif[0x0112] = 6  # Orientation
@@ -191,9 +194,7 @@ async def test_tiff_jpeg_compression_fails():
     buf = io.BytesIO()
     img.save(buf, format="TIFF")
     data = buf.getvalue()
-    result = await opt.optimize(
-        data, __import__("schemas").OptimizationConfig(quality=60)
-    )
+    result = await opt.optimize(data, __import__("schemas").OptimizationConfig(quality=60))
     assert result.success
 
 
@@ -202,7 +203,7 @@ async def test_tiff_jpeg_compression_fails():
 
 def test_detect_apng():
     """Detect APNG format from animated PNG data."""
-    from utils.format_detect import detect_format, ImageFormat
+    from utils.format_detect import ImageFormat, detect_format
 
     frames = [Image.new("RGB", (10, 10), (i * 50, 0, 0)) for i in range(2)]
     buf = io.BytesIO()
@@ -213,8 +214,8 @@ def test_detect_apng():
 
 def test_detect_gzip_non_svg_content():
     """Gzip header with valid gzip but non-SVG content -> unsupported."""
-    from utils.format_detect import detect_format
     from exceptions import UnsupportedFormatError
+    from utils.format_detect import detect_format
 
     data = gzip.compress(b"<html>not svg</html>")
     with pytest.raises(UnsupportedFormatError):
@@ -223,8 +224,8 @@ def test_detect_gzip_non_svg_content():
 
 def test_detect_gzip_corrupt():
     """Corrupt gzip data -> falls through to unsupported."""
-    from utils.format_detect import detect_format
     from exceptions import UnsupportedFormatError
+    from utils.format_detect import detect_format
 
     # Gzip magic bytes but completely invalid after that
     data = b"\x1f\x8b" + b"\xff" * 50
@@ -234,17 +235,25 @@ def test_detect_gzip_corrupt():
 
 def test_isobmff_compat_brand_heic_in_list():
     """HEIC detected via compatible brands when major brand is unknown."""
-    from utils.format_detect import detect_format, ImageFormat
+    from utils.format_detect import ImageFormat, detect_format
 
     # Build ftyp box: major_brand="isom", compat_brands=["iso2", "heic"]
-    data = struct.pack(">I", 28) + b"ftyp" + b"isom" + b"\x00\x00\x00\x00" + b"iso2" + b"heic" + b"\x00" * 100
+    data = (
+        struct.pack(">I", 28)
+        + b"ftyp"
+        + b"isom"
+        + b"\x00\x00\x00\x00"
+        + b"iso2"
+        + b"heic"
+        + b"\x00" * 100
+    )
     assert detect_format(data) == ImageFormat.HEIC
 
 
 def test_isobmff_unknown_compat_brands():
     """ISO BMFF with unknown compat brands -> UnsupportedFormatError."""
-    from utils.format_detect import detect_format
     from exceptions import UnsupportedFormatError
+    from utils.format_detect import detect_format
 
     # Only unknown brands in compat list
     data = struct.pack(">I", 24) + b"ftyp" + b"isom" + b"\x00\x00\x00\x00" + b"iso2" + b"\x00" * 100
@@ -257,8 +266,10 @@ def test_isobmff_unknown_compat_brands():
 
 def test_health_check_tools_missing_oxipng():
     """check_tools handles missing oxipng."""
-    from routers.health import check_tools
     import builtins
+
+    from routers.health import check_tools
+
     real_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
@@ -273,8 +284,10 @@ def test_health_check_tools_missing_oxipng():
 
 def test_health_check_tools_missing_scour():
     """check_tools handles missing scour."""
-    from routers.health import check_tools
     import builtins
+
+    from routers.health import check_tools
+
     real_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
@@ -289,8 +302,10 @@ def test_health_check_tools_missing_scour():
 
 def test_health_check_tools_missing_pillow():
     """check_tools handles missing Pillow."""
-    from routers.health import check_tools
     import builtins
+
+    from routers.health import check_tools
+
     real_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
@@ -357,8 +372,8 @@ def test_heuristics_unknown_format_uses_bmp():
     """Unknown format falls back to _predict_bmp."""
     from estimation.header_analysis import HeaderInfo
     from estimation.heuristics import predict_reduction
-    from utils.format_detect import ImageFormat
     from schemas import OptimizationConfig
+    from utils.format_detect import ImageFormat
 
     info = HeaderInfo(
         format=ImageFormat.BMP,
@@ -374,8 +389,8 @@ def test_png_lossy_palette_with_metadata_strip():
     """PNG lossy palette mode with metadata stripping bonus."""
     from estimation.header_analysis import HeaderInfo
     from estimation.heuristics import _predict_png
-    from utils.format_detect import ImageFormat
     from schemas import OptimizationConfig
+    from utils.format_detect import ImageFormat
 
     info = HeaderInfo(
         format=ImageFormat.PNG,
@@ -395,8 +410,8 @@ def test_png_lossy_palette_with_metadata_strip():
 
 def test_metadata_tiff_no_exif_no_icc():
     """TIFF strip metadata when no EXIF and no ICC present."""
-    from utils.metadata import _strip_pillow_metadata
     from utils.format_detect import ImageFormat
+    from utils.metadata import _strip_pillow_metadata
 
     img = Image.new("RGB", (20, 20))
     buf = io.BytesIO()
@@ -427,9 +442,9 @@ def test_gcs_uploader_client_lazy_init():
 @pytest.mark.asyncio
 async def test_gcs_upload_failure():
     """GCS upload failure raises PareError."""
-    from storage.gcs import GCSUploader
-    from schemas import StorageConfig
     from exceptions import PareError
+    from schemas import StorageConfig
+    from storage.gcs import GCSUploader
 
     uploader = GCSUploader()
     uploader._client = MagicMock()

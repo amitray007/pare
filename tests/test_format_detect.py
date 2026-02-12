@@ -10,12 +10,10 @@ from PIL import Image
 from exceptions import UnsupportedFormatError
 from utils.format_detect import (
     ImageFormat,
+    _is_svg_content,
     detect_format,
     is_apng,
-    _detect_isobmff,
-    _is_svg_content,
 )
-
 
 # --- detect_format ---
 
@@ -182,12 +180,12 @@ def test_svg_content_svg_tag():
 
 
 def test_svg_content_with_bom():
-    assert _is_svg_content(b'\xef\xbb\xbf<svg></svg>') is True
+    assert _is_svg_content(b"\xef\xbb\xbf<svg></svg>") is True
 
 
 def test_svg_content_with_whitespace():
-    assert _is_svg_content(b'   \n  <svg></svg>') is True
+    assert _is_svg_content(b"   \n  <svg></svg>") is True
 
 
 def test_svg_content_not_svg():
-    assert _is_svg_content(b'<html><body>not svg</body></html>') is False
+    assert _is_svg_content(b"<html><body>not svg</body></html>") is False

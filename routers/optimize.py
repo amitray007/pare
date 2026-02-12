@@ -50,9 +50,7 @@ async def optimize(
             raise BadRequestError("Missing 'url' field in JSON body")
 
         opt_config = OptimizationConfig(**body.get("optimization", {}))
-        storage_config = (
-            StorageConfig(**body["storage"]) if "storage" in body else None
-        )
+        storage_config = StorageConfig(**body["storage"]) if "storage" in body else None
 
         is_authenticated = getattr(request.state, "is_authenticated", False)
         data = await fetch_image(url, is_authenticated=is_authenticated)

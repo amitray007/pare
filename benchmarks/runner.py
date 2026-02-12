@@ -104,13 +104,18 @@ async def run_single(
                 prediction = predict_reduction(header_info, fmt, config)
             else:
                 from estimation.estimator import estimate as run_estimate
+
                 est_result = await run_estimate(case.data, config)
-                prediction = type('P', (), {
-                    'estimated_size': est_result.estimated_optimized_size,
-                    'reduction_percent': est_result.estimated_reduction_percent,
-                    'potential': est_result.optimization_potential,
-                    'confidence': est_result.confidence,
-                })()
+                prediction = type(
+                    "P",
+                    (),
+                    {
+                        "estimated_size": est_result.estimated_optimized_size,
+                        "reduction_percent": est_result.estimated_reduction_percent,
+                        "potential": est_result.optimization_potential,
+                        "confidence": est_result.confidence,
+                    },
+                )()
             result.est_time_ms = (time.perf_counter() - t0) * 1000
             result.est_size = prediction.estimated_size
             result.est_reduction_pct = prediction.reduction_percent
@@ -193,13 +198,13 @@ async def run_suite(
             eta = (total - done) / rate if rate > 0 else 0
             print(
                 f"\r  [{done}/{total}] {rate:.0f} cases/s  ETA {eta:.0f}s" + " " * 20,
-                end="", flush=True, file=sys.stderr,
+                end="",
+                flush=True,
+                file=sys.stderr,
             )
         return result
 
-    results = await asyncio.gather(
-        *[_run_with_sem(c, cfg, pn) for c, cfg, pn in all_tasks_args]
-    )
+    results = await asyncio.gather(*[_run_with_sem(c, cfg, pn) for c, cfg, pn in all_tasks_args])
 
     for result in results:
         suite.results.append(result)

@@ -10,10 +10,10 @@ import random
 
 from PIL import Image, ImageDraw
 
-
 # ---------------------------------------------------------------------------
 # Raster generators
 # ---------------------------------------------------------------------------
+
 
 def photo_like(w: int, h: int, seed: int = 42) -> Image.Image:
     """Smooth gradients + gaussian noise (high entropy, like a camera photo)."""
@@ -67,8 +67,11 @@ def graphic_like(w: int, h: int, seed: int = 42) -> Image.Image:
     draw = ImageDraw.Draw(img)
     rng = random.Random(seed)
     colors = [
-        (66, 133, 244, 255), (234, 67, 53, 255), (251, 188, 4, 255),
-        (52, 168, 83, 255), (103, 58, 183, 255),
+        (66, 133, 244, 255),
+        (234, 67, 53, 255),
+        (251, 188, 4, 255),
+        (52, 168, 83, 255),
+        (103, 58, 183, 255),
     ]
     for _ in range(12):
         c = rng.choice(colors)
@@ -120,8 +123,12 @@ def palette_png(w: int, h: int, seed: int = 42) -> Image.Image:
 # Encoders
 # ---------------------------------------------------------------------------
 
+
 def encode_image(
-    img: Image.Image, fmt: str, quality: int = 95, compression: str | None = None,
+    img: Image.Image,
+    fmt: str,
+    quality: int = 95,
+    compression: str | None = None,
 ) -> bytes:
     """Encode a PIL Image to bytes in the given format."""
     buf = io.BytesIO()
@@ -148,6 +155,7 @@ def encode_image(
 # ---------------------------------------------------------------------------
 # SVG generators
 # ---------------------------------------------------------------------------
+
 
 def svg_simple(w: int = 800, h: int = 600) -> bytes:
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
@@ -185,7 +193,7 @@ def svg_bloated(w: int = 800, h: int = 600, seed: int = 42) -> bytes:
         r = rng.randint(5, 40)
         color = f"#{rng.randint(0, 0xFFFFFF):06x}"
         elements.append(
-            f'  <!-- Element number {i} -->\n'
+            f"  <!-- Element number {i} -->\n"
             f'  <circle id="very-long-identifier-for-circle-number-{i}" '
             f'cx="{x}" cy="{y}" r="{r}" fill="{color}" '
             f'stroke="none" stroke-width="0" opacity="1.0" />'

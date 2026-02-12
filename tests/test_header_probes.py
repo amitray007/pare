@@ -1,28 +1,20 @@
 """Tests for header_analysis probe paths — oxipng probe, pngquant probe, quantize probe, SVG bloat."""
 
 import io
-import struct
-import gzip
-
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
 from estimation.header_analysis import (
-    HeaderInfo,
-    analyze_header,
-    _analyze_png_extra,
-    _analyze_png_content,
+    _compute_svg_bloat_ratio,
     _flat_pixel_ratio,
     _oxipng_probe,
-    _quantize_probe,
     _pngquant_probe,
-    _compute_svg_bloat_ratio,
+    _quantize_probe,
+    analyze_header,
     estimate_jpeg_quality_from_qtable,
 )
 from utils.format_detect import ImageFormat
-
 
 # --- _oxipng_probe ---
 
@@ -47,6 +39,7 @@ def test_oxipng_probe_failure():
     """oxipng exception returns None."""
     img = Image.new("RGB", (32, 32))
     import oxipng
+
     original_fn = oxipng.optimize_from_memory
     oxipng.optimize_from_memory = MagicMock(side_effect=Exception("fail"))
     try:
@@ -87,11 +80,14 @@ def test_pngquant_probe_success():
 
     mock_result = MagicMock()
     mock_result.returncode = 0
-    mock_result.stdout = data[:int(len(data) * 0.5)]
+    mock_result.stdout = data[: int(len(data) * 0.5)]
 
     import oxipng
+
     with patch("subprocess.run", return_value=mock_result):
-        with patch.object(oxipng, "optimize_from_memory", return_value=data[:int(len(data) * 0.4)]):
+        with patch.object(
+            oxipng, "optimize_from_memory", return_value=data[: int(len(data) * 0.4)]
+        ):
             ratio = _pngquant_probe(data)
     assert ratio is not None
     assert ratio > 0
@@ -133,10 +129,13 @@ def test_flat_pixel_ratio_solid():
 def test_flat_pixel_ratio_noisy():
     """Noisy image -> low ratio."""
     import random
+
     random.seed(42)
     img = Image.new("RGB", (32, 32))
-    pixels = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-              for _ in range(32 * 32)]
+    pixels = [
+        (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        for _ in range(32 * 32)
+    ]
     img.putdata(pixels)
     ratio = _flat_pixel_ratio(img)
     assert ratio < 0.5
@@ -157,13 +156,13 @@ def test_svg_bloat_empty():
 
 
 def test_svg_bloat_with_comments():
-    svg = '<svg><!-- comment --><rect/></svg>'
+    svg = "<svg><!-- comment --><rect/></svg>"
     ratio = _compute_svg_bloat_ratio(svg)
     assert ratio > 0
 
 
 def test_svg_bloat_with_metadata():
-    svg = '<svg><metadata>some data</metadata><rect/></svg>'
+    svg = "<svg><metadata>some data</metadata><rect/></svg>"
     ratio = _compute_svg_bloat_ratio(svg)
     assert ratio > 0
 
@@ -294,6 +293,7 @@ def test_analyze_png_palette_large_no_probe():
     img = Image.new("P", (500, 500))
     # Generate random palette data to make file larger
     import random
+
     random.seed(42)
     pixels = [random.randint(0, 255) for _ in range(500 * 500)]
     img.putdata(pixels)

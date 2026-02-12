@@ -1,15 +1,14 @@
-from schemas import OptimizationConfig, OptimizeResult
-from utils.format_detect import detect_format, ImageFormat
-from optimizers.png import PngOptimizer
-from optimizers.jpeg import JpegOptimizer
-from optimizers.webp import WebpOptimizer
-from optimizers.gif import GifOptimizer
-from optimizers.svg import SvgOptimizer
 from optimizers.avif import AvifOptimizer
-from optimizers.heic import HeicOptimizer
-from optimizers.tiff import TiffOptimizer
 from optimizers.bmp import BmpOptimizer
-
+from optimizers.gif import GifOptimizer
+from optimizers.heic import HeicOptimizer
+from optimizers.jpeg import JpegOptimizer
+from optimizers.png import PngOptimizer
+from optimizers.svg import SvgOptimizer
+from optimizers.tiff import TiffOptimizer
+from optimizers.webp import WebpOptimizer
+from schemas import OptimizationConfig, OptimizeResult
+from utils.format_detect import ImageFormat, detect_format
 
 # Optimizer registry — initialized once at import time
 OPTIMIZERS = {

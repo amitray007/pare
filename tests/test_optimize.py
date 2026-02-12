@@ -1,9 +1,9 @@
 """Tests for the /optimize endpoint."""
 
+import io
 import json
 
 from PIL import Image
-import io
 
 
 def test_optimize_png_file_upload(client, sample_png):
@@ -102,9 +102,11 @@ def test_optimize_413_file_too_large(client):
     # Create a file that is technically too large
     # We use config override or just test the error path
     import os
+
     os.environ["MAX_FILE_SIZE_MB"] = "0"
     from config import Settings
-    s = Settings()
+
+    Settings()
     # max_file_size_bytes will be 0 * 1024 * 1024 = 0 when post_init sees it's already 0
     # Actually post_init only sets if == 0, so it stays 0... which means all files fail
     # Instead, just test with known response

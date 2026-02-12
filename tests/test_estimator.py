@@ -5,9 +5,9 @@ import io
 import pytest
 from PIL import Image
 
-from estimation.estimator import estimate, _thumbnail_compress, _combine_with_thumbnail
-from estimation.heuristics import Prediction
+from estimation.estimator import _combine_with_thumbnail, _thumbnail_compress, estimate
 from estimation.header_analysis import HeaderInfo
+from estimation.heuristics import Prediction
 from schemas import OptimizationConfig
 from utils.format_detect import ImageFormat
 

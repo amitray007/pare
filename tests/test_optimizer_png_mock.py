@@ -1,9 +1,9 @@
 """Tests for PNG optimizer with mocked CLI tools (pngquant, oxipng)."""
 
 import io
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
+import pytest
 from PIL import Image
 
 from optimizers.png import PngOptimizer
@@ -37,9 +37,9 @@ async def test_png_lossless_path(png_optimizer):
     data = _make_png()
 
     def mock_oxipng(d, level=2):
-        return d[:max(1, int(len(d) * 0.9))]
+        return d[: max(1, int(len(d) * 0.9))]
 
-    with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
+    with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
         result = await png_optimizer.optimize(data, OptimizationConfig(quality=80, png_lossy=False))
     assert result.success
     assert result.method == "oxipng"
@@ -51,9 +51,9 @@ async def test_png_lossless_with_strip_metadata(png_optimizer):
     data = _make_png()
 
     def mock_oxipng(d, level=2):
-        return d[:max(1, int(len(d) * 0.9))]
+        return d[: max(1, int(len(d) * 0.9))]
 
-    with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
+    with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
         with patch("optimizers.png.strip_metadata_selective", return_value=data):
             result = await png_optimizer.optimize(
                 data, OptimizationConfig(quality=80, png_lossy=False, strip_metadata=True)
@@ -65,16 +65,16 @@ async def test_png_lossless_with_strip_metadata(png_optimizer):
 async def test_png_lossy_pngquant_success(png_optimizer):
     """Lossy path: pngquant succeeds, oxipng applied to pngquant output."""
     data = _make_png()
-    smaller = data[:max(1, int(len(data) * 0.4))]
+    smaller = data[: max(1, int(len(data) * 0.4))]
 
     async def mock_pngquant(d, quality, max_colors=256, speed=4):
         return smaller, True
 
     def mock_oxipng(d, level=2):
-        return d[:max(1, int(len(d) * 0.95))]
+        return d[: max(1, int(len(d) * 0.95))]
 
-    with patch.object(png_optimizer, '_run_pngquant', side_effect=mock_pngquant):
-        with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
+    with patch.object(png_optimizer, "_run_pngquant", side_effect=mock_pngquant):
+        with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
             result = await png_optimizer.optimize(
                 data, OptimizationConfig(quality=60, png_lossy=True)
             )
@@ -90,10 +90,10 @@ async def test_png_lossy_pngquant_fail_exit99(png_optimizer):
         return None, False
 
     def mock_oxipng(d, level=2):
-        return d[:max(1, int(len(d) * 0.9))]
+        return d[: max(1, int(len(d) * 0.9))]
 
-    with patch.object(png_optimizer, '_run_pngquant', side_effect=mock_pngquant):
-        with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
+    with patch.object(png_optimizer, "_run_pngquant", side_effect=mock_pngquant):
+        with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
             result = await png_optimizer.optimize(
                 data, OptimizationConfig(quality=60, png_lossy=True)
             )
@@ -114,10 +114,10 @@ async def test_png_lossy_oxipng_wins_over_pngquant(png_optimizer):
         # oxipng gives small result for original, large for pngquant output
         if len(d) > len(data):
             return d  # pngquant output stays large
-        return d[:max(1, int(len(d) * 0.5))]  # original gets nice compression
+        return d[: max(1, int(len(d) * 0.5))]  # original gets nice compression
 
-    with patch.object(png_optimizer, '_run_pngquant', side_effect=mock_pngquant):
-        with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
+    with patch.object(png_optimizer, "_run_pngquant", side_effect=mock_pngquant):
+        with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
             result = await png_optimizer.optimize(
                 data, OptimizationConfig(quality=60, png_lossy=True)
             )
@@ -132,16 +132,14 @@ async def test_png_quality_aggressive_settings(png_optimizer):
 
     async def mock_pngquant(d, quality, max_colors=256, speed=4):
         pngquant_calls.append({"max_colors": max_colors, "speed": speed})
-        return d[:max(1, int(len(d) * 0.5))], True
+        return d[: max(1, int(len(d) * 0.5))], True
 
     def mock_oxipng(d, level=2):
         return d
 
-    with patch.object(png_optimizer, '_run_pngquant', side_effect=mock_pngquant):
-        with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
-            await png_optimizer.optimize(
-                data, OptimizationConfig(quality=40, png_lossy=True)
-            )
+    with patch.object(png_optimizer, "_run_pngquant", side_effect=mock_pngquant):
+        with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
+            await png_optimizer.optimize(data, OptimizationConfig(quality=40, png_lossy=True))
     assert pngquant_calls[0]["max_colors"] == 64
     assert pngquant_calls[0]["speed"] == 1
 
@@ -154,16 +152,14 @@ async def test_png_quality_moderate_settings(png_optimizer):
 
     async def mock_pngquant(d, quality, max_colors=256, speed=4):
         pngquant_calls.append({"max_colors": max_colors, "speed": speed})
-        return d[:max(1, int(len(d) * 0.5))], True
+        return d[: max(1, int(len(d) * 0.5))], True
 
     def mock_oxipng(d, level=2):
         return d
 
-    with patch.object(png_optimizer, '_run_pngquant', side_effect=mock_pngquant):
-        with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
-            await png_optimizer.optimize(
-                data, OptimizationConfig(quality=60, png_lossy=True)
-            )
+    with patch.object(png_optimizer, "_run_pngquant", side_effect=mock_pngquant):
+        with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
+            await png_optimizer.optimize(data, OptimizationConfig(quality=60, png_lossy=True))
     assert pngquant_calls[0]["max_colors"] == 256
     assert pngquant_calls[0]["speed"] == 4
 
@@ -174,12 +170,10 @@ async def test_png_apng_uses_oxipng_only(png_optimizer):
     data = _make_apng()
 
     def mock_oxipng(d, level=2):
-        return d[:max(1, int(len(d) * 0.9))]
+        return d[: max(1, int(len(d) * 0.9))]
 
-    with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
-        result = await png_optimizer.optimize(
-            data, OptimizationConfig(quality=60, png_lossy=True)
-        )
+    with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
+        result = await png_optimizer.optimize(data, OptimizationConfig(quality=60, png_lossy=True))
     assert result.method == "oxipng"
     assert png_optimizer.format == ImageFormat.APNG
 
@@ -218,10 +212,10 @@ async def test_png_strip_metadata_not_lossy(png_optimizer):
     data = _make_png()
 
     def mock_oxipng(d, level=2):
-        return d[:max(1, int(len(d) * 0.9))]
+        return d[: max(1, int(len(d) * 0.9))]
 
     with patch("optimizers.png.strip_metadata_selective", return_value=data) as mock_strip:
-        with patch.object(png_optimizer, '_run_oxipng', side_effect=mock_oxipng):
+        with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
             result = await png_optimizer.optimize(
                 data, OptimizationConfig(quality=80, png_lossy=False, strip_metadata=True)
             )

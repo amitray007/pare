@@ -1,10 +1,9 @@
 """Tests for WebP optimizer — cwebp fallback paths and binary search cap."""
 
 import io
-import os
-import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
+import pytest
 from PIL import Image
 
 from optimizers.webp import WebpOptimizer
@@ -88,13 +87,13 @@ async def test_webp_find_capped_quality_q100_exceeds(webp_optimizer):
     img.save(buf, format="WEBP", quality=100)
     data = buf.getvalue()
     # Padding to make it artificially large
-    padded = data + b"\x00" * len(data) * 5
+    # data is intentionally small; test exercises the capped quality path
 
     # Use a real WebP that Pillow can optimize dramatically
     config = OptimizationConfig(quality=1, max_reduction=0.001)
 
     # Can't easily test None return with real Pillow, so mock
-    with patch.object(webp_optimizer, '_pillow_optimize') as mock_opt:
+    with patch.object(webp_optimizer, "_pillow_optimize") as mock_opt:
         # q=100 produces output that's 10% of input -> 90% reduction > 0.001%
         mock_opt.return_value = b"x" * int(len(data) * 0.1)
         result = webp_optimizer._find_capped_quality(data, config)
@@ -106,10 +105,12 @@ async def test_webp_max_reduction_triggers_find_capped(webp_optimizer):
     """Optimize path: max_reduction triggers _find_capped_quality."""
     data = _make_webp(quality=95, size=(200, 200))
 
-    with patch.object(webp_optimizer, '_pillow_optimize') as mock_pil:
+    with patch.object(webp_optimizer, "_pillow_optimize") as mock_pil:
         # Pillow returns very small (triggers cap)
         mock_pil.return_value = b"tiny"
-        with patch.object(webp_optimizer, '_find_capped_quality', return_value=b"capped") as mock_cap:
+        with patch.object(
+            webp_optimizer, "_find_capped_quality", return_value=b"capped"
+        ) as mock_cap:
             result = await webp_optimizer.optimize(
                 data, OptimizationConfig(quality=60, max_reduction=5.0)
             )

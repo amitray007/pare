@@ -26,9 +26,13 @@ class HeaderInfo:
     unique_color_ratio: Optional[float] = None  # PNG non-palette: unique colors / total pixels
     png_quantize_ratio: Optional[float] = None  # PNG: quantized_size / original_size (thumbnail)
     oxipng_probe_ratio: Optional[float] = None  # PNG: oxipng_size / pillow_size (center crop)
-    png_pngquant_probe_ratio: Optional[float] = None  # PNG: pngquant+oxipng / original (actual file)
+    png_pngquant_probe_ratio: Optional[
+        float
+    ] = None  # PNG: pngquant+oxipng / original (actual file)
     svg_bloat_ratio: Optional[float] = None  # SVG: removable bytes / total bytes
-    flat_pixel_ratio: Optional[float] = None  # Fraction of adjacent pixel pairs with diff < threshold
+    flat_pixel_ratio: Optional[
+        float
+    ] = None  # Fraction of adjacent pixel pairs with diff < threshold
     frame_count: int = 1  # 1 for static, >1 for animated
     file_size: int = 0
     raw_data: Optional[bytes] = None  # Raw file bytes for small files (< 10KB), used for probes
@@ -67,9 +71,7 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
         info.color_type = mode_map.get(img.mode, img.mode.lower())
 
         # Bit depth (approximate from mode)
-        info.bit_depth = {"1": 1, "L": 8, "P": 8, "RGB": 8, "RGBA": 8}.get(
-            img.mode, 8
-        )
+        info.bit_depth = {"1": 1, "L": 8, "P": 8, "RGB": 8, "RGBA": 8}.get(img.mode, 8)
 
         # ICC profile
         info.has_icc_profile = "icc_profile" in img.info
@@ -294,7 +296,9 @@ def _pngquant_probe(data: bytes) -> Optional[float]:
     try:
         result = subprocess.run(
             ["pngquant", "--quality", "0-100", "-", "--output", "-"],
-            input=data, capture_output=True, timeout=5,
+            input=data,
+            capture_output=True,
+            timeout=5,
         )
         if result.returncode != 0:
             return None
@@ -365,9 +369,7 @@ def _analyze_jpeg_extra(data: bytes, img: Image.Image, info: HeaderInfo) -> None
         info.estimated_quality = None
 
     # Check progressive
-    info.is_progressive = img.info.get("progressive", False) or img.info.get(
-        "progression", False
-    )
+    info.is_progressive = img.info.get("progressive", False) or img.info.get("progression", False)
 
 
 def _analyze_svg(data: bytes, fmt: ImageFormat, info: HeaderInfo) -> HeaderInfo:
@@ -400,7 +402,7 @@ def _analyze_svg(data: bytes, fmt: ImageFormat, info: HeaderInfo) -> HeaderInfo:
     # Check for metadata/comments
     has_comments = "<!--" in text
     has_metadata = "<metadata" in text.lower()
-    has_editor = 'xmlns:inkscape' in text or 'xmlns:sodipodi' in text or 'adobe' in text.lower()
+    has_editor = "xmlns:inkscape" in text or "xmlns:sodipodi" in text or "adobe" in text.lower()
     info.has_metadata_chunks = has_comments or has_metadata or has_editor
 
     # Compute SVG bloat ratio: estimate removable bytes
@@ -420,15 +422,15 @@ def _compute_svg_bloat_ratio(text: str) -> float:
     removable = 0
 
     # Comment bytes: <!-- ... -->
-    for m in re.finditer(r'<!--[\s\S]*?-->', text):
+    for m in re.finditer(r"<!--[\s\S]*?-->", text):
         removable += len(m.group())
 
     # XML prolog: <?xml ...?>
-    for m in re.finditer(r'<\?xml[^?]*\?>', text):
+    for m in re.finditer(r"<\?xml[^?]*\?>", text):
         removable += len(m.group())
 
     # Metadata elements: <metadata>...</metadata>
-    for m in re.finditer(r'<metadata[\s\S]*?</metadata>', text, re.IGNORECASE):
+    for m in re.finditer(r"<metadata[\s\S]*?</metadata>", text, re.IGNORECASE):
         removable += len(m.group())
 
     # Editor namespace declarations and prefixed attributes

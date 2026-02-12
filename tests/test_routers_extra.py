@@ -2,17 +2,17 @@
 
 import io
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from PIL import Image
-from unittest.mock import patch, AsyncMock, MagicMock
-
 from fastapi.testclient import TestClient
+from PIL import Image
 
 
 @pytest.fixture
 def client():
     from main import app
+
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -161,7 +161,6 @@ def test_optimize_file_too_large(client):
 
 def test_optimize_with_storage_config(client):
     """POST /optimize with storage config returns JSON response."""
-    data = _make_png_bytes()
     mock_storage_result = MagicMock()
     mock_storage_result.provider = "gcs"
     mock_storage_result.url = "gs://bucket/path"
@@ -169,7 +168,7 @@ def test_optimize_with_storage_config(client):
 
     with patch("routers.optimize.gcs_uploader") as mock_gcs:
         mock_gcs.upload = AsyncMock(return_value=mock_storage_result)
-        resp = client.post(
+        client.post(
             "/optimize",
             json={
                 "url": "https://example.com/image.png",
@@ -190,6 +189,7 @@ def test_optimize_json_with_storage(client):
     data = _make_png_bytes()
 
     from schemas import StorageResult
+
     mock_result = StorageResult(provider="gcs", url="gs://b/p", public_url=None)
 
     with patch("routers.optimize.fetch_image", new=AsyncMock(return_value=data)):
@@ -218,6 +218,7 @@ def test_optimize_form_with_options(client):
     data = _make_png_bytes()
 
     from schemas import StorageResult
+
     mock_result = StorageResult(provider="gcs", url="gs://b/p", public_url="https://cdn/p")
 
     with patch("routers.optimize.gcs_uploader") as mock_gcs:
@@ -226,14 +227,16 @@ def test_optimize_form_with_options(client):
             "/optimize",
             files={"file": ("test.png", data, "image/png")},
             data={
-                "options": json.dumps({
-                    "optimization": {"quality": 40},
-                    "storage": {
-                        "provider": "gcs",
-                        "bucket": "my-bucket",
-                        "path": "out.png",
-                    },
-                })
+                "options": json.dumps(
+                    {
+                        "optimization": {"quality": 40},
+                        "storage": {
+                            "provider": "gcs",
+                            "bucket": "my-bucket",
+                            "path": "out.png",
+                        },
+                    }
+                )
             },
         )
     assert resp.status_code == 200
@@ -254,8 +257,7 @@ def test_health_degraded(client):
 
 def test_health_missing_python_lib(client):
     """Health endpoint: missing Python library."""
-    import importlib
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
     def selective_import(name, *args, **kwargs):
         if name == "pillow_heif":
@@ -265,6 +267,7 @@ def test_health_missing_python_lib(client):
     with patch("builtins.__import__", side_effect=selective_import):
         # Just verify the check_tools function handles ImportError
         from routers.health import check_tools
+
         # Reset to force re-evaluation
         tools = check_tools()
         # Tools should contain all keys

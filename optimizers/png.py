@@ -1,6 +1,5 @@
 import asyncio
 
-from exceptions import OptimizationError
 from optimizers.base import BaseOptimizer
 from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat, is_apng
@@ -69,7 +68,9 @@ class PngOptimizer(BaseOptimizer):
 
         if success and pngquant_result:
             # Squeeze extra bytes from the lossy result
-            lossy_optimized = await asyncio.to_thread(self._run_oxipng, pngquant_result, oxipng_level)
+            lossy_optimized = await asyncio.to_thread(
+                self._run_oxipng, pngquant_result, oxipng_level
+            )
             # Pick the smaller of lossy and lossless paths — pngquant can
             # produce a larger file when dithering inflates palette PNGs.
             use_lossy = len(lossy_optimized) <= len(oxipng_only)
@@ -88,7 +89,11 @@ class PngOptimizer(BaseOptimizer):
         return self._build_result(data, optimized, method)
 
     async def _run_pngquant(
-        self, data: bytes, quality: int, max_colors: int = 256, speed: int = 4,
+        self,
+        data: bytes,
+        quality: int,
+        max_colors: int = 256,
+        speed: int = 4,
     ) -> tuple[bytes | None, bool]:
         """Run pngquant with quality-dependent settings.
 
@@ -103,13 +108,19 @@ class PngOptimizer(BaseOptimizer):
         cmd = [
             "pngquant",
             str(max_colors),
-            "--quality", f"1-{quality}",
-            "--speed", str(speed),
-            "-", "--output", "-",
+            "--quality",
+            f"1-{quality}",
+            "--speed",
+            str(speed),
+            "-",
+            "--output",
+            "-",
         ]
 
         stdout, stderr, returncode = await run_tool(
-            cmd, data, allowed_exit_codes={99},
+            cmd,
+            data,
+            allowed_exit_codes={99},
         )
 
         if returncode == 99:

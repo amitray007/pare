@@ -1,9 +1,9 @@
 """Tests for JPEG optimizer with mocked CLI tools (cjpeg, jpegtran)."""
 
 import io
-import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
+import pytest
 from PIL import Image
 
 from optimizers.jpeg import JpegOptimizer
@@ -34,10 +34,10 @@ async def _mock_run_tool(cmd, data, **kwargs):
     """Simulate run_tool returning smaller data."""
     if cmd[0] == "cjpeg":
         # Simulate mozjpeg producing ~60% of input
-        return data[:max(1, int(len(data) * 0.6))], b"", 0
+        return data[: max(1, int(len(data) * 0.6))], b"", 0
     elif cmd[0] == "jpegtran":
         # Simulate jpegtran producing ~90% of input
-        return data[:max(1, int(len(data) * 0.9))], b"", 0
+        return data[: max(1, int(len(data) * 0.9))], b"", 0
     return data, b"", 0
 
 
@@ -59,7 +59,7 @@ async def test_jpeg_optimize_progressive(jpeg_optimizer):
 
     async def capture_run_tool(cmd, data_in, **kwargs):
         calls.append(cmd)
-        return data_in[:max(1, int(len(data_in) * 0.8))], b"", 0
+        return data_in[: max(1, int(len(data_in) * 0.8))], b"", 0
 
     with patch("optimizers.jpeg.run_tool", side_effect=capture_run_tool):
         await jpeg_optimizer.optimize(data, OptimizationConfig(quality=60, progressive_jpeg=True))
@@ -77,7 +77,7 @@ async def test_jpeg_optimize_no_progressive(jpeg_optimizer):
 
     async def capture_run_tool(cmd, data_in, **kwargs):
         calls.append(cmd)
-        return data_in[:max(1, int(len(data_in) * 0.8))], b"", 0
+        return data_in[: max(1, int(len(data_in) * 0.8))], b"", 0
 
     with patch("optimizers.jpeg.run_tool", side_effect=capture_run_tool):
         await jpeg_optimizer.optimize(data, OptimizationConfig(quality=60, progressive_jpeg=False))
@@ -123,9 +123,9 @@ async def test_jpeg_max_reduction_q100_exceeds_cap(jpeg_optimizer):
     async def mock_run_tool(cmd, data_in, **kwargs):
         if cmd[0] == "cjpeg":
             # Even at q=100, produces only 50% of input
-            return data_in[:max(1, int(len(data_in) * 0.5))], b"", 0
+            return data_in[: max(1, int(len(data_in) * 0.5))], b"", 0
         elif cmd[0] == "jpegtran":
-            return data_in[:max(1, int(len(data_in) * 0.95))], b"", 0
+            return data_in[: max(1, int(len(data_in) * 0.95))], b"", 0
         return data_in, b"", 0
 
     with patch("optimizers.jpeg.run_tool", side_effect=mock_run_tool):
@@ -168,7 +168,7 @@ async def test_jpeg_jpegtran_wins(jpeg_optimizer):
         if cmd[0] == "cjpeg":
             return data_in, b"", 0  # cjpeg returns same size
         elif cmd[0] == "jpegtran":
-            return data_in[:max(1, int(len(data_in) * 0.5))], b"", 0  # jpegtran much smaller
+            return data_in[: max(1, int(len(data_in) * 0.5))], b"", 0  # jpegtran much smaller
         return data_in, b"", 0
 
     with patch("optimizers.jpeg.run_tool", side_effect=mock_run_tool):

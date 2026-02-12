@@ -49,9 +49,7 @@ async def estimate(data: bytes, config: OptimizationConfig | None = None) -> Est
     )
 
 
-async def _thumbnail_compress(
-    data: bytes, fmt: ImageFormat, quality: int
-) -> float | None:
+async def _thumbnail_compress(data: bytes, fmt: ImageFormat, quality: int) -> float | None:
     """Resize to 64x64, compress with actual tool, return compression ratio.
 
     Only used for JPEG and WebP where thumbnail compression
@@ -99,9 +97,7 @@ def _combine_with_thumbnail(
 
     heuristic_reduction = prediction.reduction_percent
 
-    combined_reduction = round(
-        heuristic_reduction * 0.7 + thumbnail_reduction * 0.3, 1
-    )
+    combined_reduction = round(heuristic_reduction * 0.7 + thumbnail_reduction * 0.3, 1)
 
     if abs(heuristic_reduction - thumbnail_reduction) < 15:
         confidence = "high"

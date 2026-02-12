@@ -1,18 +1,16 @@
 """Tests for metadata stripping — JPEG, PNG, TIFF paths."""
 
 import io
-import struct
 
-import pytest
 from PIL import Image
 
-from utils.metadata import (
-    strip_metadata_selective,
-    _strip_jpeg_metadata,
-    _strip_png_metadata,
-    _strip_pillow_metadata,
-)
 from utils.format_detect import ImageFormat
+from utils.metadata import (
+    _strip_jpeg_metadata,
+    _strip_pillow_metadata,
+    _strip_png_metadata,
+    strip_metadata_selective,
+)
 
 
 def _make_jpeg_with_exif():
@@ -28,6 +26,7 @@ def _make_jpeg_with_exif():
 def _make_jpeg_with_icc():
     """Create JPEG with ICC profile."""
     from PIL import ImageCms
+
     srgb = ImageCms.createProfile("sRGB")
     icc_data = ImageCms.ImageCmsProfile(srgb).tobytes()
     img = Image.new("RGB", (50, 50))
@@ -39,6 +38,7 @@ def _make_jpeg_with_icc():
 def _make_png_with_text():
     """Create PNG with tEXt chunks."""
     from PIL import PngImagePlugin
+
     img = Image.new("RGB", (10, 10))
     pnginfo = PngImagePlugin.PngInfo()
     pnginfo.add_text("Author", "test")
@@ -214,6 +214,7 @@ def test_tiff_strip_with_icc():
     """TIFF strip preserves ICC if present."""
     img = Image.new("RGB", (50, 50))
     from PIL import ImageCms
+
     srgb = ImageCms.createProfile("sRGB")
     icc_data = ImageCms.ImageCmsProfile(srgb).tobytes()
     buf = io.BytesIO()

@@ -7,8 +7,8 @@ from fastapi.responses import JSONResponse
 from config import settings
 from exceptions import PareError
 from middleware import SecurityMiddleware
-from routers import health, optimize, estimate
-from utils.logging import setup_logging, get_logger
+from routers import estimate, health, optimize
+from utils.logging import get_logger, setup_logging
 
 
 @asynccontextmanager

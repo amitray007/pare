@@ -1,21 +1,14 @@
 """Extra header analysis tests — PNG content probes, JPEG analysis, edge cases."""
 
-import io
-import struct
 import gzip
+import io
 
-import pytest
 from PIL import Image
 
 from estimation.header_analysis import (
-    HeaderInfo,
     analyze_header,
-    _analyze_png_extra,
-    _analyze_png_content,
-    _flat_pixel_ratio,
 )
 from utils.format_detect import ImageFormat
-
 
 # --- PNG content probes for non-palette images ---
 
@@ -59,6 +52,7 @@ def test_png_palette_mode_analysis():
 def test_png_with_text_chunk():
     """PNG with tEXt chunk: has_metadata_chunks=True."""
     from PIL import PngImagePlugin
+
     img = Image.new("RGB", (10, 10))
     pnginfo = PngImagePlugin.PngInfo()
     pnginfo.add_text("Author", "test")
