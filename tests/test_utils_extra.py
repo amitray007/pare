@@ -15,7 +15,6 @@ from exceptions import (
     ToolTimeoutError,
     URLFetchError,
 )
-from schemas import OptimizationConfig
 from utils.format_detect import ImageFormat
 
 
