@@ -1,10 +1,8 @@
 """Tests for /health endpoint and check_tools utility."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
-
-from routers.health import check_tools, router
+from routers.health import check_tools
 
 
 def test_check_tools_all_available():
@@ -63,7 +61,20 @@ def test_health_endpoint_degraded(client):
 
 def test_health_endpoint_all_ok(client):
     """When all tools present, status=ok."""
-    all_true = {k: True for k in ("pngquant", "cjpeg", "jpegtran", "gifsicle", "cwebp", "oxipng", "pillow_heif", "scour", "pillow")}
+    all_true = {
+        k: True
+        for k in (
+            "pngquant",
+            "cjpeg",
+            "jpegtran",
+            "gifsicle",
+            "cwebp",
+            "oxipng",
+            "pillow_heif",
+            "scour",
+            "pillow",
+        )
+    }
     with patch("routers.health.check_tools", return_value=all_true):
         resp = client.get("/health")
     data = resp.json()

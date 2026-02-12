@@ -3,11 +3,9 @@ import io
 
 from PIL import Image
 
-from estimation.header_analysis import estimate_jpeg_quality_from_qtable
 from optimizers.base import BaseOptimizer
 from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat
-from utils.metadata import strip_metadata_selective
 from utils.subprocess_runner import run_tool
 
 
@@ -46,7 +44,10 @@ class JpegOptimizer(BaseOptimizer):
         return self._build_result(data, best_data, best_method)
 
     async def _cap_mozjpeg(
-        self, bmp_data: bytes, original: bytes, config: OptimizationConfig,
+        self,
+        bmp_data: bytes,
+        original: bytes,
+        config: OptimizationConfig,
     ) -> bytes:
         """Binary search cjpeg quality to cap lossy reduction at max_reduction.
 
@@ -95,9 +96,7 @@ class JpegOptimizer(BaseOptimizer):
         img.save(output, format="BMP")
         return output.getvalue()
 
-    async def _run_cjpeg(
-        self, bmp_data: bytes, quality: int, progressive: bool
-    ) -> bytes:
+    async def _run_cjpeg(self, bmp_data: bytes, quality: int, progressive: bool) -> bytes:
         """Run MozJPEG cjpeg on BMP input."""
         cmd = ["cjpeg", "-quality", str(quality)]
         if progressive:

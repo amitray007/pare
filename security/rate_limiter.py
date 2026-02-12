@@ -42,11 +42,7 @@ async def check_rate_limit(client_ip: str, is_authenticated: bool) -> None:
     if is_authenticated and not settings.rate_limit_auth_enabled:
         return
 
-    limit = (
-        settings.rate_limit_auth_rpm
-        if is_authenticated
-        else settings.rate_limit_public_rpm
-    )
+    limit = settings.rate_limit_auth_rpm if is_authenticated else settings.rate_limit_public_rpm
 
     if limit == 0:
         return  # Unlimited

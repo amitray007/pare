@@ -3,19 +3,18 @@
 import gzip
 import io
 import shutil
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from optimizers.avif import AvifOptimizer
-from optimizers.heic import HeicOptimizer
-from optimizers.webp import WebpOptimizer
 from optimizers.gif import GifOptimizer
+from optimizers.heic import HeicOptimizer
 from optimizers.svg import SvgOptimizer
 from optimizers.tiff import TiffOptimizer
+from optimizers.webp import WebpOptimizer
 from schemas import OptimizationConfig
-
 
 # --- AVIF Optimizer ---
 
@@ -37,7 +36,7 @@ async def test_avif_no_strip_metadata(avif_optimizer):
 @pytest.mark.asyncio
 async def test_avif_strip_metadata_failure(avif_optimizer):
     """Metadata stripping exception -> returns original."""
-    with patch.object(avif_optimizer, '_strip_metadata', side_effect=Exception("decode error")):
+    with patch.object(avif_optimizer, "_strip_metadata", side_effect=Exception("decode error")):
         result = await avif_optimizer.optimize(b"fake", OptimizationConfig(strip_metadata=True))
     assert result.method == "none"
 
@@ -45,15 +44,19 @@ async def test_avif_strip_metadata_failure(avif_optimizer):
 @pytest.mark.asyncio
 async def test_avif_strip_metadata_success(avif_optimizer):
     """Successful metadata strip -> smaller output."""
-    with patch.object(avif_optimizer, '_strip_metadata', return_value=b"small"):
-        result = await avif_optimizer.optimize(b"larger original", OptimizationConfig(strip_metadata=True))
+    with patch.object(avif_optimizer, "_strip_metadata", return_value=b"small"):
+        result = await avif_optimizer.optimize(
+            b"larger original", OptimizationConfig(strip_metadata=True)
+        )
     assert result.method == "metadata-strip"
 
 
 @pytest.mark.asyncio
 async def test_avif_strip_metadata_larger(avif_optimizer):
     """Metadata strip produces larger output -> returns original."""
-    with patch.object(avif_optimizer, '_strip_metadata', return_value=b"this is even larger than the original"):
+    with patch.object(
+        avif_optimizer, "_strip_metadata", return_value=b"this is even larger than the original"
+    ):
         result = await avif_optimizer.optimize(b"short", OptimizationConfig(strip_metadata=True))
     assert result.method == "none"
 
@@ -74,14 +77,14 @@ async def test_heic_no_strip_metadata(heic_optimizer):
 
 @pytest.mark.asyncio
 async def test_heic_strip_metadata_failure(heic_optimizer):
-    with patch.object(heic_optimizer, '_strip_metadata', side_effect=Exception("error")):
+    with patch.object(heic_optimizer, "_strip_metadata", side_effect=Exception("error")):
         result = await heic_optimizer.optimize(b"fake", OptimizationConfig(strip_metadata=True))
     assert result.method == "none"
 
 
 @pytest.mark.asyncio
 async def test_heic_strip_metadata_success(heic_optimizer):
-    with patch.object(heic_optimizer, '_strip_metadata', return_value=b"sm"):
+    with patch.object(heic_optimizer, "_strip_metadata", return_value=b"sm"):
         result = await heic_optimizer.optimize(b"larger", OptimizationConfig(strip_metadata=True))
     assert result.method == "metadata-strip"
 
@@ -114,8 +117,8 @@ async def test_webp_cwebp_fallback(webp_optimizer):
     img.save(buf, format="WEBP", quality=50)
     data = buf.getvalue()
     # Mock _pillow_optimize to return data that's >= 90% of input (triggering fallback)
-    with patch.object(webp_optimizer, '_pillow_optimize', return_value=data):
-        with patch.object(webp_optimizer, '_cwebp_fallback', return_value=b"tiny"):
+    with patch.object(webp_optimizer, "_pillow_optimize", return_value=data):
+        with patch.object(webp_optimizer, "_cwebp_fallback", return_value=b"tiny"):
             result = await webp_optimizer.optimize(data, OptimizationConfig(quality=60))
     assert result.method == "cwebp"
 
@@ -127,8 +130,8 @@ async def test_webp_cwebp_fallback_none(webp_optimizer):
     buf = io.BytesIO()
     img.save(buf, format="WEBP", quality=50)
     data = buf.getvalue()
-    with patch.object(webp_optimizer, '_pillow_optimize', return_value=data):
-        with patch.object(webp_optimizer, '_cwebp_fallback', return_value=None):
+    with patch.object(webp_optimizer, "_pillow_optimize", return_value=data):
+        with patch.object(webp_optimizer, "_cwebp_fallback", return_value=None):
             result = await webp_optimizer.optimize(data, OptimizationConfig(quality=60))
     assert result.success
 
@@ -243,7 +246,9 @@ async def test_svg_moderate(svg_optimizer, sample_svg):
 @pytest.mark.asyncio
 async def test_svgz_optimization(svg_optimizer):
     """SVGZ: decompress, optimize, recompress."""
-    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="red"/></svg>'
+    svg = (
+        b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="red"/></svg>'
+    )
     data = gzip.compress(svg)
     result = await svg_optimizer.optimize(data, OptimizationConfig(quality=30))
     assert result.success
@@ -286,14 +291,18 @@ async def test_tiff_lossy(tiff_optimizer, sample_tiff):
 @pytest.mark.asyncio
 async def test_tiff_strip_metadata(tiff_optimizer, sample_tiff):
     """Metadata stripping before optimization."""
-    result = await tiff_optimizer.optimize(sample_tiff, OptimizationConfig(quality=80, strip_metadata=True))
+    result = await tiff_optimizer.optimize(
+        sample_tiff, OptimizationConfig(quality=80, strip_metadata=True)
+    )
     assert result.success
 
 
 @pytest.mark.asyncio
 async def test_tiff_no_strip_metadata(tiff_optimizer, sample_tiff):
     """No metadata stripping preserves EXIF/ICC."""
-    result = await tiff_optimizer.optimize(sample_tiff, OptimizationConfig(quality=80, strip_metadata=False))
+    result = await tiff_optimizer.optimize(
+        sample_tiff, OptimizationConfig(quality=80, strip_metadata=False)
+    )
     assert result.success
 
 

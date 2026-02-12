@@ -21,9 +21,7 @@ class Prediction:
     confidence: str  # "high", "medium", "low"
 
 
-def predict_reduction(
-    info: HeaderInfo, fmt: ImageFormat, config: OptimizationConfig
-) -> Prediction:
+def predict_reduction(info: HeaderInfo, fmt: ImageFormat, config: OptimizationConfig) -> Prediction:
     """Predict compression reduction based on format-specific heuristics."""
     dispatch = {
         ImageFormat.PNG: _predict_png,
@@ -146,9 +144,7 @@ def _predict_png(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         method = "pngquant + oxipng"
         confidence = "medium"
     else:
-        reduction, potential, method, confidence = _predict_png_by_complexity(
-            info, config
-        )
+        reduction, potential, method, confidence = _predict_png_by_complexity(info, config)
         already_optimized = False
 
     if info.has_metadata_chunks and config.strip_metadata:
@@ -446,14 +442,18 @@ def _jpeg_probe(data: bytes, target_quality: int) -> Optional[float]:
         # Run mozjpeg cjpeg at target quality
         r1 = subprocess.run(
             ["cjpeg", "-quality", str(target_quality)],
-            input=bmp_data, capture_output=True, timeout=5,
+            input=bmp_data,
+            capture_output=True,
+            timeout=5,
         )
         moz_size = len(r1.stdout) if r1.returncode == 0 else len(data)
 
         # Run jpegtran for lossless optimization
         r2 = subprocess.run(
             ["jpegtran", "-optimize", "-copy", "none"],
-            input=data, capture_output=True, timeout=5,
+            input=data,
+            capture_output=True,
+            timeout=5,
         )
         jt_size = len(r2.stdout) if r2.returncode == 0 else len(data)
 
@@ -491,9 +491,20 @@ def _png_lossy_probe(data: bytes, quality: int) -> Optional[float]:
 
         # Lossy path: pngquant + oxipng
         result = subprocess.run(
-            ["pngquant", str(max_colors), "--quality", f"1-{quality}",
-             "--speed", str(speed), "-", "--output", "-"],
-            input=data, capture_output=True, timeout=5,
+            [
+                "pngquant",
+                str(max_colors),
+                "--quality",
+                f"1-{quality}",
+                "--speed",
+                str(speed),
+                "-",
+                "--output",
+                "-",
+            ],
+            input=data,
+            capture_output=True,
+            timeout=5,
         )
 
         if result.returncode == 0 and result.stdout:
@@ -760,9 +771,7 @@ def _predict_svgz(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     )
 
 
-def _predict_metadata_only(
-    info: HeaderInfo, config: OptimizationConfig
-) -> Prediction:
+def _predict_metadata_only(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     """AVIF/HEIC — metadata stripping only, minimal savings."""
     has_metadata = info.has_exif or info.has_icc_profile
     reduction = 5.0 if has_metadata else 0.0

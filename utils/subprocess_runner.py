@@ -1,7 +1,7 @@
 import asyncio
 
 from config import settings
-from exceptions import ToolTimeoutError, OptimizationError
+from exceptions import OptimizationError, ToolTimeoutError
 
 
 async def run_tool(

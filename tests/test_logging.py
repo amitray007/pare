@@ -3,7 +3,7 @@
 import json
 import logging
 
-from utils.logging import StructuredFormatter, get_logger, setup_logging
+from utils.logging import StructuredFormatter, get_logger
 
 
 def test_structured_log_format():
@@ -84,6 +84,7 @@ def test_log_exception_includes_traceback():
         raise ValueError("test error")
     except ValueError:
         import sys
+
         exc_info = sys.exc_info()
 
     record = logging.LogRecord(

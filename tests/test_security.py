@@ -4,16 +4,14 @@ import pytest
 
 from exceptions import (
     AuthenticationError,
-    FileTooLargeError,
     SSRFError,
     UnsupportedFormatError,
 )
+from security.auth import authenticate
+from security.file_validation import validate_file
 from security.ssrf import validate_url
 from security.svg_sanitizer import sanitize_svg
-from security.file_validation import validate_file
-from security.auth import authenticate
 from utils.format_detect import ImageFormat
-
 
 # --- SSRF Tests ---
 
@@ -110,7 +108,12 @@ def test_svg_valid_content_preserved():
     result = sanitize_svg(svg)
     assert b"rect" in result
     assert b"circle" in result
-    assert b'fill="red"' in result or b"fill='red'" in result or b"fill=&quot;red&quot;" in result or b'fill="red"' in result
+    assert (
+        b'fill="red"' in result
+        or b"fill='red'" in result
+        or b"fill=&quot;red&quot;" in result
+        or b'fill="red"' in result
+    )
 
 
 def test_svg_xxe_blocked():
@@ -122,6 +125,7 @@ def test_svg_xxe_blocked():
 <svg xmlns="http://www.w3.org/2000/svg"><text>&xxe;</text></svg>"""
     # defusedxml should raise an error on DTD with entities
     from exceptions import OptimizationError
+
     with pytest.raises((OptimizationError, Exception)):
         sanitize_svg(xxe_svg)
 

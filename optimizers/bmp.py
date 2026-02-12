@@ -68,7 +68,9 @@ class BmpOptimizer(BaseOptimizer):
         if img.mode == "P":
             return img
         rgb = img.convert("RGB")
-        return rgb.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
+        return rgb.quantize(
+            colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG
+        )
 
     @staticmethod
     def _encode_rle8_bmp(palette_img: Image.Image) -> bytes | None:
@@ -103,10 +105,10 @@ class BmpOptimizer(BaseOptimizer):
             else:
                 r, g, b = 0, 0, 0
             off = i * 4
-            palette_bytes[off] = b      # blue
-            palette_bytes[off + 1] = g   # green
-            palette_bytes[off + 2] = r   # red
-            palette_bytes[off + 3] = 0   # reserved
+            palette_bytes[off] = b  # blue
+            palette_bytes[off + 1] = g  # green
+            palette_bytes[off + 2] = r  # red
+            palette_bytes[off + 3] = 0  # reserved
 
         # --- Build headers ---
         rle_size = len(rle_data)
@@ -126,17 +128,17 @@ class BmpOptimizer(BaseOptimizer):
         # BITMAPINFOHEADER (40 bytes)
         info_header = struct.pack(
             "<IiiHHIIiiII",
-            40,          # biSize
-            w,           # biWidth
-            h,           # biHeight (positive = bottom-up)
-            1,           # biPlanes
-            8,           # biBitCount
-            1,           # biCompression = BI_RLE8
-            rle_size,    # biSizeImage
-            0,           # biXPelsPerMeter
-            0,           # biYPelsPerMeter
-            256,         # biClrUsed
-            0,           # biClrImportant
+            40,  # biSize
+            w,  # biWidth
+            h,  # biHeight (positive = bottom-up)
+            1,  # biPlanes
+            8,  # biBitCount
+            1,  # biCompression = BI_RLE8
+            rle_size,  # biSizeImage
+            0,  # biXPelsPerMeter
+            0,  # biYPelsPerMeter
+            256,  # biClrUsed
+            0,  # biClrImportant
         )
 
         return file_header + info_header + bytes(palette_bytes) + bytes(rle_data)
@@ -184,7 +186,7 @@ def _rle8_encode_row(row: bytes, out: bytearray) -> None:
                 # Absolute mode: [0x00, count, data...] padded to even
                 out.append(0x00)
                 out.append(lit_len)
-                out.extend(row[lit_start:lit_start + lit_len])
+                out.extend(row[lit_start : lit_start + lit_len])
                 if lit_len % 2 != 0:
                     out.append(0x00)  # pad to even
             else:

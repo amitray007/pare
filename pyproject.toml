@@ -1,0 +1,26 @@
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",  # line too long — handled by black
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "config",
+    "schemas",
+    "exceptions",
+    "optimizers",
+    "estimation",
+    "routers",
+    "security",
+    "storage",
+    "utils",
+]

@@ -2,21 +2,16 @@
 
 import gzip
 import io
-import struct
 
-import pytest
 from PIL import Image
 
 from estimation.header_analysis import (
-    HeaderInfo,
+    _compute_svg_bloat_ratio,
+    _flat_pixel_ratio,
     analyze_header,
     estimate_jpeg_quality_from_qtable,
-    _flat_pixel_ratio,
-    _analyze_svg,
-    _compute_svg_bloat_ratio,
 )
 from utils.format_detect import ImageFormat
-
 
 # --- analyze_header basics ---
 
@@ -219,11 +214,14 @@ def test_flat_ratio_solid():
 def test_flat_ratio_noise():
     """Noisy image -> low flat ratio."""
     import random
+
     random.seed(99)
     img = Image.new("RGB", (10, 10))
     for x in range(10):
         for y in range(10):
-            img.putpixel((x, y), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+            img.putpixel(
+                (x, y), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            )
     ratio = _flat_pixel_ratio(img)
     assert ratio < 0.5
 
@@ -238,13 +236,13 @@ def test_flat_ratio_tiny():
 
 
 def test_svg_bloat_with_comments():
-    text = '<!-- A comment --><svg><rect/></svg>'
+    text = "<!-- A comment --><svg><rect/></svg>"
     ratio = _compute_svg_bloat_ratio(text)
     assert ratio > 0
 
 
 def test_svg_bloat_with_metadata():
-    text = '<svg><metadata>lots of data here</metadata><rect/></svg>'
+    text = "<svg><metadata>lots of data here</metadata><rect/></svg>"
     ratio = _compute_svg_bloat_ratio(text)
     assert ratio > 0
 

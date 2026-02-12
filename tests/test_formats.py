@@ -6,10 +6,8 @@ pass in the Docker container where all tools are available.
 """
 
 import shutil
-import io
 
 import pytest
-from PIL import Image
 
 from optimizers.router import optimize_image
 from schemas import OptimizationConfig
@@ -133,6 +131,6 @@ async def test_all_formats_never_larger(
     ]
     for name, data in samples:
         result = await optimize_image(data, config)
-        assert result.optimized_size <= result.original_size, (
-            f"{name}: optimized ({result.optimized_size}) > original ({result.original_size})"
-        )
+        assert (
+            result.optimized_size <= result.original_size
+        ), f"{name}: optimized ({result.optimized_size}) > original ({result.original_size})"

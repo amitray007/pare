@@ -1,6 +1,5 @@
 """Tests for BMP optimizer quality tiers: lossless, palette, and RLE8."""
 
-import asyncio
 import io
 
 import pytest
@@ -45,11 +44,14 @@ def _make_screenshot_bmp(width=100, height=100):
 def _make_noisy_bmp(width=100, height=100):
     """Create a BMP with random pixel values (worst case for RLE8)."""
     import random
+
     random.seed(42)
     img = Image.new("RGB", (width, height))
     for x in range(width):
         for y in range(height):
-            img.putpixel((x, y), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+            img.putpixel(
+                (x, y), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            )
     buf = io.BytesIO()
     img.save(buf, format="BMP")
     return buf.getvalue()
@@ -210,6 +212,7 @@ def test_encode_rle8_valid_bmp_header():
     assert result[:2] == b"BM"
     # BI_RLE8 compression = 1 at offset 30
     import struct
+
     compression = struct.unpack_from("<I", result, 30)[0]
     assert compression == 1
 

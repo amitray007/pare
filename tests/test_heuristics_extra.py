@@ -1,18 +1,16 @@
 """Extra heuristics tests — PNG, JPEG, APNG, WebP prediction paths."""
 
+
 import pytest
-from unittest.mock import patch
 
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
-    Prediction,
-    predict_reduction,
-    _predict_png,
-    _predict_jpeg,
-    _predict_webp,
-    _predict_apng,
     _bpp_to_quality,
+    _predict_apng,
+    _predict_jpeg,
+    _predict_png,
     _webp_interpolated_reduction,
+    predict_reduction,
 )
 from schemas import OptimizationConfig
 from utils.format_detect import ImageFormat
@@ -112,8 +110,13 @@ def test_png_lossy_no_probes_no_color_ratio():
 
 def test_png_lossy_photo_content_large():
     """Photo content (high color ratio, low flat ratio) on large file."""
-    info = _make_info(file_size=200000, unique_color_ratio=0.7, flat_pixel_ratio=0.2,
-                      oxipng_probe_ratio=0.97, is_palette_mode=False)
+    info = _make_info(
+        file_size=200000,
+        unique_color_ratio=0.7,
+        flat_pixel_ratio=0.2,
+        oxipng_probe_ratio=0.97,
+        is_palette_mode=False,
+    )
     config = OptimizationConfig(quality=60, png_lossy=True)
     result = _predict_png(info, config)
     assert result.reduction_percent > 50
@@ -121,9 +124,14 @@ def test_png_lossy_photo_content_large():
 
 def test_png_lossy_flat_content():
     """Flat content (high flat ratio) -> lossless wins."""
-    info = _make_info(file_size=30000, unique_color_ratio=0.01, flat_pixel_ratio=0.95,
-                      oxipng_probe_ratio=0.50, png_pngquant_probe_ratio=0.60,
-                      is_palette_mode=False)
+    info = _make_info(
+        file_size=30000,
+        unique_color_ratio=0.01,
+        flat_pixel_ratio=0.95,
+        oxipng_probe_ratio=0.50,
+        png_pngquant_probe_ratio=0.60,
+        is_palette_mode=False,
+    )
     config = OptimizationConfig(quality=60, png_lossy=True)
     result = _predict_png(info, config)
     assert result.reduction_percent > 0
@@ -140,8 +148,13 @@ def test_png_lossy_tiny_file_cap():
 
 def test_png_lossy_quality_50_bonus():
     """quality < 50 adds 64-color bonus for photo content."""
-    info = _make_info(file_size=200000, unique_color_ratio=0.7, flat_pixel_ratio=0.2,
-                      oxipng_probe_ratio=0.97, is_palette_mode=False)
+    info = _make_info(
+        file_size=200000,
+        unique_color_ratio=0.7,
+        flat_pixel_ratio=0.2,
+        oxipng_probe_ratio=0.97,
+        is_palette_mode=False,
+    )
     config_40 = OptimizationConfig(quality=40, png_lossy=True)
     config_60 = OptimizationConfig(quality=60, png_lossy=True)
     result_40 = _predict_png(info, config_40)
@@ -151,9 +164,14 @@ def test_png_lossy_quality_50_bonus():
 
 def test_png_with_pngquant_probe():
     """Small file with pngquant probe data."""
-    info = _make_info(file_size=5000, unique_color_ratio=0.3, flat_pixel_ratio=0.3,
-                      oxipng_probe_ratio=0.85, png_pngquant_probe_ratio=0.40,
-                      is_palette_mode=False)
+    info = _make_info(
+        file_size=5000,
+        unique_color_ratio=0.3,
+        flat_pixel_ratio=0.3,
+        oxipng_probe_ratio=0.85,
+        png_pngquant_probe_ratio=0.40,
+        is_palette_mode=False,
+    )
     config = OptimizationConfig(quality=60, png_lossy=True)
     result = _predict_png(info, config)
     assert result.confidence == "high"
@@ -162,9 +180,15 @@ def test_png_with_pngquant_probe():
 
 def test_png_lossy_with_quantize_ratio():
     """Small file with quantize ratio but no pngquant probe."""
-    info = _make_info(file_size=30000, unique_color_ratio=0.3, flat_pixel_ratio=0.3,
-                      oxipng_probe_ratio=0.85, png_quantize_ratio=0.50,
-                      png_pngquant_probe_ratio=None, is_palette_mode=False)
+    info = _make_info(
+        file_size=30000,
+        unique_color_ratio=0.3,
+        flat_pixel_ratio=0.3,
+        oxipng_probe_ratio=0.85,
+        png_quantize_ratio=0.50,
+        png_pngquant_probe_ratio=None,
+        is_palette_mode=False,
+    )
     config = OptimizationConfig(quality=60, png_lossy=True)
     result = _predict_png(info, config)
     assert result.reduction_percent > 0
@@ -172,8 +196,13 @@ def test_png_lossy_with_quantize_ratio():
 
 def test_png_lossy_low_color_ratio_large():
     """Large file with very low unique color ratio."""
-    info = _make_info(file_size=200000, unique_color_ratio=0.003, flat_pixel_ratio=0.3,
-                      oxipng_probe_ratio=0.95, is_palette_mode=False)
+    info = _make_info(
+        file_size=200000,
+        unique_color_ratio=0.003,
+        flat_pixel_ratio=0.3,
+        oxipng_probe_ratio=0.95,
+        is_palette_mode=False,
+    )
     config = OptimizationConfig(quality=60, png_lossy=True)
     result = _predict_png(info, config)
     assert result.reduction_percent > 50
@@ -257,15 +286,16 @@ def test_jpeg_is_progressive_penalty():
     """Already progressive source -> 0.95x reduction."""
     info = _make_info(ImageFormat.JPEG, file_size=50000, estimated_quality=85, is_progressive=True)
     result = _predict_jpeg(info, OptimizationConfig(quality=60))
-    info2 = _make_info(ImageFormat.JPEG, file_size=50000, estimated_quality=85, is_progressive=False)
+    info2 = _make_info(
+        ImageFormat.JPEG, file_size=50000, estimated_quality=85, is_progressive=False
+    )
     result2 = _predict_jpeg(info2, OptimizationConfig(quality=60))
     assert result.reduction_percent < result2.reduction_percent
 
 
 def test_jpeg_screenshot_content():
     """Flat pixel ratio > 0.75 -> screenshot adjustment."""
-    info = _make_info(ImageFormat.JPEG, file_size=50000, estimated_quality=85,
-                      flat_pixel_ratio=0.9)
+    info = _make_info(ImageFormat.JPEG, file_size=50000, estimated_quality=85, flat_pixel_ratio=0.9)
     result = _predict_jpeg(info, OptimizationConfig(quality=60))
     assert result.reduction_percent > 0
 

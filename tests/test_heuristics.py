@@ -1,14 +1,13 @@
 """Tests for estimation heuristics — all per-format prediction functions."""
 
-import pytest
 
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
     Prediction,
-    predict_reduction,
     _predict_bmp,
-    _predict_tiff,
     _predict_metadata_only,
+    _predict_tiff,
+    predict_reduction,
 )
 from schemas import OptimizationConfig
 from utils.format_detect import ImageFormat
@@ -98,7 +97,9 @@ def test_dispatch_bmp():
 def test_max_reduction_cap():
     """max_reduction should cap predictions."""
     info = _make_info(ImageFormat.BMP, width=200, height=200, file_size=200000)
-    result = predict_reduction(info, ImageFormat.BMP, OptimizationConfig(quality=60, max_reduction=10.0))
+    result = predict_reduction(
+        info, ImageFormat.BMP, OptimizationConfig(quality=60, max_reduction=10.0)
+    )
     assert result.reduction_percent <= 10.0 or result.reduction_percent > 0  # capping applied
 
 
@@ -144,8 +145,14 @@ def test_bmp_quality_low_24bit_already_optimal():
 
 def test_tiff_photo_content():
     """Photo content: high reduction from deflate."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=180000,
-                      color_type="rgb", flat_pixel_ratio=0.2)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=180000,
+        color_type="rgb",
+        flat_pixel_ratio=0.2,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
     assert result.reduction_percent > 0
     assert result.confidence == "high"
@@ -153,8 +160,14 @@ def test_tiff_photo_content():
 
 def test_tiff_flat_content():
     """Flat/screenshot content: very high deflate reduction."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=180000,
-                      color_type="rgb", flat_pixel_ratio=0.9)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=180000,
+        color_type="rgb",
+        flat_pixel_ratio=0.9,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
     assert result.reduction_percent > 80
     assert result.method == "tiff_adobe_deflate"
@@ -162,48 +175,85 @@ def test_tiff_flat_content():
 
 def test_tiff_lossy_jpeg_photo():
     """quality<70 + photo: JPEG-in-TIFF prediction."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=180000,
-                      color_type="rgb", flat_pixel_ratio=0.15)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=180000,
+        color_type="rgb",
+        flat_pixel_ratio=0.15,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=40))
     assert result.reduction_percent > 50
 
 
 def test_tiff_rgba_no_jpeg():
     """RGBA content: JPEG-in-TIFF not available."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=240000,
-                      color_type="rgba", flat_pixel_ratio=0.15)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=240000,
+        color_type="rgba",
+        flat_pixel_ratio=0.15,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=40))
     assert result.method == "tiff_adobe_deflate"
 
 
 def test_tiff_no_flat_ratio():
     """No flat_pixel_ratio: uses file_size heuristic."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=180000,
-                      color_type="rgb", flat_pixel_ratio=None)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=180000,
+        color_type="rgb",
+        flat_pixel_ratio=None,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
     assert result.confidence == "low"
 
 
 def test_tiff_metadata_bonus():
     """Metadata stripping adds to reduction."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=180000,
-                      color_type="rgb", flat_pixel_ratio=0.5, has_metadata_chunks=True)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=180000,
+        color_type="rgb",
+        flat_pixel_ratio=0.5,
+        has_metadata_chunks=True,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=80, strip_metadata=True))
     assert result.reduction_percent > 0
 
 
 def test_tiff_mid_flat_ratio():
     """Intermediate flat_pixel_ratio uses interpolation."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=180000,
-                      color_type="rgb", flat_pixel_ratio=0.5)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=180000,
+        color_type="rgb",
+        flat_pixel_ratio=0.5,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
     assert result.confidence == "high"
 
 
 def test_tiff_compressed_input():
     """Already-compressed TIFF (ratio < 0.8) uses lower deflate estimate."""
-    info = _make_info(ImageFormat.TIFF, width=300, height=200, file_size=50000,
-                      color_type="rgb", flat_pixel_ratio=None)
+    info = _make_info(
+        ImageFormat.TIFF,
+        width=300,
+        height=200,
+        file_size=50000,
+        color_type="rgb",
+        flat_pixel_ratio=None,
+    )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
     assert result.confidence == "low"
 
@@ -298,56 +348,86 @@ def test_gif_lossy_moderate():
 
 def test_svg_with_bloat_ratio_strip_metadata():
     info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=0.3)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=True))
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=True)
+    )
     assert result.reduction_percent > 10
 
 
 def test_svg_with_bloat_no_strip():
     info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=0.3)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=False))
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=False)
+    )
     assert result.reduction_percent > 0
 
 
 def test_svg_precision_aggressive():
     info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=0.3)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=30, strip_metadata=True))
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=30, strip_metadata=True)
+    )
     assert result.reduction_percent > 10
 
 
 def test_svg_precision_moderate():
     info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=0.3)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=60, strip_metadata=True))
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=60, strip_metadata=True)
+    )
     assert result.reduction_percent > 10
 
 
 def test_svg_no_bloat_with_metadata():
-    info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=True)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=True))
+    info = _make_info(
+        ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=True
+    )
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=True)
+    )
     assert result.reduction_percent == 30.0
 
 
 def test_svg_no_bloat_strip_no_metadata():
-    info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=False)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=True))
+    info = _make_info(
+        ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=False
+    )
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=True)
+    )
     assert result.reduction_percent == 8.0
 
 
 def test_svg_no_bloat_no_strip_with_metadata():
-    info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=True)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=False))
+    info = _make_info(
+        ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=True
+    )
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=False)
+    )
     assert result.reduction_percent == 18.0
 
 
 def test_svg_no_bloat_no_strip_no_metadata():
-    info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=False)
-    result = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=False))
+    info = _make_info(
+        ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=False
+    )
+    result = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=80, strip_metadata=False)
+    )
     assert result.reduction_percent == 5.0
 
 
 def test_svg_no_bloat_aggressive():
-    info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=False)
-    result_agg = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=30, strip_metadata=True))
-    result_mod = predict_reduction(info, ImageFormat.SVG, OptimizationConfig(quality=60, strip_metadata=True))
+    info = _make_info(
+        ImageFormat.SVG, file_size=5000, svg_bloat_ratio=None, has_metadata_chunks=False
+    )
+    result_agg = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=30, strip_metadata=True)
+    )
+    result_mod = predict_reduction(
+        info, ImageFormat.SVG, OptimizationConfig(quality=60, strip_metadata=True)
+    )
     assert result_agg.reduction_percent > result_mod.reduction_percent
 
 
@@ -356,43 +436,61 @@ def test_svg_no_bloat_aggressive():
 
 def test_svgz_with_bloat_strip():
     info = _make_info(ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=0.2)
-    result = predict_reduction(info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=True))
+    result = predict_reduction(
+        info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=True)
+    )
     assert result.reduction_percent > 0
 
 
 def test_svgz_with_bloat_no_strip():
     info = _make_info(ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=0.2)
-    result = predict_reduction(info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=False))
+    result = predict_reduction(
+        info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=False)
+    )
     assert result.reduction_percent > 0
 
 
 def test_svgz_aggressive():
     info = _make_info(ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=0.2)
-    result = predict_reduction(info, ImageFormat.SVGZ, OptimizationConfig(quality=30, strip_metadata=True))
+    result = predict_reduction(
+        info, ImageFormat.SVGZ, OptimizationConfig(quality=30, strip_metadata=True)
+    )
     assert result.reduction_percent > 0
 
 
 def test_svgz_moderate():
     info = _make_info(ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=0.2)
-    result = predict_reduction(info, ImageFormat.SVGZ, OptimizationConfig(quality=60, strip_metadata=True))
+    result = predict_reduction(
+        info, ImageFormat.SVGZ, OptimizationConfig(quality=60, strip_metadata=True)
+    )
     assert result.reduction_percent > 0
 
 
 def test_svgz_no_bloat_with_metadata():
-    info = _make_info(ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=None, has_metadata_chunks=True)
-    result = predict_reduction(info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=True))
+    info = _make_info(
+        ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=None, has_metadata_chunks=True
+    )
+    result = predict_reduction(
+        info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=True)
+    )
     assert result.reduction_percent == 8.0
 
 
 def test_svgz_no_bloat_strip_no_metadata():
-    info = _make_info(ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=None, has_metadata_chunks=False)
-    result = predict_reduction(info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=True))
+    info = _make_info(
+        ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=None, has_metadata_chunks=False
+    )
+    result = predict_reduction(
+        info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=True)
+    )
     assert result.reduction_percent == 5.0
 
 
 def test_svgz_no_bloat_no_strip():
     info = _make_info(ImageFormat.SVGZ, file_size=3000, svg_bloat_ratio=None)
-    result = predict_reduction(info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=False))
+    result = predict_reduction(
+        info, ImageFormat.SVGZ, OptimizationConfig(quality=80, strip_metadata=False)
+    )
     assert result.reduction_percent == 2.0
 
 

@@ -14,7 +14,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from benchmarks.constants import ALL_PRESETS, PRESETS_BY_NAME
+from benchmarks.constants import PRESETS_BY_NAME
 from benchmarks.report import export_json, generate_html_report, print_report
 from benchmarks.runner import run_suite
 
@@ -57,7 +57,7 @@ def _compare_reports(path_a: Path, path_b: Path) -> None:
     a = json.loads(path_a.read_text(encoding="utf-8"))
     b = json.loads(path_b.read_text(encoding="utf-8"))
 
-    print(f"\nComparing benchmarks:")
+    print("\nComparing benchmarks:")
     print(f"  OLD: {path_b.name}  ({b.get('timestamp', '?')}  git:{b.get('git_commit', '?')})")
     print(f"  NEW: {path_a.name}  ({a.get('timestamp', '?')}  git:{a.get('git_commit', '?')})")
     print("=" * 80)
@@ -84,7 +84,9 @@ def _compare_reports(path_a: Path, path_b: Path) -> None:
 
     all_fmts = sorted(set(list(old_by_fmt.keys()) + list(new_by_fmt.keys())))
 
-    print(f"\n  {'Format':<10} {'Old Avg%':>9} {'New Avg%':>9} {'Delta':>8} {'Old ms':>8} {'New ms':>8} {'Delta':>8}")
+    print(
+        f"\n  {'Format':<10} {'Old Avg%':>9} {'New Avg%':>9} {'Delta':>8} {'Old ms':>8} {'New ms':>8} {'Delta':>8}"
+    )
     print("  " + "-" * 65)
 
     for fmt in all_fmts:
@@ -103,38 +105,57 @@ def _compare_reports(path_a: Path, path_b: Path) -> None:
         sign_pct = "+" if d_pct >= 0 else ""
         sign_ms = "+" if d_ms >= 0 else ""
 
-        print(f"  {fmt.upper():<10} {old_avg:>8.1f}% {new_avg:>8.1f}% {sign_pct}{d_pct:>6.1f}% "
-              f"{old_ms:>7.0f}ms {new_ms:>7.0f}ms {sign_ms}{d_ms:>6.0f}ms")
+        print(
+            f"  {fmt.upper():<10} {old_avg:>8.1f}% {new_avg:>8.1f}% {sign_pct}{d_pct:>6.1f}% "
+            f"{old_ms:>7.0f}ms {new_ms:>7.0f}ms {sign_ms}{d_ms:>6.0f}ms"
+        )
 
     # Estimation accuracy delta
-    old_valid = [r for r in b.get("results", []) if not r.get("opt_error") and not r.get("est_error")]
-    new_valid = [r for r in a.get("results", []) if not r.get("opt_error") and not r.get("est_error")]
+    old_valid = [
+        r for r in b.get("results", []) if not r.get("opt_error") and not r.get("est_error")
+    ]
+    new_valid = [
+        r for r in a.get("results", []) if not r.get("opt_error") and not r.get("est_error")
+    ]
     if old_valid and new_valid:
         old_est_err = sum(r["est_accuracy_error_pct"] for r in old_valid) / len(old_valid)
         new_est_err = sum(r["est_accuracy_error_pct"] for r in new_valid) / len(new_valid)
         d_est = new_est_err - old_est_err
         sign = "+" if d_est >= 0 else ""
-        print(f"\n  Estimation avg error: {old_est_err:.1f}% -> {new_est_err:.1f}% ({sign}{d_est:.1f}%)")
+        print(
+            f"\n  Estimation avg error: {old_est_err:.1f}% -> {new_est_err:.1f}% ({sign}{d_est:.1f}%)"
+        )
 
 
 def main():
     parser = argparse.ArgumentParser(description="Pare image optimization benchmarks")
     parser.add_argument("--fmt", help="Filter by format (png, jpeg, webp, gif, svg, bmp, tiff)")
-    parser.add_argument("--category", help="Filter by size category (tiny, small-l, medium-l, large-l, square, vector)")
+    parser.add_argument(
+        "--category",
+        help="Filter by size category (tiny, small-l, medium-l, large-l, square, vector)",
+    )
     parser.add_argument("--preset", help="Run only this preset (high, medium, low)")
-    parser.add_argument("--json", action="store_true", help="Output JSON to stdout instead of table")
+    parser.add_argument(
+        "--json", action="store_true", help="Output JSON to stdout instead of table"
+    )
     parser.add_argument("-o", "--output", help="Write output to file instead of stdout")
     parser.add_argument("--no-progress", action="store_true", help="Disable progress output")
-    parser.add_argument("--no-save", action="store_true", help="Skip saving reports to reports/ folder")
-    parser.add_argument("--compare", action="store_true", help="Compare the last two benchmark runs")
+    parser.add_argument(
+        "--no-save", action="store_true", help="Skip saving reports to reports/ folder"
+    )
+    parser.add_argument(
+        "--compare", action="store_true", help="Compare the last two benchmark runs"
+    )
     args = parser.parse_args()
 
     # --compare mode
     if args.compare:
         reports = _find_latest_json_reports(2)
         if len(reports) < 2:
-            print(f"Need at least 2 reports in {REPORTS_DIR}/ to compare "
-                  f"(found {len(reports)})", file=sys.stderr)
+            print(
+                f"Need at least 2 reports in {REPORTS_DIR}/ to compare " f"(found {len(reports)})",
+                file=sys.stderr,
+            )
             sys.exit(1)
         _compare_reports(reports[0], reports[1])
         return
@@ -144,15 +165,19 @@ def main():
     if args.preset:
         name = args.preset.upper()
         if name not in PRESETS_BY_NAME:
-            parser.error(f"Unknown preset '{args.preset}'. Choose from: {', '.join(PRESETS_BY_NAME)}")
+            parser.error(
+                f"Unknown preset '{args.preset}'. Choose from: {', '.join(PRESETS_BY_NAME)}"
+            )
         presets = [PRESETS_BY_NAME[name]]
 
-    suite = asyncio.run(run_suite(
-        fmt_filter=args.fmt,
-        category_filter=args.category,
-        presets=presets,
-        progress=not args.no_progress,
-    ))
+    suite = asyncio.run(
+        run_suite(
+            fmt_filter=args.fmt,
+            category_filter=args.category,
+            presets=presets,
+            progress=not args.no_progress,
+        )
+    )
 
     # Output to stdout/file
     if args.json:
@@ -174,7 +199,7 @@ def main():
     # Save persistent reports unless disabled
     if not args.no_save:
         html_path, json_path = _save_reports(suite)
-        print(f"\n  Reports saved:", file=sys.stderr)
+        print("\n  Reports saved:", file=sys.stderr)
         print(f"    HTML: {html_path}", file=sys.stderr)
         print(f"    JSON: {json_path}", file=sys.stderr)
 

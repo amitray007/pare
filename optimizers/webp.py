@@ -1,7 +1,7 @@
 import io
+import os
 import shutil
 import tempfile
-import os
 
 from PIL import Image
 
@@ -112,9 +112,7 @@ class WebpOptimizer(BaseOptimizer):
 
         # cwebp requires file input/output
         try:
-            with tempfile.NamedTemporaryFile(
-                suffix=".webp", delete=False
-            ) as infile:
+            with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as infile:
                 infile.write(data)
                 infile.flush()
                 in_path = infile.name

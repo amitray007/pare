@@ -22,9 +22,7 @@ def authenticate(request: Request) -> bool:
         return False  # No auth — treated as public request
 
     if not auth_header.startswith("Bearer "):
-        raise AuthenticationError(
-            "Invalid Authorization header format. Expected: Bearer <key>"
-        )
+        raise AuthenticationError("Invalid Authorization header format. Expected: Bearer <key>")
 
     provided_key = auth_header[7:]  # Strip "Bearer "
 

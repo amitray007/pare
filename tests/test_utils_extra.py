@@ -2,10 +2,10 @@
 
 import asyncio
 import io
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from PIL import Image
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from exceptions import (
     BackpressureError,
@@ -17,7 +17,6 @@ from exceptions import (
 )
 from utils.format_detect import ImageFormat
 
-
 # --- subprocess_runner ---
 
 
@@ -25,7 +24,10 @@ from utils.format_detect import ImageFormat
 async def test_run_tool_success():
     """Successful tool invocation."""
     from utils.subprocess_runner import run_tool
-    stdout, stderr, rc = await run_tool(["python", "-c", "import sys; sys.stdout.buffer.write(b'hello')"], b"")
+
+    stdout, stderr, rc = await run_tool(
+        ["python", "-c", "import sys; sys.stdout.buffer.write(b'hello')"], b""
+    )
     assert stdout == b"hello"
     assert rc == 0
 
@@ -34,6 +36,7 @@ async def test_run_tool_success():
 async def test_run_tool_stdin():
     """Tool reads from stdin."""
     from utils.subprocess_runner import run_tool
+
     stdout, stderr, rc = await run_tool(
         ["python", "-c", "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"],
         b"input data",
@@ -45,6 +48,7 @@ async def test_run_tool_stdin():
 async def test_run_tool_timeout():
     """Tool timeout -> ToolTimeoutError."""
     from utils.subprocess_runner import run_tool
+
     with pytest.raises(ToolTimeoutError):
         await run_tool(["python", "-c", "import time; time.sleep(10)"], b"", timeout=1)
 
@@ -53,6 +57,7 @@ async def test_run_tool_timeout():
 async def test_run_tool_nonzero_exit():
     """Non-zero exit code -> OptimizationError."""
     from utils.subprocess_runner import run_tool
+
     with pytest.raises(OptimizationError):
         await run_tool(["python", "-c", "import sys; sys.exit(1)"], b"")
 
@@ -61,6 +66,7 @@ async def test_run_tool_nonzero_exit():
 async def test_run_tool_allowed_exit_code():
     """Allowed non-zero exit code is not an error."""
     from utils.subprocess_runner import run_tool
+
     stdout, stderr, rc = await run_tool(
         ["python", "-c", "import sys; sys.exit(99)"], b"", allowed_exit_codes={99}
     )
@@ -103,6 +109,7 @@ def test_compression_gate_queue_full():
 
 def test_compression_gate_queued_jobs():
     from utils.concurrency import CompressionGate
+
     gate = CompressionGate()
     assert gate.queued_jobs >= 0
 
@@ -134,8 +141,8 @@ def test_strip_png_metadata():
 
 def test_strip_png_metadata_text_chunks():
     """PNG with tEXt chunk: stripped."""
+
     from utils.metadata import strip_metadata_selective
-    import struct
 
     # Build a minimal PNG with tEXt chunk
     img = Image.new("RGB", (10, 10))
@@ -169,6 +176,7 @@ def test_strip_metadata_passthrough():
 
 def test_strip_apng_metadata():
     from utils.metadata import strip_metadata_selective
+
     img = Image.new("RGB", (10, 10))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -178,7 +186,8 @@ def test_strip_apng_metadata():
 
 
 def test_strip_png_no_icc():
-    from utils.metadata import strip_metadata_selective, _strip_png_metadata
+    from utils.metadata import _strip_png_metadata
+
     img = Image.new("RGB", (10, 10))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -192,7 +201,6 @@ def test_strip_jpeg_preserves_orientation():
     from utils.metadata import strip_metadata_selective
 
     img = Image.new("RGB", (50, 50))
-    from PIL.ExifTags import IFD
     exif = Image.Exif()
     exif[0x0112] = 6  # Orientation = Rotate 90 CW
     buf = io.BytesIO()
@@ -212,6 +220,7 @@ def test_strip_jpeg_preserves_orientation():
 async def test_url_fetch_ssrf_blocked():
     """Private IP URL blocked."""
     from utils.url_fetch import fetch_image
+
     with pytest.raises(SSRFError):
         await fetch_image("https://127.0.0.1/image.png")
 
@@ -220,6 +229,7 @@ async def test_url_fetch_ssrf_blocked():
 async def test_url_fetch_http_blocked():
     """HTTP scheme blocked by SSRF validation."""
     from utils.url_fetch import fetch_image
+
     with pytest.raises(SSRFError):
         await fetch_image("http://example.com/image.png")
 
@@ -228,6 +238,7 @@ async def test_url_fetch_http_blocked():
 async def test_url_fetch_timeout():
     """Timeout raises URLFetchError."""
     import httpx
+
     from utils.url_fetch import fetch_image
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
@@ -245,6 +256,7 @@ async def test_url_fetch_timeout():
 async def test_url_fetch_request_error():
     """Request error raises URLFetchError."""
     import httpx
+
     from utils.url_fetch import fetch_image
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
@@ -419,6 +431,7 @@ async def test_url_fetch_body_too_large():
 def test_setup_logging():
     """setup_logging returns a logger and configures handlers."""
     from utils.logging import setup_logging
+
     logger = setup_logging()
     assert logger.name == "pare"
     assert len(logger.handlers) > 0

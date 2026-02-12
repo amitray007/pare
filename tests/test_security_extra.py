@@ -1,13 +1,13 @@
 """Extra security tests — file_validation, svg_sanitizer edge cases, ssrf."""
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from exceptions import FileTooLargeError, OptimizationError, SSRFError
 from security.file_validation import validate_file
-from security.svg_sanitizer import sanitize_svg, _is_external_url
 from security.ssrf import validate_url
-
+from security.svg_sanitizer import _is_external_url, sanitize_svg
 
 # --- file_validation ---
 
@@ -55,6 +55,7 @@ def test_is_external_url():
 def test_ssrf_dns_resolution_failure():
     """DNS resolution failure -> SSRFError."""
     import socket
+
     with patch("socket.getaddrinfo", side_effect=socket.gaierror("no such host")):
         with pytest.raises(SSRFError, match="resolve"):
             validate_url("https://nonexistent.invalid/image.png")

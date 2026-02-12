@@ -27,11 +27,7 @@ async def fetch_image(url: str, is_authenticated: bool = False) -> bytes:
     # 1. SSRF validation on initial URL
     validate_url(url)
 
-    timeout = (
-        settings.url_fetch_timeout
-        if is_authenticated
-        else settings.url_fetch_timeout * 2
-    )
+    timeout = settings.url_fetch_timeout if is_authenticated else settings.url_fetch_timeout * 2
     max_redirects = settings.url_fetch_max_redirects
 
     try:

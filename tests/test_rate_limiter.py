@@ -1,7 +1,8 @@
 """Tests for rate_limiter module — Redis-backed sliding window + burst."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 
 from exceptions import RateLimitError
 
@@ -41,7 +42,10 @@ async def test_safe_check_rate_limit_propagates():
 
     with patch("security.rate_limiter.settings") as mock_settings:
         mock_settings.redis_url = "redis://localhost"
-        with patch("security.rate_limiter.check_rate_limit", side_effect=RateLimitError("exceeded", retry_after=30, limit=60)):
+        with patch(
+            "security.rate_limiter.check_rate_limit",
+            side_effect=RateLimitError("exceeded", retry_after=30, limit=60),
+        ):
             with pytest.raises(RateLimitError):
                 await safe_check_rate_limit("1.2.3.4", False)
 
@@ -53,7 +57,9 @@ async def test_safe_check_redis_error_failopen():
 
     with patch("security.rate_limiter.settings") as mock_settings:
         mock_settings.redis_url = "redis://localhost"
-        with patch("security.rate_limiter.check_rate_limit", side_effect=ConnectionError("redis down")):
+        with patch(
+            "security.rate_limiter.check_rate_limit", side_effect=ConnectionError("redis down")
+        ):
             await safe_check_rate_limit("1.2.3.4", False)
 
 

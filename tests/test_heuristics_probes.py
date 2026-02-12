@@ -1,25 +1,21 @@
 """Tests for heuristics probe paths — JPEG probe, PNG lossy probe, PNG by-complexity."""
 
 import io
-import subprocess
-
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
-    Prediction,
-    predict_reduction,
-    _predict_png,
-    _predict_jpeg,
+    _predict_bmp,
     _predict_gif,
+    _predict_jpeg,
+    _predict_metadata_only,
+    _predict_png,
     _predict_svg,
     _predict_svgz,
     _predict_tiff,
-    _predict_bmp,
-    _predict_metadata_only,
+    predict_reduction,
 )
 from schemas import OptimizationConfig
 from utils.format_detect import ImageFormat
@@ -48,15 +44,18 @@ def test_jpeg_probe_small_file():
     data = buf.getvalue()
 
     info = _make_info(
-        ImageFormat.JPEG, width=32, height=32,
-        file_size=len(data), estimated_quality=85,
+        ImageFormat.JPEG,
+        width=32,
+        height=32,
+        file_size=len(data),
+        estimated_quality=85,
         raw_data=data,
     )
 
     # Mock subprocess to simulate cjpeg/jpegtran
     mock_result = MagicMock()
     mock_result.returncode = 0
-    mock_result.stdout = data[:int(len(data) * 0.6)]
+    mock_result.stdout = data[: int(len(data) * 0.6)]
 
     with patch("estimation.heuristics.subprocess.run", return_value=mock_result):
         result = _predict_jpeg(info, OptimizationConfig(quality=60))
@@ -72,8 +71,11 @@ def test_jpeg_probe_failure():
     data = buf.getvalue()
 
     info = _make_info(
-        ImageFormat.JPEG, width=32, height=32,
-        file_size=len(data), estimated_quality=85,
+        ImageFormat.JPEG,
+        width=32,
+        height=32,
+        file_size=len(data),
+        estimated_quality=85,
         raw_data=data,
     )
 
@@ -94,19 +96,22 @@ def test_png_lossy_probe_small_file():
     data = buf.getvalue()
 
     info = _make_info(
-        ImageFormat.PNG, width=16, height=16,
-        file_size=len(data), raw_data=data,
+        ImageFormat.PNG,
+        width=16,
+        height=16,
+        file_size=len(data),
+        raw_data=data,
     )
 
     mock_pngquant = MagicMock()
     mock_pngquant.returncode = 0
-    mock_pngquant.stdout = data[:int(len(data) * 0.5)]
+    mock_pngquant.stdout = data[: int(len(data) * 0.5)]
 
     def mock_subprocess_run(cmd, **kwargs):
         return mock_pngquant
 
     mock_oxipng = MagicMock()
-    mock_oxipng.optimize_from_memory = lambda d, level=2: d[:int(len(d) * 0.9)]
+    mock_oxipng.optimize_from_memory = lambda d, level=2: d[: int(len(d) * 0.9)]
 
     with patch("estimation.heuristics.subprocess.run", side_effect=mock_subprocess_run):
         with patch.dict("sys.modules", {"oxipng": mock_oxipng}):
@@ -122,8 +127,11 @@ def test_png_lossy_probe_pngquant_fails():
     data = buf.getvalue()
 
     info = _make_info(
-        ImageFormat.PNG, width=16, height=16,
-        file_size=len(data), raw_data=data,
+        ImageFormat.PNG,
+        width=16,
+        height=16,
+        file_size=len(data),
+        raw_data=data,
     )
 
     mock_result = MagicMock()
@@ -131,7 +139,7 @@ def test_png_lossy_probe_pngquant_fails():
     mock_result.stdout = b""
 
     mock_oxipng = MagicMock()
-    mock_oxipng.optimize_from_memory = lambda d, level=2: d[:int(len(d) * 0.9)]
+    mock_oxipng.optimize_from_memory = lambda d, level=2: d[: int(len(d) * 0.9)]
 
     with patch("estimation.heuristics.subprocess.run", return_value=mock_result):
         with patch.dict("sys.modules", {"oxipng": mock_oxipng}):
@@ -261,7 +269,9 @@ def test_gif_high_bpp_with_lossy():
 
 def test_svg_prediction_with_bloat():
     """SVG with high bloat ratio."""
-    info = _make_info(ImageFormat.SVG, file_size=5000, svg_bloat_ratio=0.3, has_metadata_chunks=True)
+    info = _make_info(
+        ImageFormat.SVG, file_size=5000, svg_bloat_ratio=0.3, has_metadata_chunks=True
+    )
     result = _predict_svg(info, OptimizationConfig(quality=60))
     assert result.reduction_percent > 10
 
@@ -321,8 +331,7 @@ def test_bmp_palette_quality():
 
 def test_bmp_rle8_quality():
     """BMP with quality < 50: RLE8 prediction."""
-    info = _make_info(ImageFormat.BMP, file_size=1440054, color_type="rgb",
-                      flat_pixel_ratio=0.9)
+    info = _make_info(ImageFormat.BMP, file_size=1440054, color_type="rgb", flat_pixel_ratio=0.9)
     result = _predict_bmp(info, OptimizationConfig(quality=40))
     assert result.reduction_percent > 50
     assert result.method == "bmp-rle8"
@@ -369,10 +378,12 @@ def test_heic_prediction():
 def test_max_reduction_jpeg_screenshot():
     """JPEG screenshot (high flat ratio) with max_reduction: jpegtran wins."""
     info = _make_info(
-        ImageFormat.JPEG, file_size=50000,
+        ImageFormat.JPEG,
+        file_size=50000,
         estimated_quality=95,
         flat_pixel_ratio=0.9,
-        width=1920, height=1080,
+        width=1920,
+        height=1080,
     )
     config = OptimizationConfig(quality=60, max_reduction=5.0)
     result = predict_reduction(info, ImageFormat.JPEG, config)
@@ -383,7 +394,8 @@ def test_max_reduction_jpeg_screenshot():
 def test_max_reduction_jpeg_high_quality():
     """JPEG with high source quality (>90) and max_reduction: exponential jpegtran bonus."""
     info = _make_info(
-        ImageFormat.JPEG, file_size=50000,
+        ImageFormat.JPEG,
+        file_size=50000,
         estimated_quality=98,
     )
     config = OptimizationConfig(quality=80, max_reduction=5.0)

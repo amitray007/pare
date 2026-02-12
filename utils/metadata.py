@@ -1,7 +1,7 @@
 import io
 import struct
 
-from PIL import Image, ExifTags
+from PIL import Image
 
 from utils.format_detect import ImageFormat
 
@@ -65,7 +65,6 @@ def _strip_jpeg_metadata(
 
     # Build minimal EXIF with only orientation
     if orientation is not None:
-        from PIL.ExifTags import IFD
         exif = Image.Exif()
         exif[_ORIENTATION_TAG] = orientation
         save_kwargs["exif"] = exif.tobytes()
