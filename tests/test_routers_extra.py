@@ -2,7 +2,7 @@
 
 import io
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -161,27 +161,30 @@ def test_optimize_file_too_large(client):
 
 def test_optimize_with_storage_config(client):
     """POST /optimize with storage config returns JSON response."""
-    mock_storage_result = MagicMock()
-    mock_storage_result.provider = "gcs"
-    mock_storage_result.url = "gs://bucket/path"
-    mock_storage_result.public_url = None
+    from schemas import StorageResult
 
-    with patch("routers.optimize.gcs_uploader") as mock_gcs:
-        mock_gcs.upload = AsyncMock(return_value=mock_storage_result)
-        client.post(
-            "/optimize",
-            json={
-                "url": "https://example.com/image.png",
-                "storage": {
-                    "provider": "gcs",
-                    "bucket": "my-bucket",
-                    "path": "output/image.png",
+    data = _make_png_bytes()
+    mock_result = StorageResult(provider="gcs", url="gs://bucket/path", public_url=None)
+
+    with patch("routers.optimize.fetch_image", new=AsyncMock(return_value=data)):
+        with patch("routers.optimize.gcs_uploader") as mock_gcs:
+            mock_gcs.upload = AsyncMock(return_value=mock_result)
+            resp = client.post(
+                "/optimize",
+                json={
+                    "url": "https://example.com/image.png",
+                    "storage": {
+                        "provider": "gcs",
+                        "bucket": "my-bucket",
+                        "path": "output/image.png",
+                    },
                 },
-            },
-            headers={"Content-Type": "application/json"},
-        )
-    # This will fail because fetch_image isn't mocked, let's fix:
-    pass
+                headers={"Content-Type": "application/json"},
+            )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert "storage" in body
 
 
 def test_optimize_json_with_storage(client):

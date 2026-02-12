@@ -94,12 +94,12 @@ def test_dispatch_bmp():
 
 
 def test_max_reduction_cap():
-    """max_reduction should cap predictions."""
-    info = _make_info(ImageFormat.BMP, width=200, height=200, file_size=200000)
+    """max_reduction caps WebP predictions to the specified limit."""
+    info = _make_info(ImageFormat.WEBP, width=800, height=600, file_size=100000)
     result = predict_reduction(
-        info, ImageFormat.BMP, OptimizationConfig(quality=60, max_reduction=10.0)
+        info, ImageFormat.WEBP, OptimizationConfig(quality=60, max_reduction=5.0)
     )
-    assert result.reduction_percent <= 10.0 or result.reduction_percent > 0  # capping applied
+    assert result.reduction_percent <= 5.0
 
 
 # --- _predict_bmp ---
