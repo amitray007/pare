@@ -162,19 +162,23 @@ jobs:
           module_table = "\n".join(module_rows)
 
           # --- Build comment body ---
-          body = f"""<!-- coverage-report -->
-## {test_badge} Test & Coverage Report
-
-**Status:** {test_status} | **Tests:** {passed} passed, {failed} failed, {errors} errors ({total_tests} total)
-
-### {badge} Overall Coverage: {total_pct:.1f}%
-
-| Module | Statements | Covered | Missing | Coverage |
-|--------|-----------|---------|---------|----------|
-{module_table}
-
-<sub>Report generated at {timestamp} from commit {sha_short}</sub>
-"""
+          # NOTE: must not use unindented multi-line f-strings here, as YAML
+          # block scalars treat lines with less indentation as end-of-block.
+          lines = [
+              "<!-- coverage-report -->",
+              f"## {test_badge} Test & Coverage Report",
+              "",
+              f"**Status:** {test_status} | **Tests:** {passed} passed, {failed} failed, {errors} errors ({total_tests} total)",
+              "",
+              f"### {badge} Overall Coverage: {total_pct:.1f}%",
+              "",
+              "| Module | Statements | Covered | Missing | Coverage |",
+              "|--------|-----------|---------|---------|----------|",
+              module_table,
+              "",
+              f"<sub>Report generated at {timestamp} from commit {sha_short}</sub>",
+          ]
+          body = "\n".join(lines)
 
           # Write to GITHUB_OUTPUT using a delimiter for multiline values
           with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
