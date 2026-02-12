@@ -1,6 +1,5 @@
 """Extra heuristics tests — PNG, JPEG, APNG, WebP prediction paths."""
 
-
 import pytest
 
 from estimation.header_analysis import HeaderInfo

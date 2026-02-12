@@ -26,13 +26,13 @@ class HeaderInfo:
     unique_color_ratio: Optional[float] = None  # PNG non-palette: unique colors / total pixels
     png_quantize_ratio: Optional[float] = None  # PNG: quantized_size / original_size (thumbnail)
     oxipng_probe_ratio: Optional[float] = None  # PNG: oxipng_size / pillow_size (center crop)
-    png_pngquant_probe_ratio: Optional[
-        float
-    ] = None  # PNG: pngquant+oxipng / original (actual file)
+    png_pngquant_probe_ratio: Optional[float] = (
+        None  # PNG: pngquant+oxipng / original (actual file)
+    )
     svg_bloat_ratio: Optional[float] = None  # SVG: removable bytes / total bytes
-    flat_pixel_ratio: Optional[
-        float
-    ] = None  # Fraction of adjacent pixel pairs with diff < threshold
+    flat_pixel_ratio: Optional[float] = (
+        None  # Fraction of adjacent pixel pairs with diff < threshold
+    )
     frame_count: int = 1  # 1 for static, >1 for animated
     file_size: int = 0
     raw_data: Optional[bytes] = None  # Raw file bytes for small files (< 10KB), used for probes
