@@ -18,9 +18,9 @@ class PngOptimizer(BaseOptimizer):
     4. pngquant exit code 99 (quality threshold not met) → fallback to oxipng on original
 
     Quality controls aggressiveness:
-    - quality < 50:  128 max colors, floor=1 (aggressive, always succeeds)
-    - quality < 70:  256 max colors, floor=1 (moderate, always succeeds)
-    - quality >= 70: lossless only (png_lossy=False at this preset)
+    - quality < 50:  64 max colors, floor=1, speed=1, oxipng level=6 (aggressive)
+    - quality < 70:  256 max colors, floor=1, speed=4, oxipng level=4 (moderate)
+    - quality >= 70: lossless only, oxipng level=2 (gentle)
     """
 
     format = ImageFormat.PNG
@@ -39,27 +39,37 @@ class PngOptimizer(BaseOptimizer):
         else:
             data_clean = data
 
+        # Quality-dependent oxipng level: higher = slower but better compression
+        if config.quality < 50:
+            oxipng_level = 6
+        elif config.quality < 70:
+            oxipng_level = 4
+        else:
+            oxipng_level = 2
+
         # APNG or lossless-only: skip pngquant
         if animated or not config.png_lossy:
-            optimized = await asyncio.to_thread(self._run_oxipng, data_clean)
+            optimized = await asyncio.to_thread(self._run_oxipng, data_clean, oxipng_level)
             method = "oxipng"
             return self._build_result(data, optimized, method)
 
         # Quality-dependent pngquant settings
         if config.quality < 50:
-            max_colors = 128
+            max_colors = 64
+            speed = 1  # slowest, best palette selection
         else:
             max_colors = 256
+            speed = 4  # default balanced
 
         # Lossy path: run pngquant and oxipng-baseline concurrently
         (pngquant_result, success), oxipng_only = await asyncio.gather(
-            self._run_pngquant(data_clean, config.quality, max_colors),
-            asyncio.to_thread(self._run_oxipng, data_clean),
+            self._run_pngquant(data_clean, config.quality, max_colors, speed),
+            asyncio.to_thread(self._run_oxipng, data_clean, oxipng_level),
         )
 
         if success and pngquant_result:
             # Squeeze extra bytes from the lossy result
-            lossy_optimized = await asyncio.to_thread(self._run_oxipng, pngquant_result)
+            lossy_optimized = await asyncio.to_thread(self._run_oxipng, pngquant_result, oxipng_level)
             # Pick the smaller of lossy and lossless paths — pngquant can
             # produce a larger file when dithering inflates palette PNGs.
             use_lossy = len(lossy_optimized) <= len(oxipng_only)
@@ -78,12 +88,13 @@ class PngOptimizer(BaseOptimizer):
         return self._build_result(data, optimized, method)
 
     async def _run_pngquant(
-        self, data: bytes, quality: int, max_colors: int = 256,
+        self, data: bytes, quality: int, max_colors: int = 256, speed: int = 4,
     ) -> tuple[bytes | None, bool]:
         """Run pngquant with quality-dependent settings.
 
         Uses floor=1 so pngquant always succeeds (never exit 99).
         Max colors varies by quality: 128 for aggressive, 256 for moderate.
+        Speed: 1=slowest/best palette, 4=default, 11=fastest/roughest.
 
         Returns:
             (output_bytes, success). success=False when exit code 99
@@ -93,6 +104,7 @@ class PngOptimizer(BaseOptimizer):
             "pngquant",
             str(max_colors),
             "--quality", f"1-{quality}",
+            "--speed", str(speed),
             "-", "--output", "-",
         ]
 
@@ -105,8 +117,11 @@ class PngOptimizer(BaseOptimizer):
 
         return stdout, True
 
-    def _run_oxipng(self, data: bytes) -> bytes:
-        """Run oxipng in-process via pyoxipng library (no subprocess)."""
+    def _run_oxipng(self, data: bytes, level: int = 2) -> bytes:
+        """Run oxipng in-process via pyoxipng library (no subprocess).
+
+        Level: 0=fastest/least compression, 6=slowest/best compression.
+        """
         import oxipng
 
-        return oxipng.optimize_from_memory(data)
+        return oxipng.optimize_from_memory(data, level=level)
