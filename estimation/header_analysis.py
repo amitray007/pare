@@ -43,7 +43,7 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
     info = HeaderInfo(format=fmt, file_size=len(data))
 
     # Store raw data for small files so heuristics can run quality-dependent probes
-    if len(data) < 10000:
+    if len(data) < 12000:
         info.raw_data = data
 
     if fmt in (ImageFormat.SVG, ImageFormat.SVGZ):

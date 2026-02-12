@@ -113,6 +113,24 @@ def _predict_png(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
             confidence="medium",
         )
 
+    # Exact probe for small files: run pngquant + oxipng with the actual
+    # optimizer settings for near-zero estimation error. Mirrors the JPEG
+    # probe pattern. Only for quality < 70 (lossy presets) where the
+    # generic quality-0-100 probe overestimates.
+    if info.raw_data is not None and config.quality < 70:
+        probe_result = _png_lossy_probe(info.raw_data, config.quality)
+        if probe_result is not None:
+            reduction = max(0.0, min(95.0, probe_result))
+            potential = "high" if reduction >= 40 else ("medium" if reduction >= 15 else "low")
+            return Prediction(
+                estimated_size=int(info.file_size * (1 - reduction / 100)),
+                reduction_percent=round(reduction, 1),
+                potential=potential,
+                method="pngquant+oxipng probe",
+                already_optimized=reduction < 3.0,
+                confidence="high",
+            )
+
     # Lossy path: pngquant + oxipng
     if info.is_palette_mode:
         if info.color_count and info.color_count < 16:
@@ -233,8 +251,8 @@ def _predict_png_by_complexity(
             lossy_reduction = 0.0
         elif is_photo:
             # Photos: pngquant with floor=1 always succeeds. 256 colors
-            # on photo content gives ~66%, 64 colors ~75%.
-            lossy_reduction = 66.0
+            # on photo content gives ~68% (calibrated across sizes).
+            lossy_reduction = 68.0
         elif cr is not None and cr < 0.005:
             lossy_reduction = 90.0
         elif cr is not None and cr < 0.20:
@@ -242,12 +260,13 @@ def _predict_png_by_complexity(
         elif qpr is not None and qpr < 0.50:
             lossy_reduction = 55.0
 
-    # 64-color bonus: quality < 50 uses far fewer colors → ~8% more compression
+    # 64-color bonus: quality < 50 uses far fewer colors → ~10% more compression
     # on content with many unique colors (photos, complex graphics).
+    # Calibrated: HIGH (64 colors) vs MEDIUM (256 colors) diff is ~10pp on photos.
     # Files < 1KB excluded: too few pixels for color count to matter.
     if config.quality < 50 and lossy_reduction > 0 and info.file_size > 1000:
         if is_photo or (cr is not None and cr > 0.20):
-            lossy_reduction = min(95.0, lossy_reduction + 8.0)
+            lossy_reduction = min(95.0, lossy_reduction + 10.0)
 
     # Pick the better path (matches optimizer: picks smallest output)
     if lossy_reduction > lossless_reduction:
@@ -386,7 +405,7 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     # Small-file probe: run actual mozjpeg + jpegtran on the file for an
     # exact measurement. The heuristic model is calibrated for normal-sized
     # files and underperforms on tiny files where fixed overhead dominates.
-    if info.raw_data is not None and info.file_size < 10000:
+    if info.raw_data is not None and info.file_size < 12000:
         probe_reduction = _jpeg_probe(info.raw_data, config.quality)
         if probe_reduction is not None:
             reduction = probe_reduction
@@ -402,7 +421,7 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         potential=potential,
         method=method,
         already_optimized=already_optimized,
-        confidence="high" if info.raw_data is not None and info.file_size < 10000 else "medium",
+        confidence="high" if info.raw_data is not None and info.file_size < 12000 else "medium",
     )
 
 
@@ -441,6 +460,50 @@ def _jpeg_probe(data: bytes, target_quality: int) -> Optional[float]:
         # Optimizer picks smallest (matching actual optimizer behavior)
         best_size = min(moz_size, jt_size, len(data))
         return (1 - best_size / len(data)) * 100
+    except Exception:
+        return None
+
+
+def _png_lossy_probe(data: bytes, quality: int) -> Optional[float]:
+    """Run pngquant + oxipng matching optimizer settings for exact estimate.
+
+    Mirrors the optimizer pipeline: runs both lossy (pngquant + oxipng) and
+    lossless (oxipng only) paths at quality-dependent settings, picks the
+    smaller result. Only called for small files (< 10KB) where raw_data
+    is available and quality < 70 (lossy presets).
+
+    Returns reduction percentage (0-100), or None on failure.
+    """
+    import oxipng as _oxipng
+
+    if quality < 50:
+        max_colors = 64
+        speed = 1
+        level = 6
+    else:
+        max_colors = 256
+        speed = 4
+        level = 4
+
+    try:
+        # Lossless path: oxipng at quality-dependent level
+        lossless = _oxipng.optimize_from_memory(data, level=level)
+
+        # Lossy path: pngquant + oxipng
+        result = subprocess.run(
+            ["pngquant", str(max_colors), "--quality", f"1-{quality}",
+             "--speed", str(speed), "-", "--output", "-"],
+            input=data, capture_output=True, timeout=5,
+        )
+
+        if result.returncode == 0 and result.stdout:
+            lossy = _oxipng.optimize_from_memory(result.stdout, level=level)
+            best = min(len(lossy), len(lossless), len(data))
+        else:
+            # pngquant failed (exit 99 or error) — lossless only
+            best = min(len(lossless), len(data))
+
+        return (1 - best / len(data)) * 100
     except Exception:
         return None
 
