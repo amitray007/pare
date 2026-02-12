@@ -1,0 +1,210 @@
+name: Tests & Coverage
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pngquant libjpeg-dev gifsicle
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio
+
+      - name: Run tests with coverage
+        id: tests
+        run: |
+          set -o pipefail
+
+          python -m pytest tests/ \
+            --cov=optimizers \
+            --cov=estimation \
+            --cov=routers \
+            --cov=security \
+            --cov=storage \
+            --cov=utils \
+            --cov=config \
+            --cov=schemas \
+            --cov=exceptions \
+            --cov-report=term-missing \
+            --cov-report=json:coverage.json \
+            -q 2>&1 | tee test_output.txt
+
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Parse test results and coverage
+        id: parse
+        if: always() && steps.tests.outcome != 'skipped'
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          import re
+          from datetime import datetime, timezone
+
+          # --- Parse test output ---
+          passed = 0
+          failed = 0
+          errors = 0
+          total_tests = 0
+
+          try:
+              with open("test_output.txt", "r") as f:
+                  test_output = f.read()
+
+              # pytest -q summary line, e.g. "42 passed", "3 failed, 39 passed"
+              # or "42 passed, 1 warning"
+              match_passed = re.search(r"(\d+) passed", test_output)
+              match_failed = re.search(r"(\d+) failed", test_output)
+              match_errors = re.search(r"(\d+) error", test_output)
+
+              if match_passed:
+                  passed = int(match_passed.group(1))
+              if match_failed:
+                  failed = int(match_failed.group(1))
+              if match_errors:
+                  errors = int(match_errors.group(1))
+
+              total_tests = passed + failed + errors
+          except FileNotFoundError:
+              test_output = "No test output captured."
+
+          # --- Parse coverage JSON ---
+          total_pct = 0.0
+          module_rows = []
+
+          try:
+              with open("coverage.json", "r") as f:
+                  cov = json.load(f)
+
+              total_pct = cov.get("totals", {}).get("percent_covered", 0.0)
+
+              # Build per-module summary
+              modules = {}
+              for filepath, data in cov.get("files", {}).items():
+                  # Extract top-level module name (e.g. "optimizers" from "optimizers/foo.py")
+                  parts = filepath.replace("\\", "/").split("/")
+                  module = parts[0] if len(parts) > 1 else filepath
+                  if module not in modules:
+                      modules[module] = {
+                          "num_statements": 0,
+                          "covered_lines": 0,
+                          "missing_lines": 0,
+                      }
+                  summary = data.get("summary", {})
+                  modules[module]["num_statements"] += summary.get("num_statements", 0)
+                  modules[module]["covered_lines"] += summary.get("covered_lines", 0)
+                  modules[module]["missing_lines"] += summary.get("missing_lines", 0)
+
+              for mod_name in sorted(modules.keys()):
+                  info = modules[mod_name]
+                  stmts = info["num_statements"]
+                  covered = info["covered_lines"]
+                  missing = info["missing_lines"]
+                  pct = (covered / stmts * 100) if stmts > 0 else 0.0
+                  module_rows.append(f"| `{mod_name}` | {stmts} | {covered} | {missing} | {pct:.1f}% |")
+          except (FileNotFoundError, json.JSONDecodeError, KeyError):
+              module_rows.append("| _No coverage data_ | - | - | - | - |")
+
+          # --- Determine badge ---
+          if total_pct >= 90:
+              badge = "🟢"
+          elif total_pct >= 70:
+              badge = "🟡"
+          else:
+              badge = "🔴"
+
+          # --- Test status ---
+          if failed > 0 or errors > 0:
+              test_badge = "❌"
+              test_status = "FAIL"
+          else:
+              test_badge = "✅"
+              test_status = "PASS"
+
+          timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+          sha_short = os.environ.get("GITHUB_SHA_SHORT", "unknown")[:7]
+
+          module_table = "\n".join(module_rows)
+
+          # --- Build comment body ---
+          body = f"""<!-- coverage-report -->
+## {test_badge} Test & Coverage Report
+
+**Status:** {test_status} | **Tests:** {passed} passed, {failed} failed, {errors} errors ({total_tests} total)
+
+### {badge} Overall Coverage: {total_pct:.1f}%
+
+| Module | Statements | Covered | Missing | Coverage |
+|--------|-----------|---------|---------|----------|
+{module_table}
+
+<sub>Report generated at {timestamp} from commit {sha_short}</sub>
+"""
+
+          # Write to GITHUB_OUTPUT using a delimiter for multiline values
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              gh_out.write(f"total_pct={total_pct:.1f}\n")
+              gh_out.write(f"test_status={test_status}\n")
+              gh_out.write("comment_body<<GHEOF\n")
+              gh_out.write(body)
+              gh_out.write("\nGHEOF\n")
+          PYEOF
+        env:
+          GITHUB_SHA_SHORT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Find existing coverage comment
+        if: github.event_name == 'pull_request' && always() && steps.parse.outcome == 'success'
+        uses: peter-evans/find-comment@v3
+        id: find_comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: "github-actions[bot]"
+          body-includes: "<!-- coverage-report -->"
+
+      - name: Create or update coverage comment
+        if: github.event_name == 'pull_request' && always() && steps.parse.outcome == 'success'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find_comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: ${{ steps.parse.outputs.comment_body }}
+          edit-mode: replace
+
+      - name: Fail if tests failed
+        if: always() && steps.tests.outputs.exit_code != '0'
+        run: exit 1
