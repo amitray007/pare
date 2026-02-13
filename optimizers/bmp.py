@@ -25,9 +25,7 @@ class BmpOptimizer(BaseOptimizer):
         best, best_method = await asyncio.to_thread(self._optimize_sync, data, config)
         return self._build_result(data, best, best_method)
 
-    def _optimize_sync(
-        self, data: bytes, config: OptimizationConfig
-    ) -> tuple[bytes, str]:
+    def _optimize_sync(self, data: bytes, config: OptimizationConfig) -> tuple[bytes, str]:
         """CPU-bound Pillow work — runs in a thread to avoid blocking the event loop."""
         img = Image.open(io.BytesIO(data))
 

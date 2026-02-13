@@ -39,12 +39,14 @@ class TiffOptimizer(BaseOptimizer):
         if config.quality < 70 and img.mode in ("RGB", "L"):
             methods.append("tiff_jpeg")
 
-        results = await asyncio.gather(*[
-            asyncio.to_thread(
-                self._try_compression, img, compression, config, exif_bytes, icc_profile
-            )
-            for compression in methods
-        ])
+        results = await asyncio.gather(
+            *[
+                asyncio.to_thread(
+                    self._try_compression, img, compression, config, exif_bytes, icc_profile
+                )
+                for compression in methods
+            ]
+        )
 
         best, best_method = data, "none"
         for candidate, method in results:

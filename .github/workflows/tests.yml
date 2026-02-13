@@ -44,6 +44,7 @@ jobs:
       - name: Run tests with coverage
         id: tests
         run: |
+          set +e
           set -o pipefail
 
           python -m pytest tests/ \
@@ -59,8 +60,10 @@ jobs:
             --cov-report=term-missing \
             --cov-report=json:coverage.json \
             -q 2>&1 | tee test_output.txt
+          test_exit=${PIPESTATUS[0]}
 
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$test_exit" >> "$GITHUB_OUTPUT"
+          exit $test_exit
         continue-on-error: true
 
       - name: Parse test results and coverage
@@ -207,5 +210,5 @@ jobs:
           edit-mode: replace
 
       - name: Fail if tests failed
-        if: always() && steps.tests.outputs.exit_code != '0'
+        if: always() && steps.tests.outcome == 'failure'
         run: exit 1

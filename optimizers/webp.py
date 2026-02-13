@@ -28,9 +28,7 @@ class WebpOptimizer(BaseOptimizer):
         pillow_task = asyncio.to_thread(self._pillow_optimize, data, config.quality)
         cwebp_task = self._cwebp_fallback(data, config.quality)
 
-        pillow_result, cwebp_result = await asyncio.gather(
-            pillow_task, cwebp_task
-        )
+        pillow_result, cwebp_result = await asyncio.gather(pillow_task, cwebp_task)
 
         best = pillow_result
         method = "pillow"
@@ -42,9 +40,7 @@ class WebpOptimizer(BaseOptimizer):
         if config.max_reduction is not None:
             reduction = (1 - len(best) / len(data)) * 100
             if reduction > config.max_reduction:
-                capped = await asyncio.to_thread(
-                    self._find_capped_quality, data, config
-                )
+                capped = await asyncio.to_thread(self._find_capped_quality, data, config)
                 if capped is not None:
                     best = capped
                     method = "pillow"
