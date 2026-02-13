@@ -3,7 +3,7 @@
 import gzip
 import io
 import shutil
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
@@ -389,3 +389,139 @@ async def test_tiff_rgba():
     result = await opt.optimize(data, OptimizationConfig(quality=60))
     assert result.success
     assert result.method != "tiff_jpeg"
+
+
+# --- HEIC _reencode coverage ---
+
+
+@pytest.mark.asyncio
+async def test_heic_reencode():
+    """Cover HeicOptimizer._reencode."""
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+
+    opt = HeicOptimizer()
+
+    img = Image.new("RGB", (64, 64), (100, 150, 200))
+
+    mock_heif_file = MagicMock()
+    mock_heif_file.to_pillow.return_value = img
+
+    with patch.object(pillow_heif, "open_heif", return_value=mock_heif_file):
+        result = opt._reencode(b"\x00" * 100, quality=60)
+        assert isinstance(result, bytes)
+        assert len(result) > 0
+
+
+@pytest.mark.asyncio
+async def test_heic_reencode_with_icc():
+    """Cover HeicOptimizer._reencode ICC profile preservation."""
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+
+    opt = HeicOptimizer()
+
+    img = Image.new("RGB", (64, 64), (100, 150, 200))
+    img.info["icc_profile"] = b"\x00" * 100
+
+    mock_heif_file = MagicMock()
+    mock_heif_file.to_pillow.return_value = img
+
+    with patch.object(pillow_heif, "open_heif", return_value=mock_heif_file):
+        result = opt._reencode(b"\x00" * 100, quality=40)
+        assert isinstance(result, bytes)
+
+
+# --- AVIF additional coverage ---
+
+
+@pytest.mark.asyncio
+async def test_avif_strip_returns_original_when_bigger():
+    """Cover AvifOptimizer._strip_metadata returning original."""
+    opt = AvifOptimizer()
+
+    original_data = b"\x00" * 200
+
+    with patch("optimizers.avif.Image.open") as mock_open:
+        mock_img = MagicMock(spec=Image.Image)
+        mock_img.info = {}
+        mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 500))
+        mock_open.return_value = mock_img
+
+        mock_avif = MagicMock()
+        with patch.dict("sys.modules", {"pillow_avif": mock_avif}):
+            result = opt._strip_metadata(original_data)
+            assert result == original_data
+
+
+@pytest.mark.asyncio
+async def test_avif_reencode_with_icc():
+    """Cover AvifOptimizer._reencode ICC profile line."""
+    opt = AvifOptimizer()
+
+    with patch("optimizers.avif.Image.open") as mock_open:
+        mock_img = MagicMock(spec=Image.Image)
+        mock_img.info = {"icc_profile": b"\x00" * 50}
+        mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 100))
+        mock_open.return_value = mock_img
+
+        mock_avif = MagicMock()
+        with patch.dict("sys.modules", {"pillow_avif": mock_avif}):
+            result = opt._reencode(b"\x00" * 200, quality=60)
+            assert isinstance(result, bytes)
+            call_kwargs = mock_img.save.call_args[1]
+            assert "icc_profile" in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_avif_strip_with_icc():
+    """Cover AvifOptimizer._strip_metadata ICC profile line."""
+    opt = AvifOptimizer()
+
+    with patch("optimizers.avif.Image.open") as mock_open:
+        mock_img = MagicMock(spec=Image.Image)
+        mock_img.info = {"icc_profile": b"\x00" * 50}
+        mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 10))
+        mock_open.return_value = mock_img
+
+        mock_avif = MagicMock()
+        with patch.dict("sys.modules", {"pillow_avif": mock_avif}):
+            result = opt._strip_metadata(b"\x00" * 200)
+            call_kwargs = mock_img.save.call_args[1]
+            assert "icc_profile" in call_kwargs
+
+
+# --- TIFF additional coverage ---
+
+
+@pytest.mark.asyncio
+async def test_tiff_exif_preservation():
+    """Cover TIFF _try_compression with exif and strip_metadata=False."""
+    opt = TiffOptimizer()
+
+    img = Image.new("RGB", (32, 32), (100, 150, 200))
+    buf = io.BytesIO()
+    exif_bytes = b"Exif\x00\x00MM\x00\x2a\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00"
+    img.save(buf, format="TIFF", exif=exif_bytes)
+    data = buf.getvalue()
+
+    config = OptimizationConfig(quality=80, strip_metadata=False)
+    result = await opt.optimize(data, config)
+    assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_tiff_compression_failure():
+    """Cover TIFF _try_compression exception path."""
+    opt = TiffOptimizer()
+
+    img = Image.new("RGBA", (32, 32), (100, 150, 200, 128))
+    buf = io.BytesIO()
+    img.save(buf, format="TIFF")
+    data = buf.getvalue()
+
+    config = OptimizationConfig(quality=40)
+    result = await opt.optimize(data, config)
+    assert result.original_size == len(data)

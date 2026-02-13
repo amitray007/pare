@@ -175,3 +175,21 @@ async def test_get_redis_creates_client():
             assert result is mock_redis
             mock_from_url.assert_called_once()
     rate_limiter._redis = None
+
+
+# --- safe_check_rate_limit burst call ---
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_burst_check():
+    """Cover safe_check_rate_limit calling check_burst_limit."""
+    from security.rate_limiter import safe_check_rate_limit
+
+    with patch("security.rate_limiter.settings") as mock_settings:
+        mock_settings.redis_url = "redis://localhost:6379"
+        with patch("security.rate_limiter.check_rate_limit", new_callable=AsyncMock):
+            with patch(
+                "security.rate_limiter.check_burst_limit", new_callable=AsyncMock
+            ) as mock_bl:
+                await safe_check_rate_limit("1.2.3.4", False)
+                mock_bl.assert_awaited_once_with("1.2.3.4")

@@ -225,3 +225,19 @@ def test_tiff_strip_with_icc():
     )
     img2 = Image.open(io.BytesIO(result))
     assert "icc_profile" in img2.info
+
+
+# --- Truncated PNG metadata ---
+
+
+def test_metadata_strip_truncated_png():
+    """Cover _strip_png_metadata with truncated final chunk."""
+    img = Image.new("RGB", (8, 8), (100, 150, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    data = buf.getvalue()
+
+    truncated = data[:-10]
+    result = strip_metadata_selective(truncated, ImageFormat.PNG)
+    assert isinstance(result, bytes)
+    assert len(result) > 0

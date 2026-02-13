@@ -189,3 +189,45 @@ def test_svg_content_with_whitespace():
 
 def test_svg_content_not_svg():
     assert _is_svg_content(b"<html><body>not svg</body></html>") is False
+
+
+# --- JXL detection ---
+
+
+def test_detect_jxl_bare_codestream():
+    """Cover JXL bare codestream detection."""
+    data = b"\xff\x0a" + b"\x00" * 100
+    assert detect_format(data) == ImageFormat.JXL
+
+
+def test_detect_jxl_isobmff_major():
+    """Cover JXL ISO BMFF major brand detection."""
+    box_size = struct.pack(">I", 20)
+    ftyp = b"ftyp"
+    major_brand = b"jxl "
+    minor_version = b"\x00\x00\x00\x00"
+    data = box_size + ftyp + major_brand + minor_version + b"\x00" * 100
+
+    assert detect_format(data) == ImageFormat.JXL
+
+
+def test_detect_jxl_isobmff_compat():
+    """Cover JXL ISO BMFF compatible brand detection."""
+    box_size = struct.pack(">I", 24)
+    ftyp = b"ftyp"
+    major_brand = b"unkn"
+    minor_version = b"\x00\x00\x00\x00"
+    compat_brand = b"jxl "
+    data = box_size + ftyp + major_brand + minor_version + compat_brand + b"\x00" * 100
+
+    assert detect_format(data) == ImageFormat.JXL
+
+
+def test_is_apng_truncated_chunk():
+    """Cover is_apng with truncated PNG chunk data."""
+    png_sig = b"\x89PNG\r\n\x1a\n"
+    chunk = struct.pack(">I", 1000) + b"IHDR" + b"\x00\x00"
+    data = png_sig + chunk
+
+    result = is_apng(data)
+    assert result is False
