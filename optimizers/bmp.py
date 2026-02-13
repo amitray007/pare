@@ -1,3 +1,4 @@
+import asyncio
 import io
 import struct
 
@@ -21,9 +22,15 @@ class BmpOptimizer(BaseOptimizer):
     format = ImageFormat.BMP
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
+        best, best_method = await asyncio.to_thread(self._optimize_sync, data, config)
+        return self._build_result(data, best, best_method)
+
+    def _optimize_sync(
+        self, data: bytes, config: OptimizationConfig
+    ) -> tuple[bytes, str]:
+        """CPU-bound Pillow work — runs in a thread to avoid blocking the event loop."""
         img = Image.open(io.BytesIO(data))
 
-        # Ensure RGB for base processing (handle RGBA with opaque alpha)
         if img.mode == "RGBA":
             alpha = img.getchannel("A")
             if alpha.getextrema() == (255, 255):
@@ -60,7 +67,7 @@ class BmpOptimizer(BaseOptimizer):
                     best = candidate
                     best_method = "bmp-rle8"
 
-        return self._build_result(data, best, best_method)
+        return best, best_method
 
     @staticmethod
     def _quantize_to_palette(img: Image.Image) -> Image.Image:

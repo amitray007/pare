@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 from optimizers.base import BaseOptimizer
@@ -19,7 +20,7 @@ class HeicOptimizer(BaseOptimizer):
             return self._build_result(data, data, "none")
 
         try:
-            optimized = self._strip_metadata(data)
+            optimized = await asyncio.to_thread(self._strip_metadata, data)
         except Exception:
             return self._build_result(data, data, "none")
 

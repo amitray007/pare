@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 from PIL import Image
@@ -30,21 +31,25 @@ class TiffOptimizer(BaseOptimizer):
         if config.strip_metadata:
             data = strip_metadata_selective(data, ImageFormat.TIFF)
 
+        best, best_method = await asyncio.to_thread(self._optimize_sync, data, config)
+        return self._build_result(data, best, best_method)
+
+    def _optimize_sync(
+        self, data: bytes, config: OptimizationConfig
+    ) -> tuple[bytes, str]:
+        """CPU-bound Pillow work — runs in a thread to avoid blocking the event loop."""
         img = Image.open(io.BytesIO(data))
 
-        # Preserve metadata fields for re-encoding
         exif_bytes = img.info.get("exif")
         icc_profile = img.info.get("icc_profile")
 
         methods = ["tiff_adobe_deflate", "tiff_lzw"]
 
-        # Lossy JPEG-in-TIFF for aggressive/moderate presets.
-        # Only works for RGB/L modes (not RGBA/palette).
         use_lossy = config.quality < 70 and img.mode in ("RGB", "L")
         if use_lossy:
             methods.append("tiff_jpeg")
 
-        best = data  # default: keep original
+        best = data
         best_method = "none"
 
         for compression in methods:
@@ -69,4 +74,4 @@ class TiffOptimizer(BaseOptimizer):
                 best = candidate
                 best_method = compression
 
-        return self._build_result(data, best, best_method)
+        return best, best_method

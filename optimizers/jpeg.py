@@ -22,7 +22,7 @@ class JpegOptimizer(BaseOptimizer):
     format = ImageFormat.JPEG
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        bmp_data = self._decode_to_bmp(data, config.strip_metadata)
+        bmp_data = await asyncio.to_thread(self._decode_to_bmp, data, config.strip_metadata)
 
         # Run mozjpeg and jpegtran concurrently
         mozjpeg_out, jpegtran_out = await asyncio.gather(

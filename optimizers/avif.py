@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 from optimizers.base import BaseOptimizer
@@ -25,7 +26,7 @@ class AvifOptimizer(BaseOptimizer):
             return self._build_result(data, data, "none")
 
         try:
-            optimized = self._strip_metadata(data)
+            optimized = await asyncio.to_thread(self._strip_metadata, data)
         except Exception:
             # If metadata stripping fails, return original unchanged
             return self._build_result(data, data, "none")
