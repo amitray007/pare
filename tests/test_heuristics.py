@@ -3,8 +3,9 @@
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
     Prediction,
+    _predict_avif,
     _predict_bmp,
-    _predict_metadata_only,
+    _predict_heic,
     _predict_tiff,
     predict_reduction,
 )
@@ -66,16 +67,19 @@ def test_dispatch_svgz():
 
 
 def test_dispatch_avif():
-    info = _make_info(ImageFormat.AVIF, file_size=20000, has_exif=True)
-    result = predict_reduction(info, ImageFormat.AVIF, OptimizationConfig())
+    # High bpp (0.87) so re-encoding at q=80 produces savings
+    info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=52000)
+    result = predict_reduction(info, ImageFormat.AVIF, OptimizationConfig(quality=40))
     assert isinstance(result, Prediction)
-    assert result.method == "metadata-strip"
+    assert result.method == "avif-reencode"
 
 
 def test_dispatch_heic():
-    info = _make_info(ImageFormat.HEIC, file_size=20000)
-    result = predict_reduction(info, ImageFormat.HEIC, OptimizationConfig())
+    # High bpp (1.30) so re-encoding produces savings
+    info = _make_info(ImageFormat.HEIC, width=300, height=200, file_size=78000)
+    result = predict_reduction(info, ImageFormat.HEIC, OptimizationConfig(quality=40))
     assert isinstance(result, Prediction)
+    assert result.method == "heic-reencode"
 
 
 def test_dispatch_tiff():
@@ -257,27 +261,69 @@ def test_tiff_compressed_input():
     assert result.confidence == "low"
 
 
-# --- _predict_metadata_only (AVIF/HEIC) ---
+# --- _predict_avif / _predict_heic (bpp-based model) ---
 
 
-def test_metadata_only_with_exif():
-    info = _make_info(ImageFormat.AVIF, file_size=20000, has_exif=True)
-    result = _predict_metadata_only(info, OptimizationConfig())
-    assert result.reduction_percent == 5.0
-    assert not result.already_optimized
+def test_avif_high_bpp_aggressive():
+    """High-quality AVIF (high bpp) at aggressive preset → large reduction."""
+    # 300x200, 52KB → 0.87 bpp (like AVIF q=95)
+    info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=52_000)
+    result = _predict_avif(info, OptimizationConfig(quality=40))
+    assert result.reduction_percent > 70
+    assert result.method == "avif-reencode"
+    assert result.potential == "high"
 
 
-def test_metadata_only_no_metadata():
-    info = _make_info(ImageFormat.AVIF, file_size=20000, has_exif=False, has_icc_profile=False)
-    result = _predict_metadata_only(info, OptimizationConfig())
+def test_avif_low_bpp_aggressive():
+    """Already-compressed AVIF (low bpp) at aggressive → no reduction."""
+    # 300x200, 12KB → 0.20 bpp (below target_bpp*1.05 ≈ 0.22 at q=50)
+    info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=12_000)
+    result = _predict_avif(info, OptimizationConfig(quality=40))
     assert result.reduction_percent == 0.0
-    assert result.already_optimized
+    assert result.method == "none"
 
 
-def test_metadata_only_icc():
-    info = _make_info(ImageFormat.HEIC, file_size=20000, has_icc_profile=True)
-    result = _predict_metadata_only(info, OptimizationConfig())
-    assert result.reduction_percent == 5.0
+def test_avif_medium_bpp_moderate():
+    """Mid-quality AVIF at moderate preset → moderate reduction."""
+    # 300x200, 30KB → 0.50 bpp (like AVIF q=75)
+    info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=30_000)
+    result = _predict_avif(info, OptimizationConfig(quality=60))
+    assert 15 < result.reduction_percent < 30
+    assert result.method == "avif-reencode"
+
+
+def test_avif_no_dimensions_fallback():
+    """No dimensions → uses flat fallback reduction."""
+    info = _make_info(ImageFormat.AVIF, width=0, height=0, file_size=50_000)
+    result = _predict_avif(info, OptimizationConfig(quality=40))
+    assert result.reduction_percent == 40.0
+    assert result.confidence == "low"
+
+
+def test_heic_high_bpp_aggressive():
+    """High-quality HEIC at aggressive preset → large reduction."""
+    # 300x200, 78KB → 1.30 bpp (like HEIC q=95)
+    info = _make_info(ImageFormat.HEIC, width=300, height=200, file_size=78_000)
+    result = _predict_heic(info, OptimizationConfig(quality=40))
+    assert result.reduction_percent > 60
+    assert result.method == "heic-reencode"
+
+
+def test_heic_low_bpp_conservative():
+    """Already-compressed HEIC at conservative preset → no reduction."""
+    # 300x200, 28KB → 0.47 bpp (like HEIC q=50)
+    info = _make_info(ImageFormat.HEIC, width=300, height=200, file_size=28_000)
+    result = _predict_heic(info, OptimizationConfig(quality=80))
+    assert result.reduction_percent == 0.0
+    assert result.method == "none"
+
+
+def test_heic_no_dimensions_fallback():
+    """No dimensions → uses flat fallback reduction."""
+    info = _make_info(ImageFormat.HEIC, width=0, height=0, file_size=50_000)
+    result = _predict_heic(info, OptimizationConfig(quality=60))
+    assert result.reduction_percent == 22.0
+    assert result.confidence == "low"
 
 
 # --- GIF heuristics ---

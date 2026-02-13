@@ -149,6 +149,15 @@ def encode_image(
         if compression:
             save_kwargs["compression"] = compression
         img.convert("RGB").save(buf, **save_kwargs)
+    elif fmt == "avif":
+        import pillow_avif  # noqa: F401
+
+        img.convert("RGB").save(buf, format="AVIF", quality=quality)
+    elif fmt == "heif":
+        import pillow_heif  # noqa: F811
+
+        pillow_heif.register_heif_opener()
+        img.convert("RGB").save(buf, format="HEIF", quality=quality)
     return buf.getvalue()
 
 

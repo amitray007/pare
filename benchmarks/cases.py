@@ -78,6 +78,7 @@ def build_all_cases() -> list[BenchmarkCase]:
     cases.extend(_gif_cases())
     cases.extend(_svg_cases())
     cases.extend(_other_cases())
+    cases.extend(_avif_heic_cases())
     return cases
 
 
@@ -280,5 +281,55 @@ def _other_cases() -> list[BenchmarkCase]:
                     content=cname,
                 )
             )
+
+    return cases
+
+
+AVIF_QUALITIES = [95, 75, 50]
+HEIC_QUALITIES = [95, 75, 50]
+
+
+def _avif_heic_cases() -> list[BenchmarkCase]:
+    """AVIF and HEIC benchmark cases. Skipped if dependencies not available."""
+    sname, w, h = sizes_matching("small-l")[0]
+    cases = []
+
+    # AVIF cases — require pillow-avif-plugin
+    try:
+        import pillow_avif  # noqa: F401
+
+        for q in AVIF_QUALITIES:
+            img = photo_like(w, h)
+            cases.append(
+                BenchmarkCase(
+                    name=f"AVIF photo q={q} {w}x{h}",
+                    data=encode_image(img, "avif", quality=q),
+                    fmt="avif",
+                    category=sname,
+                    content="photo",
+                    quality=q,
+                )
+            )
+    except ImportError:
+        pass
+
+    # HEIC cases — require pillow-heif
+    try:
+        import pillow_heif  # noqa: F401
+
+        for q in HEIC_QUALITIES:
+            img = photo_like(w, h)
+            cases.append(
+                BenchmarkCase(
+                    name=f"HEIC photo q={q} {w}x{h}",
+                    data=encode_image(img, "heif", quality=q),
+                    fmt="heic",
+                    category=sname,
+                    content="photo",
+                    quality=q,
+                )
+            )
+    except ImportError:
+        pass
 
     return cases

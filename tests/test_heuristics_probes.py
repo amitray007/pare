@@ -7,10 +7,11 @@ from PIL import Image
 
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
+    _predict_avif,
     _predict_bmp,
     _predict_gif,
+    _predict_heic,
     _predict_jpeg,
-    _predict_metadata_only,
     _predict_png,
     _predict_svg,
     _predict_svgz,
@@ -356,20 +357,31 @@ def test_bmp_already_24bit():
     assert result.already_optimized
 
 
-# --- Metadata-only prediction (AVIF, HEIC) ---
+# --- AVIF / HEIC prediction ---
 
 
 def test_avif_prediction():
+    # 800x600, 50KB → bpp=0.104, very low → no savings at q=70
     info = _make_info(ImageFormat.AVIF, file_size=50000)
-    result = _predict_metadata_only(info, OptimizationConfig(strip_metadata=True))
-    assert result.reduction_percent >= 0
+    result = _predict_avif(info, OptimizationConfig(quality=60))
+    assert result.reduction_percent == 0.0
+    assert result.method == "none"
+
+
+def test_avif_prediction_high_bpp():
+    # 300x200, 52KB → bpp=0.867, high quality → significant savings
+    info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=52000)
+    result = _predict_avif(info, OptimizationConfig(quality=60))
+    assert result.reduction_percent > 50
+    assert result.method == "avif-reencode"
 
 
 def test_heic_prediction():
+    # 800x600, 50KB → bpp=0.104, very low → no savings at q=90
     info = _make_info(ImageFormat.HEIC, file_size=50000)
-    result = _predict_metadata_only(info, OptimizationConfig(strip_metadata=False))
-    assert result.reduction_percent >= 0
-    assert result.already_optimized
+    result = _predict_heic(info, OptimizationConfig(quality=80))
+    assert result.reduction_percent == 0.0
+    assert result.method == "none"
 
 
 # --- max_reduction cap JPEG screenshot path ---

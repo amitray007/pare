@@ -31,8 +31,8 @@ def predict_reduction(info: HeaderInfo, fmt: ImageFormat, config: OptimizationCo
         ImageFormat.GIF: _predict_gif,
         ImageFormat.SVG: _predict_svg,
         ImageFormat.SVGZ: _predict_svgz,
-        ImageFormat.AVIF: _predict_metadata_only,
-        ImageFormat.HEIC: _predict_metadata_only,
+        ImageFormat.AVIF: _predict_avif,
+        ImageFormat.HEIC: _predict_heic,
         ImageFormat.TIFF: _predict_tiff,
         ImageFormat.BMP: _predict_bmp,
     }
@@ -796,18 +796,96 @@ def _predict_svgz(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     )
 
 
-def _predict_metadata_only(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """AVIF/HEIC — metadata stripping only, minimal savings."""
-    has_metadata = info.has_exif or info.has_icc_profile
-    reduction = 5.0 if has_metadata else 0.0
+def _predict_avif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
+    """AVIF — bpp-based prediction calibrated from benchmark data.
+
+    Uses source bytes-per-pixel vs target bpp at the given quality.
+    Target bpp follows a quadratic curve calibrated from actual libavif output:
+      target_bpp(q) = 0.0001125 * q^2 - 0.0045 * q + 0.154
+    Reduction = max(0, (1 - target_bpp / source_bpp) * 100).
+    """
+    w = info.dimensions.get("width", 0)
+    h = info.dimensions.get("height", 0)
+    pixels = w * h
+
+    avif_quality = max(30, min(90, config.quality + 10))
+
+    if pixels > 0:
+        source_bpp = info.file_size / pixels
+        target_bpp = 0.0001125 * avif_quality**2 - 0.0045 * avif_quality + 0.154
+
+        if source_bpp <= target_bpp * 1.05:
+            reduction = 0.0
+        else:
+            reduction = (1 - target_bpp / source_bpp) * 100
+
+        confidence = "high"
+    else:
+        # Fallback when dimensions unavailable
+        if config.quality < 50:
+            reduction = 40.0
+        elif config.quality < 70:
+            reduction = 25.0
+        else:
+            reduction = 10.0
+        confidence = "low"
+
+    method = "avif-reencode" if reduction > 0 else "none"
+    reduction = max(0.0, min(reduction, 85.0))
+    potential = "high" if reduction >= 30 else ("medium" if reduction >= 15 else "low")
 
     return Prediction(
         estimated_size=int(info.file_size * (1 - reduction / 100)),
         reduction_percent=round(reduction, 1),
-        potential="low",
-        method="metadata-strip",
-        already_optimized=not has_metadata,
-        confidence="low",
+        potential=potential,
+        method=method,
+        already_optimized=reduction < 3,
+        confidence=confidence,
+    )
+
+
+def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
+    """HEIC — bpp-based prediction calibrated from benchmark data.
+
+    Same model as AVIF but HEVC target bpp is higher (less efficient codec):
+      target_bpp(q) = 0.0000875 * q^2 + 0.0065 * q - 0.074
+    """
+    w = info.dimensions.get("width", 0)
+    h = info.dimensions.get("height", 0)
+    pixels = w * h
+
+    heic_quality = max(30, min(90, config.quality + 10))
+
+    if pixels > 0:
+        source_bpp = info.file_size / pixels
+        target_bpp = 0.0000875 * heic_quality**2 + 0.0065 * heic_quality - 0.074
+
+        if source_bpp <= target_bpp * 1.05:
+            reduction = 0.0
+        else:
+            reduction = (1 - target_bpp / source_bpp) * 100
+
+        confidence = "high"
+    else:
+        if config.quality < 50:
+            reduction = 35.0
+        elif config.quality < 70:
+            reduction = 22.0
+        else:
+            reduction = 8.0
+        confidence = "low"
+
+    method = "heic-reencode" if reduction > 0 else "none"
+    reduction = max(0.0, min(reduction, 80.0))
+    potential = "high" if reduction >= 25 else ("medium" if reduction >= 12 else "low")
+
+    return Prediction(
+        estimated_size=int(info.file_size * (1 - reduction / 100)),
+        reduction_percent=round(reduction, 1),
+        potential=potential,
+        method=method,
+        already_optimized=reduction < 5,
+        confidence=confidence,
     )
 
 

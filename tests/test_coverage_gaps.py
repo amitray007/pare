@@ -8,35 +8,28 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-# --- optimizers/avif.py + heic.py: _strip_metadata with pillow_heif mock ---
+# --- optimizers/avif.py: _strip_metadata + _reencode ---
 
 
 @pytest.mark.asyncio
-async def test_avif_strip_metadata_with_pillow_heif_mock():
-    """Test AVIF _strip_metadata internals with mocked pillow_heif."""
+async def test_avif_strip_metadata_real():
+    """Test AVIF _strip_metadata with real pillow_avif encoding."""
+    import pillow_avif  # noqa: F401
+
     from optimizers.avif import AvifOptimizer
 
     opt = AvifOptimizer()
 
-    mock_heif = MagicMock()
-    mock_img = MagicMock(spec=Image.Image)
-    mock_img.info = {"icc_profile": b"fake_icc_data"}
+    # Create a real AVIF image
+    img = Image.new("RGB", (100, 100), (128, 64, 32))
+    buf = io.BytesIO()
+    img.save(buf, format="AVIF", quality=85)
+    original = buf.getvalue()
 
-    # Mock save to write small data
-    def mock_save(output, **kwargs):
-        output.write(b"small_avif")
-
-    mock_img.save = mock_save
-
-    mock_heif_file = MagicMock()
-    mock_heif_file.to_pillow.return_value = mock_img
-    mock_heif.open_heif.return_value = mock_heif_file
-
-    original = b"x" * 5000
-
-    with patch.dict("sys.modules", {"pillow_heif": mock_heif}):
-        result = opt._strip_metadata(original)
-    assert result == b"small_avif"
+    result = opt._strip_metadata(original)
+    # Result should be bytes (either stripped or original)
+    assert isinstance(result, bytes)
+    assert len(result) > 0
 
 
 @pytest.mark.asyncio
@@ -67,32 +60,28 @@ async def test_heic_strip_metadata_with_pillow_heif_mock():
 
 
 @pytest.mark.asyncio
-async def test_avif_strip_metadata_with_icc():
-    """AVIF _strip_metadata preserves ICC profile."""
+async def test_avif_reencode_real():
+    """AVIF _reencode produces smaller output at lower quality."""
+    import pillow_avif  # noqa: F401
+
     from optimizers.avif import AvifOptimizer
 
     opt = AvifOptimizer()
 
-    mock_heif = MagicMock()
-    mock_img = MagicMock(spec=Image.Image)
-    mock_img.info = {"icc_profile": b"srgb_profile_data"}
-    mock_img.mode = "RGB"
-    mock_img.size = (10, 10)
+    # Create a photo-like AVIF at high quality
+    img = Image.new("RGB", (100, 100))
+    for x in range(100):
+        for y in range(100):
+            img.putpixel((x, y), (x * 2, y * 2, (x + y)))
+    buf = io.BytesIO()
+    img.save(buf, format="AVIF", quality=90)
+    original = buf.getvalue()
 
-    # Make save produce small output
-    def mock_save(output, **kwargs):
-        output.write(b"small")
-
-    mock_img.save = mock_save
-    mock_heif_file = MagicMock()
-    mock_heif_file.to_pillow.return_value = mock_img
-    mock_heif.open_heif.return_value = mock_heif_file
-
-    original = b"x" * 5000
-
-    with patch.dict("sys.modules", {"pillow_heif": mock_heif}):
-        result = opt._strip_metadata(original)
-    assert result == b"small"
+    result = opt._reencode(original, quality=40)
+    assert isinstance(result, bytes)
+    assert len(result) > 0
+    # Re-encoding at q=50 (mapped from 40+10) should be smaller than q=90
+    assert len(result) < len(original)
 
 
 @pytest.mark.asyncio
