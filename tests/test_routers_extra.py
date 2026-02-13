@@ -282,7 +282,7 @@ def test_health_missing_python_lib(client):
 
 @pytest.mark.asyncio
 async def test_lifespan_startup_and_shutdown():
-    """Cover main.lifespan: startup tool check + shutdown redis close."""
+    """Cover main.lifespan startup tool check and warning for missing tools."""
     from main import app, lifespan
 
     with patch("routers.health.check_tools", return_value={"pngquant": True, "jpegtran": False}):

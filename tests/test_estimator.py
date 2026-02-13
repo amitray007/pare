@@ -127,5 +127,5 @@ async def test_thumbnail_compress_small_jpeg():
     data = buf.getvalue()
 
     result = await _thumbnail_compress(data, ImageFormat.JPEG, 60)
-    if result is not None:
-        assert 0 < result <= 1.5
+    assert result is not None
+    assert 0 < result <= 1.5
