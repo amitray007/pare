@@ -8,10 +8,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
+try:
+    import pillow_avif  # noqa: F401
+
+    HAS_AVIF = True
+except ImportError:
+    HAS_AVIF = False
+
 # --- optimizers/avif.py: _strip_metadata + _reencode ---
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_AVIF, reason="pillow_avif not installed")
 async def test_avif_strip_metadata_real():
     """Test AVIF _strip_metadata with real pillow_avif encoding."""
     import pillow_avif  # noqa: F401
@@ -60,6 +68,7 @@ async def test_heic_strip_metadata_with_pillow_heif_mock():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_AVIF, reason="pillow_avif not installed")
 async def test_avif_reencode_real():
     """AVIF _reencode produces smaller output at lower quality."""
     import pillow_avif  # noqa: F401
