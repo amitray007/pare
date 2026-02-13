@@ -81,8 +81,8 @@ def sample_jxl():
         buf = io.BytesIO()
         img.save(buf, format="JXL", quality=90)
         return buf.getvalue()
-    except ImportError:
-        pytest.skip("jxlpy not installed")
+    except (ImportError, KeyError):
+        pytest.skip("jxlpy not installed or JXL format not registered")
 
 
 @pytest.fixture

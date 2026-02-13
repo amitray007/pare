@@ -10,8 +10,13 @@ try:
         import pillow_jxl  # noqa: F401
     except ImportError:
         import jxlpy  # noqa: F401
+    # Verify JXL is actually registered as a Pillow format
+    from PIL import Image as _Im
+
+    _buf = io.BytesIO()
+    _Im.new("RGB", (1, 1)).save(_buf, format="JXL")
     HAS_JXL = True
-except ImportError:
+except (ImportError, KeyError, Exception):
     HAS_JXL = False
 
 from PIL import Image
@@ -33,6 +38,7 @@ def _make_jxl(quality=90, size=(100, 100)):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_JXL, reason="JXL not available")
 async def test_jxl_basic_optimization(jxl_optimizer):
     """JXL optimizer produces valid output not larger than input."""
     data = _make_jxl(quality=95)
@@ -44,6 +50,7 @@ async def test_jxl_basic_optimization(jxl_optimizer):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_JXL, reason="JXL not available")
 async def test_jxl_metadata_strip(jxl_optimizer):
     """JXL metadata strip path runs without error."""
     data = _make_jxl(quality=90)
@@ -54,6 +61,7 @@ async def test_jxl_metadata_strip(jxl_optimizer):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_JXL, reason="JXL not available")
 async def test_jxl_quality_tiers(jxl_optimizer):
     """Higher quality (lower aggressiveness) produces larger or equal output."""
     data = _make_jxl(quality=95, size=(200, 200))
@@ -66,6 +74,7 @@ async def test_jxl_quality_tiers(jxl_optimizer):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_JXL, reason="JXL not available")
 async def test_jxl_already_optimized(jxl_optimizer):
     """Low-quality JXL at conservative settings returns original."""
     data = _make_jxl(quality=30, size=(64, 64))

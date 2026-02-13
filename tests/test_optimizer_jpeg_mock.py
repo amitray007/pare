@@ -1,6 +1,7 @@
 """Tests for JPEG optimizer with Pillow encoding path and mocked jpegtran."""
 
 import io
+import shutil
 from unittest.mock import patch
 
 import pytest
@@ -323,6 +324,7 @@ def _jpeg_from_img(img: Image.Image, quality: int = 90) -> bytes:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not shutil.which("jpegtran"), reason="jpegtran not installed")
 async def test_jpeg_optimizer_cmyk_mode():
     """Cover JPEG _decode_image with CMYK mode conversion."""
     opt = JpegOptimizer()
@@ -337,6 +339,7 @@ async def test_jpeg_optimizer_cmyk_mode():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not shutil.which("jpegtran"), reason="jpegtran not installed")
 async def test_jpeg_optimizer_icc_profile_preservation():
     """Cover JPEG _pillow_encode with ICC profile."""
     opt = JpegOptimizer()
@@ -360,6 +363,7 @@ async def test_jpeg_optimizer_icc_profile_preservation():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not shutil.which("jpegtran"), reason="jpegtran not installed")
 async def test_jpeg_optimizer_max_reduction_cap():
     """Cover JPEG _cap_quality binary search and break."""
     opt = JpegOptimizer()
@@ -375,6 +379,7 @@ async def test_jpeg_optimizer_max_reduction_cap():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not shutil.which("jpegtran"), reason="jpegtran not installed")
 async def test_jpeg_optimizer_max_reduction_exceeds_cap():
     """Cover _cap_quality returning None when even q=100 exceeds cap."""
     opt = JpegOptimizer()
