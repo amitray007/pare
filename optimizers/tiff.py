@@ -23,6 +23,8 @@ class TiffOptimizer(BaseOptimizer):
     - quality < 50:  lossy JPEG + lossless, pick smallest (aggressive)
     - quality < 70:  lossy JPEG + lossless, pick smallest (moderate)
     - quality >= 70: lossless only (gentle)
+
+    All compression methods run concurrently via asyncio.gather.
     """
 
     format = ImageFormat.TIFF
@@ -31,47 +33,56 @@ class TiffOptimizer(BaseOptimizer):
         if config.strip_metadata:
             data = strip_metadata_selective(data, ImageFormat.TIFF)
 
-        best, best_method = await asyncio.to_thread(self._optimize_sync, data, config)
-        return self._build_result(data, best, best_method)
-
-    def _optimize_sync(
-        self, data: bytes, config: OptimizationConfig
-    ) -> tuple[bytes, str]:
-        """CPU-bound Pillow work — runs in a thread to avoid blocking the event loop."""
-        img = Image.open(io.BytesIO(data))
-
-        exif_bytes = img.info.get("exif")
-        icc_profile = img.info.get("icc_profile")
+        img, exif_bytes, icc_profile = await asyncio.to_thread(self._decode, data)
 
         methods = ["tiff_adobe_deflate", "tiff_lzw"]
-
-        use_lossy = config.quality < 70 and img.mode in ("RGB", "L")
-        if use_lossy:
+        if config.quality < 70 and img.mode in ("RGB", "L"):
             methods.append("tiff_jpeg")
 
-        best = data
-        best_method = "none"
+        results = await asyncio.gather(*[
+            asyncio.to_thread(
+                self._try_compression, img, compression, config, exif_bytes, icc_profile
+            )
+            for compression in methods
+        ])
 
-        for compression in methods:
-            buf = io.BytesIO()
-            save_kwargs = {"format": "TIFF", "compression": compression}
+        best, best_method = data, "none"
+        for candidate, method in results:
+            if candidate is not None and len(candidate) < len(best):
+                best, best_method = candidate, method
 
-            if compression == "tiff_jpeg":
-                save_kwargs["quality"] = config.quality
+        return self._build_result(data, best, best_method)
 
-            if not config.strip_metadata:
-                if exif_bytes:
-                    save_kwargs["exif"] = exif_bytes
-                if icc_profile:
-                    save_kwargs["icc_profile"] = icc_profile
+    def _decode(self, data: bytes) -> tuple[Image.Image, bytes | None, bytes | None]:
+        """Decode TIFF and extract metadata — runs once, shared across threads."""
+        img = Image.open(io.BytesIO(data))
+        exif_bytes = img.info.get("exif")
+        icc_profile = img.info.get("icc_profile")
+        return img, exif_bytes, icc_profile
 
-            try:
-                img.save(buf, **save_kwargs)
-            except Exception:
-                continue
-            candidate = buf.getvalue()
-            if len(candidate) < len(best):
-                best = candidate
-                best_method = compression
+    def _try_compression(
+        self,
+        img: Image.Image,
+        compression: str,
+        config: OptimizationConfig,
+        exif_bytes: bytes | None,
+        icc_profile: bytes | None,
+    ) -> tuple[bytes | None, str]:
+        """Try a single compression method — returns (bytes, method) or (None, method)."""
+        buf = io.BytesIO()
+        save_kwargs = {"format": "TIFF", "compression": compression}
 
-        return best, best_method
+        if compression == "tiff_jpeg":
+            save_kwargs["quality"] = config.quality
+
+        if not config.strip_metadata:
+            if exif_bytes:
+                save_kwargs["exif"] = exif_bytes
+            if icc_profile:
+                save_kwargs["icc_profile"] = icc_profile
+
+        try:
+            img.save(buf, **save_kwargs)
+        except Exception:
+            return None, compression
+        return buf.getvalue(), compression

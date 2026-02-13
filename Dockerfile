@@ -12,7 +12,7 @@ RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /l
     && mkdir build && cd build \
     && cmake -DCMAKE_INSTALL_PREFIX=/opt/jpegli \
              -DBUILD_TESTING=OFF \
-             -DJPEGXL_ENABLE_TOOLS=OFF \
+             -DJPEGXL_ENABLE_TOOLS=ON \
              -DJPEGXL_ENABLE_DOXYGEN=OFF \
              -DJPEGXL_ENABLE_MANPAGES=OFF \
              -DJPEGXL_ENABLE_BENCHMARK=OFF \
@@ -25,7 +25,7 @@ RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /l
              -DJPEGXL_ENABLE_OPENEXR=OFF \
              -DJPEGXL_FORCE_SYSTEM_HWY=ON \
              .. \
-    && make -j$(nproc) jpegli-static jpegli-libjpeg-shared \
+    && make -j$(nproc) jpegli-static jpegli-libjpeg-shared cjxl djxl \
     && make install
 
 # ---- Stage 1: Build MozJPEG from source ----
@@ -53,6 +53,9 @@ FROM python:3.12-slim
 
 # Copy jpegli libjpeg.so.62 (Pillow picks this up via ldconfig)
 COPY --from=jpegli-builder /opt/jpegli/lib/libjpeg.so.62* /usr/local/lib/
+# Copy JPEG XL CLI tools
+COPY --from=jpegli-builder /opt/jpegli/bin/cjxl /usr/local/bin/cjxl
+COPY --from=jpegli-builder /opt/jpegli/bin/djxl /usr/local/bin/djxl
 RUN ldconfig
 
 # Copy MozJPEG binaries (jpegtran always needed; cjpeg for JPEG_ENCODER=cjpeg fallback)

@@ -35,6 +35,7 @@ def predict_reduction(info: HeaderInfo, fmt: ImageFormat, config: OptimizationCo
         ImageFormat.HEIC: _predict_heic,
         ImageFormat.TIFF: _predict_tiff,
         ImageFormat.BMP: _predict_bmp,
+        ImageFormat.JXL: _predict_jxl,
     }
     predictor = dispatch.get(fmt, _predict_bmp)
     prediction = predictor(info, config)
@@ -975,9 +976,17 @@ def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         reduction = round((1 - expected_8bit / info.file_size) * 100, 1)
 
         if config.quality < 50:
-            # Add conservative RLE bonus (~10%, capped at 20%)
-            rle_bonus = min(10.0, (100.0 - reduction) * 0.2)
-            reduction = round(min(reduction + rle_bonus, 95.0), 1)
+            # RLE8 bonus scaled by content type (flat_pixel_ratio).
+            # Screenshots/flat content gets massive RLE savings (~95%+)
+            # while photo content gets minimal benefit.
+            fpr = info.flat_pixel_ratio
+            if fpr is not None and fpr > 0.75:
+                rle_bonus = min(30.0, (100.0 - reduction) * 0.5)
+            elif fpr is not None and fpr < 0.30:
+                rle_bonus = min(3.0, (100.0 - reduction) * 0.05)
+            else:
+                rle_bonus = min(10.0, (100.0 - reduction) * 0.2)
+            reduction = round(min(reduction + rle_bonus, 99.0), 1)
             method = "bmp-rle8"
         else:
             method = "pillow-bmp-palette"
@@ -1007,5 +1016,52 @@ def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         potential=potential,
         method=method,
         already_optimized=already_optimized,
+        confidence=confidence,
+    )
+
+
+def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
+    """JXL — bpp-based prediction, similar model to AVIF.
+
+    JXL re-encoding: uses source bpp vs target bpp at the given quality.
+    JXL is slightly more efficient than AVIF, so target bpp is ~10% lower.
+    Fallback heuristic when dimensions are unavailable.
+    """
+    w = info.dimensions.get("width", 0)
+    h = info.dimensions.get("height", 0)
+    pixels = w * h
+
+    jxl_quality = max(30, min(95, config.quality + 10))
+
+    if pixels > 0:
+        source_bpp = info.file_size / pixels
+        # JXL target bpp: similar curve to AVIF but ~10% more efficient
+        target_bpp = 0.0001 * jxl_quality**2 - 0.004 * jxl_quality + 0.135
+
+        if source_bpp <= target_bpp * 1.05:
+            reduction = 0.0
+        else:
+            reduction = (1 - target_bpp / source_bpp) * 100
+
+        confidence = "high"
+    else:
+        if config.quality < 50:
+            reduction = 35.0
+        elif config.quality < 70:
+            reduction = 25.0
+        else:
+            reduction = 10.0
+        confidence = "low"
+
+    method = "jxl-reencode" if reduction > 0 else "none"
+    reduction = max(0.0, min(reduction, 85.0))
+    potential = "high" if reduction >= 30 else ("medium" if reduction >= 15 else "low")
+
+    return Prediction(
+        estimated_size=int(info.file_size * (1 - reduction / 100)),
+        reduction_percent=round(reduction, 1),
+        potential=potential,
+        method=method,
+        already_optimized=reduction < 3,
         confidence=confidence,
     )

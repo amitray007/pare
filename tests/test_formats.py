@@ -116,6 +116,16 @@ async def test_format_tiff(sample_tiff):
 
 
 @pytest.mark.asyncio
+async def test_format_jxl(sample_jxl):
+    """JXL optimization via jxlpy re-encoding."""
+    config = OptimizationConfig(quality=60)
+    result = await optimize_image(sample_jxl, config)
+    assert result.success
+    assert result.optimized_size <= result.original_size
+    assert result.format == "jxl"
+
+
+@pytest.mark.asyncio
 async def test_all_formats_never_larger(
     sample_png, sample_jpeg, sample_svg, sample_webp, sample_gif, sample_bmp, sample_tiff, tiny_png
 ):

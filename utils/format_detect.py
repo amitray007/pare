@@ -17,6 +17,7 @@ class ImageFormat(str, Enum):
     HEIC = "heic"
     TIFF = "tiff"
     BMP = "bmp"
+    JXL = "jxl"
 
 
 # MIME type mapping
@@ -32,6 +33,7 @@ MIME_TYPES = {
     ImageFormat.HEIC: "image/heic",
     ImageFormat.TIFF: "image/tiff",
     ImageFormat.BMP: "image/bmp",
+    ImageFormat.JXL: "image/jxl",
 }
 
 
@@ -51,6 +53,10 @@ def detect_format(data: bytes) -> ImageFormat:
     """
     if len(data) < 4:
         raise UnsupportedFormatError("File too small to identify format")
+
+    # JXL bare codestream: \xFF\x0A (must check before JPEG's \xFF\xD8\xFF)
+    if data[:2] == b"\xff\x0a":
+        return ImageFormat.JXL
 
     # PNG: \x89PNG\r\n\x1a\n
     if data[:8] == b"\x89PNG\r\n\x1a\n":
@@ -150,6 +156,10 @@ def _detect_isobmff(data: bytes) -> ImageFormat:
     """
     major_brand = data[8:12]
 
+    # JXL ISOBMFF container
+    if major_brand == b"jxl ":
+        return ImageFormat.JXL
+
     # AVIF brands
     if major_brand in (b"avif", b"avis"):
         return ImageFormat.AVIF
@@ -166,6 +176,8 @@ def _detect_isobmff(data: bytes) -> ImageFormat:
 
     while offset + 4 <= box_end:
         compat_brand = data[offset : offset + 4]
+        if compat_brand == b"jxl ":
+            return ImageFormat.JXL
         if compat_brand in (b"avif", b"avis"):
             return ImageFormat.AVIF
         if compat_brand in (b"heic", b"heix", b"mif1"):

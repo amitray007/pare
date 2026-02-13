@@ -79,6 +79,7 @@ def build_all_cases() -> list[BenchmarkCase]:
     cases.extend(_svg_cases())
     cases.extend(_other_cases())
     cases.extend(_avif_heic_cases())
+    cases.extend(_jxl_cases())
     return cases
 
 
@@ -324,6 +325,35 @@ def _avif_heic_cases() -> list[BenchmarkCase]:
                     name=f"HEIC photo q={q} {w}x{h}",
                     data=encode_image(img, "heif", quality=q),
                     fmt="heic",
+                    category=sname,
+                    content="photo",
+                    quality=q,
+                )
+            )
+    except ImportError:
+        pass
+
+    return cases
+
+
+JXL_QUALITIES = [95, 75, 50]
+
+
+def _jxl_cases() -> list[BenchmarkCase]:
+    """JPEG XL benchmark cases. Skipped if jxlpy not available."""
+    sname, w, h = sizes_matching("small-l")[0]
+    cases = []
+
+    try:
+        import jxlpy  # noqa: F401
+
+        for q in JXL_QUALITIES:
+            img = photo_like(w, h)
+            cases.append(
+                BenchmarkCase(
+                    name=f"JXL photo q={q} {w}x{h}",
+                    data=encode_image(img, "jxl", quality=q),
+                    fmt="jxl",
                     category=sname,
                     content="photo",
                     quality=q,
