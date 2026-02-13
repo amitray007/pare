@@ -345,7 +345,10 @@ def _jxl_cases() -> list[BenchmarkCase]:
     cases = []
 
     try:
-        import jxlpy  # noqa: F401
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            import jxlpy  # noqa: F401
 
         for q in JXL_QUALITIES:
             img = photo_like(w, h)

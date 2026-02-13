@@ -70,7 +70,10 @@ def tiny_png():
 def sample_jxl():
     """Generate a JXL sample in-memory via jxlpy (Pillow plugin)."""
     try:
-        import jxlpy  # noqa: F401 — registers JXL plugin
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            import jxlpy  # noqa: F401
 
         from PIL import Image
 

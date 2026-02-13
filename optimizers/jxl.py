@@ -46,7 +46,10 @@ class JxlOptimizer(BaseOptimizer):
 
     def _strip_metadata(self, data: bytes) -> bytes:
         """Strip metadata from JXL — re-encode losslessly without metadata."""
-        import jxlpy  # noqa: F401 — registers JXL plugin with Pillow
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            import jxlpy  # noqa: F401
 
         img = Image.open(io.BytesIO(data))
         icc_profile = img.info.get("icc_profile")
@@ -65,7 +68,10 @@ class JxlOptimizer(BaseOptimizer):
 
     def _reencode(self, data: bytes, quality: int) -> bytes:
         """Re-encode JXL at target quality."""
-        import jxlpy  # noqa: F401 — registers JXL plugin with Pillow
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            import jxlpy  # noqa: F401
 
         img = Image.open(io.BytesIO(data))
         icc_profile = img.info.get("icc_profile")

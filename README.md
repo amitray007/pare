@@ -255,20 +255,22 @@ Results from 369 test cases across all formats and presets. Quality presets: **H
 
 #### JXL (JPEG XL)
 
-*Requires jxlpy (pillow-jxl-plugin). Tests and benchmarks skip when not installed; fully functional in Docker.*
+*Requires jxlpy or pillow-jxl-plugin. Tests and benchmarks skip when neither is installed; fully functional in Docker.*
 
-| Preset | Expected Reduction | Methods |
-|--------|-------------------|---------|
-| HIGH | ~35% | jxl-reencode |
-| MEDIUM | ~25% | jxl-reencode |
-| LOW | ~10% | jxl-reencode / none |
+| Preset | Avg Reduction | Range | Avg Est. Error | Methods |
+|--------|--------------|-------|----------------|---------|
+| HIGH | 55.0% | 2.2% - 92.2% | 0.9% | jxl-reencode |
+| MEDIUM | 35.8% | 0.0% - 81.1% | 0.9% | jxl-reencode / none |
+| LOW | 8.8% | 0.0% - 26.4% | 0.9% | jxl-reencode / none |
 
 **Special conditions:**
-- Re-encodes JXL at target quality using pillow-jxl-plugin (jxlpy)
+- Re-encodes JXL at target quality using pillow-jxl-plugin or jxlpy
 - Quality mapping: `jxl_quality = max(30, min(95, quality + 10))`
-- Estimation uses bpp-based model (slightly more efficient curve than AVIF)
+- Estimation uses bpp-based model calibrated to encoder output (0.9% avg error)
+- High-quality sources (q=95) see massive reduction (~92% at HIGH) since JXL is very efficient
+- Already-compressed JXL files (q=50) see minimal savings at any preset
 - Format detection supports both bare codestream (`\xFF\x0A`) and ISOBMFF container
-- Locally requires jxlpy installation; in Docker, cjxl/djxl tools are also available
+- In Docker, cjxl/djxl CLI tools are also available
 
 ### Estimation Accuracy Summary
 
@@ -284,6 +286,7 @@ Results from 369 test cases across all formats and presets. Quality presets: **H
 | HEIC | 0.2% | 0.1% | 0.1% |
 | TIFF | 3.4% | 3.4% | 20.4% |
 | BMP | 9.5% | 0.3% | 0.0% |
+| JXL | 0.9% | 0.9% | 0.9% |
 
 Target: <15% average error across all formats and presets. Most formats are well under target. TIFF LOW (20.4%) is an outlier due to difficulty predicting lossless compression ratios for varied content types.
 

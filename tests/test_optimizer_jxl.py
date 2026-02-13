@@ -5,13 +5,15 @@ import io
 import pytest
 
 try:
-    import jxlpy  # noqa: F401
-
-    HAS_JXLPY = True
+    try:
+        import pillow_jxl  # noqa: F401
+    except ImportError:
+        import jxlpy  # noqa: F401
+    HAS_JXL = True
 except ImportError:
-    HAS_JXLPY = False
+    HAS_JXL = False
 
-pytestmark = pytest.mark.skipif(not HAS_JXLPY, reason="jxlpy not installed")
+pytestmark = pytest.mark.skipif(not HAS_JXL, reason="jxlpy/pillow-jxl-plugin not installed")
 
 from PIL import Image
 

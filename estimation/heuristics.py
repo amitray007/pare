@@ -1035,8 +1035,8 @@ def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     if pixels > 0:
         source_bpp = info.file_size / pixels
-        # JXL target bpp: similar curve to AVIF but ~10% more efficient
-        target_bpp = 0.0001 * jxl_quality**2 - 0.004 * jxl_quality + 0.135
+        # JXL target bpp: calibrated from pillow-jxl-plugin encoder output
+        target_bpp = 0.00048 * jxl_quality**2 - 0.0529 * jxl_quality + 1.509
 
         if source_bpp <= target_bpp * 1.05:
             reduction = 0.0
@@ -1054,7 +1054,7 @@ def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         confidence = "low"
 
     method = "jxl-reencode" if reduction > 0 else "none"
-    reduction = max(0.0, min(reduction, 85.0))
+    reduction = max(0.0, min(reduction, 95.0))
     potential = "high" if reduction >= 30 else ("medium" if reduction >= 15 else "low")
 
     return Prediction(

@@ -159,7 +159,10 @@ def encode_image(
         pillow_heif.register_heif_opener()
         img.convert("RGB").save(buf, format="HEIF", quality=quality)
     elif fmt == "jxl":
-        import jxlpy  # noqa: F401 — registers JXL plugin with Pillow
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            import jxlpy  # noqa: F401
 
         img.convert("RGB").save(buf, format="JXL", quality=quality)
     return buf.getvalue()
