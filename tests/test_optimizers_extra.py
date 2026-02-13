@@ -91,9 +91,7 @@ async def test_avif_both_fail(avif_optimizer):
         patch.object(avif_optimizer, "_strip_metadata", side_effect=Exception("fail")),
         patch.object(avif_optimizer, "_reencode", side_effect=Exception("fail")),
     ):
-        result = await avif_optimizer.optimize(
-            b"original", OptimizationConfig(strip_metadata=True)
-        )
+        result = await avif_optimizer.optimize(b"original", OptimizationConfig(strip_metadata=True))
     assert result.method == "none"
 
 
@@ -155,9 +153,7 @@ async def test_heic_both_fail(heic_optimizer):
         patch.object(heic_optimizer, "_strip_metadata", side_effect=Exception("fail")),
         patch.object(heic_optimizer, "_reencode", side_effect=Exception("fail")),
     ):
-        result = await heic_optimizer.optimize(
-            b"original", OptimizationConfig(strip_metadata=True)
-        )
+        result = await heic_optimizer.optimize(b"original", OptimizationConfig(strip_metadata=True))
     assert result.method == "none"
 
 
@@ -488,7 +484,7 @@ async def test_avif_strip_with_icc():
 
         mock_avif = MagicMock()
         with patch.dict("sys.modules", {"pillow_avif": mock_avif}):
-            result = opt._strip_metadata(b"\x00" * 200)
+            opt._strip_metadata(b"\x00" * 200)
             call_kwargs = mock_img.save.call_args[1]
             assert "icc_profile" in call_kwargs
 

@@ -76,8 +76,9 @@ def test_ssrf_validate_url_happy_path():
 
 def test_svg_sanitizer_find_parent_root():
     """Cover _find_parent returning None for root element."""
-    from security.svg_sanitizer import _find_parent
     from xml.etree.ElementTree import Element
+
+    from security.svg_sanitizer import _find_parent
 
     root = Element("svg")
     result = _find_parent(root, root)
@@ -86,8 +87,9 @@ def test_svg_sanitizer_find_parent_root():
 
 def test_svg_sanitizer_find_parent_not_found():
     """Cover _find_parent returning None when target not in tree."""
-    from security.svg_sanitizer import _find_parent
     from xml.etree.ElementTree import Element
+
+    from security.svg_sanitizer import _find_parent
 
     root = Element("svg")
     child = Element("rect")

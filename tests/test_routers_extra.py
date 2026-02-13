@@ -283,7 +283,7 @@ def test_health_missing_python_lib(client):
 @pytest.mark.asyncio
 async def test_lifespan_startup_and_shutdown():
     """Cover main.lifespan: startup tool check + shutdown redis close."""
-    from main import lifespan, app
+    from main import app, lifespan
 
     with patch("routers.health.check_tools", return_value={"pngquant": True, "jpegtran": False}):
         with patch("main.setup_logging"):
@@ -301,12 +301,18 @@ async def test_lifespan_startup_and_shutdown():
 @pytest.mark.asyncio
 async def test_lifespan_no_missing_tools():
     """Cover the branch where all tools are available (no warning logged)."""
-    from main import lifespan, app
+    from main import app, lifespan
 
     all_tools = {
-        "pngquant": True, "jpegtran": True, "gifsicle": True,
-        "cwebp": True, "oxipng": True, "pillow_heif": True,
-        "scour": True, "pillow": True, "jxl_plugin": True,
+        "pngquant": True,
+        "jpegtran": True,
+        "gifsicle": True,
+        "cwebp": True,
+        "oxipng": True,
+        "pillow_heif": True,
+        "scour": True,
+        "pillow": True,
+        "jxl_plugin": True,
     }
     with patch("routers.health.check_tools", return_value=all_tools):
         with patch("main.setup_logging"):
@@ -321,7 +327,7 @@ async def test_lifespan_no_missing_tools():
 @pytest.mark.asyncio
 async def test_lifespan_shutdown_closes_redis():
     """Cover the shutdown path that closes Redis."""
-    from main import lifespan, app
+    from main import app, lifespan
 
     mock_redis = AsyncMock()
     with patch("routers.health.check_tools", return_value={}):
