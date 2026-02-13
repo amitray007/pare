@@ -12,9 +12,9 @@ Three files forming a pipeline:
 
 1. **`estimator.py`** — Entry point. Calls header analysis then heuristics, returns `EstimateResponse`. A thumbnail compression layer (layer 3) exists but is disabled — the heuristic model is accurate enough.
 
-2. **`header_analysis.py`** — Parses image headers without full pixel decode. Extracts dimensions, color type, bit depth, JPEG quality (from quantization tables), PNG palette info, SVG bloat ratio. For small files (<12KB), stores `raw_data` on `HeaderInfo` so heuristics can run exact probes.
+2. **`header_analysis.py`** — Parses image headers without full pixel decode. Extracts dimensions, color type, bit depth, JPEG quality (from quantization tables), PNG palette info, SVG bloat ratio. Computes `flat_pixel_ratio` (center crop content classification) for JPEG, TIFF, BMP, and JXL. For small files (<12KB), stores `raw_data` on `HeaderInfo` so heuristics can run exact probes.
 
-3. **`heuristics.py`** — Per-format prediction functions dispatched via `predict_reduction()`. Each `_predict_<format>()` takes `HeaderInfo` + `OptimizationConfig` and returns a `Prediction` dataclass.
+3. **`heuristics.py`** — Per-format prediction functions dispatched via `predict_reduction()`. Each `_predict_<format>()` takes `HeaderInfo` + `OptimizationConfig` and returns a `Prediction` dataclass. Covers all 12 formats: PNG, APNG, JPEG, WebP, GIF, SVG, SVGZ, AVIF, HEIC, TIFF, BMP, JXL. AVIF/HEIC/JXL use bpp-based models; BMP uses content-aware RLE8 bonus scaled by `flat_pixel_ratio`.
 
 ## Critical Rule: Estimation Must Match Optimizer
 

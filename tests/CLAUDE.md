@@ -16,6 +16,7 @@ pytest tests/test_optimize.py::test_optimize_png_file_upload -v  # Single test
 Defined in `conftest.py`:
 - `client` / `strict_client`: FastAPI TestClient instances (strict raises server exceptions)
 - `sample_png`, `sample_jpeg`, `sample_webp`, `sample_gif`, `sample_svg`, `sample_bmp`, `sample_tiff`, `tiny_png`: Raw bytes from `tests/sample_images/`
+- `sample_jxl`: Generated in-memory via jxlpy (skips if jxlpy not installed)
 - `malicious_svg`: SVG with XSS payloads for security testing
 - `auth_headers`: Bearer token headers for auth tests
 
@@ -23,7 +24,8 @@ Defined in `conftest.py`:
 
 - **`test_optimize.py`**: `/optimize` endpoint — multipart/JSON modes, quality options, error codes (413, 415, 400, 422, 429), output-never-larger guarantee
 - **`test_estimate.py`**: `/estimate` endpoint — accuracy, confidence levels, format detection
-- **`test_formats.py`**: All 11 formats, APNG detection, format-specific behavior
+- **`test_formats.py`**: All 12 formats, APNG detection, format-specific behavior
+- **`test_optimizer_jxl.py`**: JXL optimizer unit tests (skips if jxlpy not installed)
 - **`test_security.py`**: Auth (valid/invalid/missing tokens), rate limiting, SSRF blocking, SVG sanitization
 - **`test_gcs.py`**: GCS upload (mocked)
 - **`test_logging.py`**: Structured JSON output validation
@@ -31,4 +33,5 @@ Defined in `conftest.py`:
 ## Notes
 
 - Some tests (JPEG, WebP, GIF) may skip or degrade gracefully on systems without CLI tools (cjpeg, cwebp, gifsicle)
+- JXL tests skip when jxlpy is not installed (will pass in Docker)
 - Tests use `raise_server_exceptions=False` by default to test error response formatting; use `strict_client` when you want exceptions to propagate

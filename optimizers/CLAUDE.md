@@ -13,6 +13,12 @@ Format-specific image optimization engines. Each optimizer takes raw image bytes
 3. Implement `async optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult`
 4. Register in `router.py`'s `OPTIMIZERS` dict
 5. Add matching `_predict_<format>()` in `estimation/heuristics.py`
+6. Add format detection in `utils/format_detect.py` (magic bytes + enum + MIME type)
+7. Add to Dockerfile if new system dependencies are needed
+8. Add benchmark cases in `benchmarks/cases.py` and encoder in `benchmarks/generators.py`
+9. Add tests in `tests/test_formats.py` and optionally a dedicated `tests/test_optimizer_<format>.py`
+
+See `jxl.py` and `avif.py` for recent examples of the full end-to-end pattern.
 
 ## Key Pattern: Try All, Pick Best
 
@@ -29,12 +35,15 @@ Each optimizer defines its own thresholds — these are conventions, not hard ru
 
 ## CLI Tools vs Libraries
 
-- **CLI tools** (pngquant, cjpeg, jpegtran, gifsicle, cwebp): Invoked via `utils/subprocess_runner.py`'s `run_tool()` — bytes in via stdin, bytes out via stdout, no temp files
-- **Python libraries** (oxipng, Pillow, pillow-heif, scour): Called directly in-process
+- **CLI tools** (pngquant, jpegtran, gifsicle, cwebp, cjxl/djxl): Invoked via `utils/subprocess_runner.py`'s `run_tool()` — bytes in via stdin, bytes out via stdout, no temp files
+- **Python libraries** (oxipng, Pillow/jpegli, pillow-heif, pillow-avif-plugin, jxlpy, scour): Called directly in-process
+
+Note: JPEG encoding uses Pillow with jpegli (libjpeg.so.62 from libjxl) in Docker, falling back to libjpeg-turbo locally. The `cjpeg` MozJPEG fallback is available via `JPEG_ENCODER=cjpeg` config.
 
 ## Conventions
 
 - `config.strip_metadata` should be handled early (before optimization) using `utils/metadata.py`
 - `config.max_reduction` caps lossy methods — lossless methods are never capped
 - Method names reported in results should be descriptive (e.g., `"pngquant + oxipng"`, `"bmp-rle8"`, `"jpegli"`)
-- Use `asyncio.gather()` for concurrent independent operations (e.g., PNG runs pngquant and oxipng-only in parallel)
+- Wrap CPU-bound Pillow ops in `asyncio.to_thread()` to avoid blocking the event loop
+- Use `asyncio.gather()` for concurrent independent operations (e.g., PNG runs pngquant and oxipng-only in parallel, TIFF runs deflate/LZW/JPEG concurrently, JPEG runs jpegli and jpegtran concurrently)

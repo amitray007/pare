@@ -8,9 +8,9 @@ Shared utilities used across the codebase.
 
 ## Modules
 
-- **`format_detect.py`**: Magic-byte format detection. The `ImageFormat` enum and `detect_format()` function are the single source of truth for supported formats. Never trust file extensions or Content-Type headers.
+- **`format_detect.py`**: Magic-byte format detection. The `ImageFormat` enum and `detect_format()` function are the single source of truth for supported formats (12 formats: PNG, APNG, JPEG, WebP, GIF, SVG, SVGZ, AVIF, HEIC, TIFF, BMP, JXL). Never trust file extensions or Content-Type headers. AVIF/HEIC/JXL are detected via ISO BMFF `ftyp` box brands; JXL also has a bare codestream signature (`\xFF\x0A`).
 
-- **`subprocess_runner.py`**: `run_tool()` pipes bytes through CLI tools (pngquant, cjpeg, jpegtran, gifsicle, cwebp) via stdin/stdout. No temp files. Handles timeouts and non-zero exit codes. Use `allowed_exit_codes` for expected failures (e.g., pngquant exit 99).
+- **`subprocess_runner.py`**: `run_tool()` pipes bytes through CLI tools (pngquant, jpegtran, gifsicle, cwebp, cjxl/djxl) via stdin/stdout. No temp files. Handles timeouts and non-zero exit codes. Use `allowed_exit_codes` for expected failures (e.g., pngquant exit 99).
 
 - **`concurrency.py`**: `CompressionGate` singleton — semaphore (CPU count) + queue depth cap (2x semaphore). Returns 503 immediately when full to prevent OOM from queued 32MB payloads. Only `/optimize` acquires a slot; `/estimate` does not.
 

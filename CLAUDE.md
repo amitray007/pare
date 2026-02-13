@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Pare?
 
-Pare is a serverless image compression API built on FastAPI + Google Cloud Run. It optimizes 11 image formats (PNG, APNG, JPEG, WebP, GIF, SVG, SVGZ, AVIF, HEIC, TIFF, BMP) using format-specific pipelines that combine CLI tools (MozJPEG, pngquant, oxipng, gifsicle, cwebp) with Python libraries (Pillow, pillow-heif, scour).
+Pare is a serverless image compression API built on FastAPI + Google Cloud Run. It optimizes 12 image formats (PNG, APNG, JPEG, WebP, GIF, SVG, SVGZ, AVIF, HEIC, TIFF, BMP, JXL) using format-specific pipelines that combine CLI tools (MozJPEG, pngquant, oxipng, gifsicle, cwebp, cjxl/djxl) with Python libraries (Pillow, jpegli, pillow-heif, pillow-avif-plugin, jxlpy, scour).
 
 ## Common Commands
 
@@ -30,7 +30,7 @@ python -m benchmarks.run --compare
 
 # Docker
 docker-compose up          # Pare + Redis (local dev)
-docker build -t pare .     # Full build with MozJPEG from source
+docker build -t pare .     # Full build with jpegli, MozJPEG, JXL tools
 ```
 
 ## Architecture
@@ -56,6 +56,8 @@ Each optimizer in `optimizers/` inherits `BaseOptimizer` and implements `async o
 ### Concurrency
 
 `utils/concurrency.py` has a `CompressionGate` (semaphore + queue depth cap). When the queue is full, the API returns 503 immediately rather than buffering unbounded 32MB payloads.
+
+All CPU-bound Pillow operations are wrapped in `asyncio.to_thread()` to avoid blocking the event loop. Some optimizers (TIFF, PNG, JPEG) use `asyncio.gather()` to run independent compression methods concurrently in separate threads.
 
 ## Key Conventions
 
