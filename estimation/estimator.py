@@ -26,11 +26,11 @@ async def estimate(data: bytes, config: OptimizationConfig | None = None) -> Est
     prediction = predict_reduction(header_info, fmt, config)
 
     # Layer 3: thumbnail compression — disabled for now.
-    # The calibrated heuristic model for JPEG (mozjpeg encoder bonus +
+    # The calibrated heuristic model for JPEG (jpegli encoder bonus +
     # piecewise delta curve + jpegtran source-quality scaling) is accurate
     # enough without content-specific correction. The thumbnail probe
     # measures q100→target compression ratio which doesn't correlate well
-    # with mozjpeg re-encoding savings at the source's existing quality.
+    # with jpegli re-encoding savings at the source's existing quality.
     # WebP is also skipped: decoded-pixel compressibility doesn't predict
     # re-compression of an already-compressed WebP file.
 
@@ -89,7 +89,7 @@ def _combine_with_thumbnail(
     """Adjust prediction using thumbnail compression ratio.
 
     Weighted average: 70% heuristic, 30% thumbnail. The heuristic
-    captures format-specific knowledge (mozjpeg encoder bonus, quality
+    captures format-specific knowledge (jpegli encoder bonus, quality
     delta curves) while the thumbnail provides content-specific correction
     (smooth paintings compress more, noisy photos less).
     """

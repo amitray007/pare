@@ -229,18 +229,18 @@ def test_apng_no_metadata():
 
 
 def test_jpeg_positive_delta():
-    """Source quality > target quality -> mozjpeg wins."""
+    """Source quality > target quality -> jpegli wins."""
     info = _make_info(ImageFormat.JPEG, file_size=50000, estimated_quality=85)
     result = _predict_jpeg(info, OptimizationConfig(quality=60))
-    assert result.method == "mozjpeg"
+    assert result.method == "jpegli"
     assert result.reduction_percent > 20
 
 
 def test_jpeg_negative_delta():
-    """Target quality > source quality -> large negative delta, 0% mozjpeg."""
+    """Target quality > source quality -> large negative delta, 0% jpegli."""
     info = _make_info(ImageFormat.JPEG, file_size=50000, estimated_quality=50)
     result = _predict_jpeg(info, OptimizationConfig(quality=80))
-    # Jpegtran should win since mozjpeg produces larger at higher quality
+    # Jpegtran should win since jpegli produces larger at higher quality
     assert result.reduction_percent > 0
 
 
@@ -391,7 +391,7 @@ def test_webp_curve_95_large_delta():
 
 
 def test_max_reduction_jpeg_cap():
-    """JPEG with max_reduction: cap mozjpeg, keep jpegtran if lower."""
+    """JPEG with max_reduction: cap jpegli, keep jpegtran if lower."""
     info = _make_info(ImageFormat.JPEG, file_size=50000, estimated_quality=95)
     config = OptimizationConfig(quality=60, max_reduction=10.0)
     result = predict_reduction(info, ImageFormat.JPEG, config)

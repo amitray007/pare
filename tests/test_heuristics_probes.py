@@ -53,7 +53,7 @@ def test_jpeg_probe_small_file():
         raw_data=data,
     )
 
-    # Mock subprocess to simulate cjpeg/jpegtran
+    # Mock subprocess for jpegtran (Pillow encode runs in-process, no mock needed)
     mock_result = MagicMock()
     mock_result.returncode = 0
     mock_result.stdout = data[: int(len(data) * 0.6)]
@@ -65,7 +65,7 @@ def test_jpeg_probe_small_file():
 
 
 def test_jpeg_probe_failure():
-    """JPEG probe fails -> falls back to heuristic."""
+    """JPEG probe fails (jpegtran unavailable) -> falls back to heuristic."""
     img = Image.new("RGB", (32, 32))
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
@@ -80,7 +80,7 @@ def test_jpeg_probe_failure():
         raw_data=data,
     )
 
-    with patch("estimation.heuristics.subprocess.run", side_effect=Exception("no cjpeg")):
+    with patch("estimation.heuristics.subprocess.run", side_effect=Exception("no jpegtran")):
         result = _predict_jpeg(info, OptimizationConfig(quality=60))
     # Should still return a result from heuristic path
     assert result.reduction_percent > 0

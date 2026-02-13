@@ -42,7 +42,7 @@ def predict_reduction(info: HeaderInfo, fmt: ImageFormat, config: OptimizationCo
     # Apply max_reduction cap for lossy formats (matches optimizer behavior)
     if config.max_reduction is not None and prediction.reduction_percent > config.max_reduction:
         if fmt == ImageFormat.JPEG:
-            # JPEG optimizer caps mozjpeg (lossy) but not jpegtran (lossless).
+            # JPEG optimizer caps jpegli (lossy) but not jpegtran (lossless).
             # Estimate jpegtran reduction to see if lossless dominates.
             source_q = info.estimated_quality or 85
             jt_red = 6.75 + 0.194 * (100 - source_q)
@@ -55,7 +55,7 @@ def predict_reduction(info: HeaderInfo, fmt: ImageFormat, config: OptimizationCo
                 w = info.dimensions.get("width", 1)
                 h = info.dimensions.get("height", 1)
                 jt_red = max(jt_red, 38.0 + min(25.0, w * h / 100000))
-            # Optimizer picks the better of capped-mozjpeg and uncapped-jpegtran
+            # Optimizer picks the better of capped-jpegli and uncapped-jpegtran
             effective = max(jt_red, config.max_reduction)
             prediction = Prediction(
                 estimated_size=int(info.file_size * (1 - effective / 100)),
@@ -314,11 +314,12 @@ def _predict_apng(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """JPEG heuristics — mirrors optimizer (try mozjpeg + jpegtran, pick smallest).
+    """JPEG heuristics — mirrors optimizer (try jpegli/Pillow + jpegtran, pick smallest).
 
-    The optimizer always tries mozjpeg at config.quality and jpegtran,
-    then picks the smallest output. This model predicts both methods and
-    picks the one with the larger reduction, matching optimizer behavior.
+    The optimizer always tries Pillow JPEG encode (jpegli in Docker) at
+    config.quality and jpegtran, then picks the smallest output. This model
+    predicts both methods and picks the one with the larger reduction,
+    matching optimizer behavior.
 
     Calibrated from benchmark data across source qualities 40-98 and
     target qualities 40/60/80.
@@ -335,10 +336,12 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     if source_q > 90:
         jpegtran_reduction += 0.668 * _exp(0.293 * (source_q - 90))
 
-    # Mozjpeg prediction: trellis quantization + optimized Huffman.
+    # Jpegli/Pillow prediction: trellis quantization + optimized Huffman.
     # For delta>0: encoder bonus is ~28% (calibrated with piecewise linear
     # delta curve). For delta<=0: bonus depends on source quality — high-q
     # sources have less room for trellis improvement.
+    # TODO: Recalibrate encoder_bonus from 28% to ~40-45% once benchmarked
+    # with actual jpegli in Docker.
     if delta > 0:
         encoder_bonus = 28.0
         sq_factor = 1.0 + (source_q - 75) * 0.008
@@ -357,7 +360,7 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
             base_20 = base_8 + 2.5 * sq_factor * 12
             base_40 = base_20 + 0.65 * sq_factor * 20
             extra = base_40 + 0.2 * (delta - 40)
-        mozjpeg_reduction = min(93.0, encoder_bonus + extra)
+        lossy_reduction = min(93.0, encoder_bonus + extra)
     elif delta >= -3:
         # delta=0 or small negative (within quality estimation ±3 rounding).
         # delta=-1 is almost always IJG rounding (off-by-one), so treat as
@@ -366,16 +369,16 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         # ~28% for sq<=75, dropping to ~8% at sq>=90.
         encoder_bonus = max(8.0, 28.0 - 1.67 * max(0, source_q - 78))
         taper = 1.0 + min(0, delta + 1) / 5.0  # -1→1.0, -2→0.8, -3→0.6
-        mozjpeg_reduction = encoder_bonus * taper
+        lossy_reduction = encoder_bonus * taper
     else:
         # Large negative delta: target quality is well above source,
-        # mozjpeg at higher quality produces larger file.
-        mozjpeg_reduction = 0.0
+        # re-encoding at higher quality produces larger file.
+        lossy_reduction = 0.0
 
     # Optimizer picks the method with the largest size reduction
-    if mozjpeg_reduction >= jpegtran_reduction:
-        reduction = mozjpeg_reduction
-        method = "mozjpeg"
+    if lossy_reduction >= jpegtran_reduction:
+        reduction = lossy_reduction
+        method = "jpegli"
     else:
         reduction = jpegtran_reduction
         method = "jpegtran"
@@ -398,14 +401,14 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     if info.is_progressive:
         reduction *= 0.95
 
-    # Small-file probe: run actual mozjpeg + jpegtran on the file for an
-    # exact measurement. The heuristic model is calibrated for normal-sized
+    # Small-file probe: run actual Pillow encode + jpegtran on the file for
+    # an exact measurement. The heuristic model is calibrated for normal-sized
     # files and underperforms on tiny files where fixed overhead dominates.
     if info.raw_data is not None and info.file_size < 12000:
         probe_reduction = _jpeg_probe(info.raw_data, config.quality)
         if probe_reduction is not None:
             reduction = probe_reduction
-            method = "mozjpeg+jpegtran probe"
+            method = "jpegli+jpegtran probe"
 
     potential = "high" if reduction >= 40 else ("medium" if reduction >= 15 else "low")
     already_optimized = delta < 0 and not info.has_exif
@@ -422,7 +425,7 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _jpeg_probe(data: bytes, target_quality: int) -> Optional[float]:
-    """Run mozjpeg cjpeg + jpegtran on actual file to measure compression.
+    """Run Pillow JPEG encode + jpegtran on actual file to measure compression.
 
     Returns reduction percentage (0-100), or None on failure.
     Only called for small JPEG files (< 10KB) where the heuristic
@@ -431,22 +434,13 @@ def _jpeg_probe(data: bytes, target_quality: int) -> Optional[float]:
     from PIL import Image
 
     try:
-        # Decode to BMP for cjpeg input
+        # Decode and re-encode via Pillow (uses jpegli in Docker)
         img = Image.open(io.BytesIO(data))
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
-        bmp_buf = io.BytesIO()
-        img.save(bmp_buf, format="BMP")
-        bmp_data = bmp_buf.getvalue()
-
-        # Run mozjpeg cjpeg at target quality
-        r1 = subprocess.run(
-            ["cjpeg", "-quality", str(target_quality)],
-            input=bmp_data,
-            capture_output=True,
-            timeout=5,
-        )
-        moz_size = len(r1.stdout) if r1.returncode == 0 else len(data)
+        jpeg_buf = io.BytesIO()
+        img.save(jpeg_buf, format="JPEG", quality=target_quality, optimize=True)
+        pillow_size = len(jpeg_buf.getvalue())
 
         # Run jpegtran for lossless optimization
         r2 = subprocess.run(
@@ -458,7 +452,7 @@ def _jpeg_probe(data: bytes, target_quality: int) -> Optional[float]:
         jt_size = len(r2.stdout) if r2.returncode == 0 else len(data)
 
         # Optimizer picks smallest (matching actual optimizer behavior)
-        best_size = min(moz_size, jt_size, len(data))
+        best_size = min(pillow_size, jt_size, len(data))
         return (1 - best_size / len(data)) * 100
     except Exception:
         return None

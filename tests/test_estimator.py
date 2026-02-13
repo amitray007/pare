@@ -91,7 +91,7 @@ def test_combine_close_predictions():
         estimated_size=50000,
         reduction_percent=30.0,
         potential="medium",
-        method="mozjpeg",
+        method="jpegli",
         already_optimized=False,
         confidence="medium",
     )
@@ -108,7 +108,7 @@ def test_combine_divergent_predictions():
         estimated_size=50000,
         reduction_percent=50.0,
         potential="high",
-        method="mozjpeg",
+        method="jpegli",
         already_optimized=False,
         confidence="medium",
     )

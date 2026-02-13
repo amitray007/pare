@@ -36,5 +36,5 @@ Each optimizer defines its own thresholds — these are conventions, not hard ru
 
 - `config.strip_metadata` should be handled early (before optimization) using `utils/metadata.py`
 - `config.max_reduction` caps lossy methods — lossless methods are never capped
-- Method names reported in results should be descriptive (e.g., `"pngquant + oxipng"`, `"bmp-rle8"`, `"mozjpeg"`)
+- Method names reported in results should be descriptive (e.g., `"pngquant + oxipng"`, `"bmp-rle8"`, `"jpegli"`)
 - Use `asyncio.gather()` for concurrent independent operations (e.g., PNG runs pngquant and oxipng-only in parallel)

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     url_fetch_timeout: int = 30
     url_fetch_max_redirects: int = 5
 
+    # --- Encoder Selection ---
+    jpeg_encoder: str = "pillow"  # "pillow" (default) or "cjpeg" (MozJPEG fallback)
+
     # --- Logging ---
     log_level: str = "ERROR"
 

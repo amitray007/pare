@@ -23,7 +23,7 @@ When you change optimizer quality thresholds or add compression tiers, the corre
 ## Probes
 
 Some formats run lightweight probes for better accuracy on small files:
-- **JPEG probe** (`_jpeg_probe`): Runs actual mozjpeg + jpegtran on files <12KB
+- **JPEG probe** (`_jpeg_probe`): Runs actual Pillow encode + jpegtran on files <12KB
 - **PNG lossy probe** (`_png_lossy_probe`): Runs pngquant + oxipng on files <12KB with quality <70
 
 Probes are gated by `info.raw_data is not None` (only set for small files).

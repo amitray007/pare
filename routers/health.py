@@ -2,17 +2,20 @@ import shutil
 
 from fastapi import APIRouter
 
+from config import settings
 from schemas import HealthResponse
 
 router = APIRouter()
 
 REQUIRED_TOOLS = {
     "pngquant": "pngquant",
-    "cjpeg": "cjpeg",
     "jpegtran": "jpegtran",
     "gifsicle": "gifsicle",
     "cwebp": "cwebp",
 }
+# cjpeg only required when using MozJPEG fallback
+if settings.jpeg_encoder == "cjpeg":
+    REQUIRED_TOOLS["cjpeg"] = "cjpeg"
 
 
 def check_tools() -> dict[str, bool]:
