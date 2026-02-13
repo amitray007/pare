@@ -427,8 +427,9 @@ def test_jpeg_probe_cmyk():
     img.save(buf, format="JPEG")
     data = buf.getvalue()
 
-    _jpeg_probe(data, 60)
+    result = _jpeg_probe(data, 60)
     # Should handle CMYK conversion without error
+    assert result is not None
 
 
 def test_png_lossy_probe_exception():
