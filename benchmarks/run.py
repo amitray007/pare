@@ -129,7 +129,9 @@ def _compare_reports(path_a: Path, path_b: Path) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Pare image optimization benchmarks")
-    parser.add_argument("--fmt", help="Filter by format (png, jpeg, webp, gif, svg, bmp, tiff, avif, heic, jxl)")
+    parser.add_argument(
+        "--fmt", help="Filter by format (png, jpeg, webp, gif, svg, bmp, tiff, avif, heic, jxl)"
+    )
     parser.add_argument(
         "--category",
         help="Filter by size category (tiny, small-l, medium-l, large-l, square, vector)",
