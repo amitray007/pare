@@ -1,7 +1,7 @@
 """Tests for JPEG optimizer with Pillow encoding path and mocked jpegtran."""
 
 import io
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
@@ -321,3 +321,178 @@ async def test_jpeg_cjpeg_fallback(jpeg_optimizer):
         result = await jpeg_optimizer.optimize(data, OptimizationConfig(quality=60))
     assert result.success
     assert result.method in ("mozjpeg", "jpegtran")
+
+
+# --- Additional JPEG coverage tests ---
+
+
+def _jpeg_from_img(img: Image.Image, quality: int = 90) -> bytes:
+    """Helper: save a Pillow image as JPEG bytes."""
+    buf = io.BytesIO()
+    if img.mode not in ("RGB", "L", "CMYK"):
+        img = img.convert("RGB")
+    img.save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_jpeg_optimizer_cmyk_mode():
+    """Cover JPEG _decode_image with CMYK mode conversion."""
+    opt = JpegOptimizer()
+    img = Image.new("CMYK", (32, 32), (0, 0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    data = buf.getvalue()
+
+    config = OptimizationConfig(quality=60)
+    result = await opt.optimize(data, config)
+    assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_jpeg_optimizer_icc_profile_preservation():
+    """Cover JPEG _pillow_encode with ICC profile."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (32, 32), (100, 150, 200))
+    try:
+        from PIL import ImageCms
+
+        srgb = ImageCms.createProfile("sRGB")
+        icc_data = ImageCms.ImageCmsProfile(srgb).tobytes()
+    except Exception:
+        icc_data = b"\x00" * 128
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", icc_profile=icc_data)
+    data = buf.getvalue()
+
+    config = OptimizationConfig(quality=60, strip_metadata=False)
+    result = await opt.optimize(data, config)
+    assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_jpeg_optimizer_max_reduction_cap():
+    """Cover JPEG _cap_quality binary search and break."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (128, 128), (200, 100, 50))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    data = buf.getvalue()
+
+    config = OptimizationConfig(quality=30, max_reduction=10.0)
+    result = await opt.optimize(data, config)
+    assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_jpeg_optimizer_max_reduction_exceeds_cap():
+    """Cover _cap_quality returning None when even q=100 exceeds cap."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (256, 256), (200, 100, 50))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=100)
+    data = buf.getvalue()
+
+    config = OptimizationConfig(quality=10, max_reduction=0.01)
+    result = await opt.optimize(data, config)
+    assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_jpeg_optimizer_cjpeg_path():
+    """Cover the cjpeg legacy pipeline."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (64, 64), (100, 150, 200))
+    data = _jpeg_from_img(img, quality=90)
+    small_jpeg = _jpeg_from_img(img, quality=50)
+
+    async def mock_run_tool(cmd, input_data, **kwargs):
+        return small_jpeg, b"", 0
+
+    config = OptimizationConfig(quality=60)
+    with patch("optimizers.jpeg.settings") as mock_settings:
+        mock_settings.jpeg_encoder = "cjpeg"
+        with patch("optimizers.jpeg.run_tool", side_effect=mock_run_tool):
+            result = await opt._optimize_cjpeg(data, config)
+            assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_jpeg_optimizer_cjpeg_max_reduction():
+    """Cover cjpeg _cap_mozjpeg binary search."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (128, 128), (200, 100, 50))
+    data = _jpeg_from_img(img, quality=95)
+
+    async def mock_run_tool(cmd, input_data, **kwargs):
+        if "cjpeg" in cmd:
+            q_idx = cmd.index("-quality") + 1 if "-quality" in cmd else -1
+            q = int(cmd[q_idx]) if q_idx > 0 else 80
+            ratio = q / 100.0
+            size = int(len(data) * ratio)
+            return data[:max(size, 100)], b"", 0
+        return data, b"", 0
+
+    config = OptimizationConfig(quality=30, max_reduction=5.0)
+    with patch("optimizers.jpeg.settings") as mock_settings:
+        mock_settings.jpeg_encoder = "cjpeg"
+        with patch("optimizers.jpeg.run_tool", side_effect=mock_run_tool):
+            result = await opt._optimize_cjpeg(data, config)
+            assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_jpeg_cjpeg_progressive():
+    """Cover cjpeg progressive flag."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (64, 64), (100, 150, 200))
+    data = _jpeg_from_img(img, quality=90)
+
+    called_with_progressive = [False]
+
+    async def mock_run_tool(cmd, input_data, **kwargs):
+        if "-progressive" in cmd:
+            called_with_progressive[0] = True
+        return data, b"", 0
+
+    config = OptimizationConfig(quality=60, progressive_jpeg=True)
+    with patch("optimizers.jpeg.settings") as mock_settings:
+        mock_settings.jpeg_encoder = "cjpeg"
+        with patch("optimizers.jpeg.run_tool", side_effect=mock_run_tool):
+            result = await opt._optimize_cjpeg(data, config)
+            assert called_with_progressive[0]
+
+
+def test_jpeg_decode_to_bmp_rgba():
+    """Cover _decode_to_bmp RGBA conversion."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (32, 32), (100, 150, 200))
+    data = _jpeg_from_img(img)
+
+    with patch("optimizers.jpeg.Image.open") as mock_open:
+        mock_open.return_value = Image.new("RGBA", (32, 32), (100, 150, 200, 255))
+        result = opt._decode_to_bmp(data, True)
+        assert isinstance(result, bytes)
+        assert result[:2] == b"BM"
+
+
+def test_jpeg_decode_to_bmp_unusual_mode():
+    """Cover _decode_to_bmp unusual mode conversion."""
+    opt = JpegOptimizer()
+
+    img = Image.new("RGB", (32, 32), (100, 150, 200))
+    data = _jpeg_from_img(img)
+
+    with patch("optimizers.jpeg.Image.open") as mock_open:
+        mock_open.return_value = Image.new("CMYK", (32, 32), (0, 0, 0, 0))
+        result = opt._decode_to_bmp(data, True)
+        assert isinstance(result, bytes)
+        assert result[:2] == b"BM"

@@ -116,3 +116,16 @@ def test_combine_divergent_predictions():
     result = _combine_with_thumbnail(pred, 0.90, info)
     # 0.90 -> 10% thumbnail reduction vs 50% heuristic = divergent
     assert result.confidence == "medium"
+
+
+@pytest.mark.asyncio
+async def test_thumbnail_compress_small_jpeg():
+    """Cover _thumbnail_compress with a small JPEG."""
+    img = Image.new("RGB", (64, 64), (100, 150, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    data = buf.getvalue()
+
+    result = await _thumbnail_compress(data, ImageFormat.JPEG, 60)
+    if result is not None:
+        assert 0 < result <= 1.5

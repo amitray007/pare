@@ -3,6 +3,8 @@
 import io
 from unittest.mock import MagicMock, patch
 
+from estimation.heuristics import _jpeg_probe, _png_lossy_probe
+
 from PIL import Image
 
 from estimation.header_analysis import HeaderInfo
@@ -413,3 +415,24 @@ def test_max_reduction_jpeg_high_quality():
     config = OptimizationConfig(quality=80, max_reduction=5.0)
     result = predict_reduction(info, ImageFormat.JPEG, config)
     assert result.reduction_percent > 5
+
+
+# --- Probe edge cases ---
+
+
+def test_jpeg_probe_cmyk():
+    """Cover _jpeg_probe CMYK conversion."""
+    img = Image.new("CMYK", (32, 32), (0, 0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    data = buf.getvalue()
+
+    result = _jpeg_probe(data, 60)
+    # Should handle CMYK conversion without error
+
+
+def test_png_lossy_probe_exception():
+    """Cover _png_lossy_probe exception handler."""
+    with patch("estimation.heuristics.subprocess.run", side_effect=Exception("fail")):
+        result = _png_lossy_probe(b"\x00" * 100, 60)
+        assert result is None

@@ -1,6 +1,7 @@
 """Tests for JXL optimizer — basic optimization, metadata strip, quality tiers."""
 
 import io
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,8 +13,6 @@ try:
     HAS_JXL = True
 except ImportError:
     HAS_JXL = False
-
-pytestmark = pytest.mark.skipif(not HAS_JXL, reason="jxlpy/pillow-jxl-plugin not installed")
 
 from PIL import Image
 
@@ -75,3 +74,62 @@ async def test_jxl_already_optimized(jxl_optimizer):
     assert result.success
     # Output should not be larger than input (guarantee)
     assert result.optimized_size <= result.original_size
+
+
+# --- JXL mock tests (work even without jxlpy) ---
+
+
+@pytest.mark.asyncio
+async def test_jxl_optimizer_with_mock():
+    """Cover JxlOptimizer _strip_metadata and _reencode via mocking."""
+    opt = JxlOptimizer()
+
+    original_data = b"\xff\x0a" + b"\x00" * 500
+    small_output = b"\x00" * 100
+
+    mock_jxlpy = MagicMock()
+    with patch.dict("sys.modules", {"pillow_jxl": None, "jxlpy": mock_jxlpy}):
+        with patch("optimizers.jxl.Image.open") as mock_open:
+            mock_img = MagicMock(spec=Image.Image)
+            mock_img.info = {}
+            mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(small_output))
+            mock_open.return_value = mock_img
+
+            result_strip = opt._strip_metadata(original_data)
+            assert isinstance(result_strip, bytes)
+            assert len(result_strip) <= len(original_data)
+
+            result_reencode = opt._reencode(original_data, quality=60)
+            assert isinstance(result_reencode, bytes)
+
+
+@pytest.mark.asyncio
+async def test_jxl_optimizer_both_fail():
+    """Cover JxlOptimizer fallback to 'none' when both methods fail."""
+    opt = JxlOptimizer()
+    data = b"\xff\x0a" + b"\x00" * 100
+
+    with patch.object(opt, "_strip_metadata", side_effect=Exception("fail")):
+        with patch.object(opt, "_reencode", side_effect=Exception("fail")):
+            config = OptimizationConfig(quality=60, strip_metadata=True)
+            result = await opt.optimize(data, config)
+            assert result.method == "none"
+
+
+@pytest.mark.asyncio
+async def test_jxl_optimizer_strip_returns_original():
+    """Cover JxlOptimizer._strip_metadata returning original when result is bigger."""
+    opt = JxlOptimizer()
+
+    small_data = b"\xff\x0a" + b"\x00" * 10
+
+    mock_jxlpy = MagicMock()
+    with patch.dict("sys.modules", {"pillow_jxl": None, "jxlpy": mock_jxlpy}):
+        with patch("optimizers.jxl.Image.open") as mock_open:
+            mock_img = MagicMock(spec=Image.Image)
+            mock_img.info = {}
+            mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 500))
+            mock_open.return_value = mock_img
+
+            result = opt._strip_metadata(small_data)
+            assert result == small_data

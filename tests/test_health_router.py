@@ -85,3 +85,38 @@ def _mock_import_no_oxipng(name, *args, **kwargs):
     if name == "oxipng":
         raise ImportError("no oxipng")
     return MagicMock()
+
+
+# --- check_tools coverage ---
+
+
+def test_check_tools_with_cjpeg_encoder():
+    """Cover the cjpeg entry in REQUIRED_TOOLS when JPEG_ENCODER=cjpeg."""
+    from routers import health
+
+    original_tools = health.REQUIRED_TOOLS.copy()
+    try:
+        health.REQUIRED_TOOLS["cjpeg"] = "cjpeg"
+        tools = health.check_tools()
+        assert "cjpeg" in tools
+    finally:
+        health.REQUIRED_TOOLS.clear()
+        health.REQUIRED_TOOLS.update(original_tools)
+
+
+def test_check_tools_jxl_import_failure():
+    """Cover the ImportError fallback for jxl_plugin in check_tools."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if name in ("pillow_jxl", "jxlpy"):
+            raise ImportError(f"No module named '{name}'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=mock_import):
+        from routers.health import check_tools
+
+        tools = check_tools()
+        assert tools["jxl_plugin"] is False

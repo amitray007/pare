@@ -2,10 +2,12 @@
 
 import gzip
 import io
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
 from estimation.header_analysis import (
+    _quantize_probe,
     analyze_header,
 )
 from utils.format_detect import ImageFormat
@@ -197,3 +199,43 @@ def test_bmp_analysis():
     assert info.dimensions["width"] == 120
     assert info.dimensions["height"] == 90
     assert info.color_type == "rgb"
+
+
+# --- Exception handlers ---
+
+
+def test_frame_count_exception():
+    """Cover frame_count exception handler."""
+    img = Image.new("RGB", (8, 8))
+    buf = io.BytesIO()
+    img.save(buf, format="GIF")
+    data = buf.getvalue()
+
+    with patch("estimation.header_analysis.Image.open") as mock_open:
+        mock_img = MagicMock()
+        mock_img.size = (8, 8)
+        mock_img.mode = "P"
+        mock_img.info = {}
+        type(mock_img).n_frames = property(lambda s: (_ for _ in ()).throw(Exception("fail")))
+        mock_open.return_value = mock_img
+
+        info = analyze_header(data, ImageFormat.GIF)
+        assert info.frame_count == 1
+
+
+def test_quantize_probe_exception():
+    """Cover _quantize_probe exception handler."""
+    mock_img = MagicMock(spec=Image.Image)
+    mock_img.save = MagicMock(side_effect=Exception("bad image"))
+
+    result = _quantize_probe(mock_img)
+    assert result is None
+
+
+def test_jpeg_quality_parse_failure():
+    """Cover _analyze_jpeg_extra exception handler."""
+    jpeg_data = b"\xff\xd8\xff\xe0" + b"\x00" * 100 + b"\xff\xd9"
+
+    info = analyze_header(jpeg_data, ImageFormat.JPEG)
+    # Should not crash
+    assert info.format == ImageFormat.JPEG

@@ -1,8 +1,8 @@
-"""Tests for router endpoints — uncovered paths in estimate.py, optimize.py, health.py."""
+"""Tests for router endpoints — uncovered paths in estimate.py, optimize.py, health.py, main.py."""
 
 import io
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -275,3 +275,87 @@ def test_health_missing_python_lib(client):
         tools = check_tools()
         # Tools should contain all keys
         assert "pillow_heif" in tools
+
+
+# --- main.py lifespan startup/shutdown ---
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_and_shutdown():
+    """Cover main.lifespan: startup tool check + shutdown redis close."""
+    from main import lifespan, app
+
+    with patch("routers.health.check_tools", return_value={"pngquant": True, "jpegtran": False}):
+        with patch("main.setup_logging"):
+            with patch("main.get_logger") as mock_get_logger:
+                mock_logger = MagicMock()
+                mock_get_logger.return_value = mock_logger
+                async with lifespan(app):
+                    pass
+
+                # Verify warning logged for missing tool
+                mock_logger.warning.assert_called_once()
+                assert "Missing tools" in str(mock_logger.warning.call_args)
+
+
+@pytest.mark.asyncio
+async def test_lifespan_no_missing_tools():
+    """Cover the branch where all tools are available (no warning logged)."""
+    from main import lifespan, app
+
+    all_tools = {
+        "pngquant": True, "jpegtran": True, "gifsicle": True,
+        "cwebp": True, "oxipng": True, "pillow_heif": True,
+        "scour": True, "pillow": True, "jxl_plugin": True,
+    }
+    with patch("routers.health.check_tools", return_value=all_tools):
+        with patch("main.setup_logging"):
+            with patch("main.get_logger") as mock_get_logger:
+                mock_logger = MagicMock()
+                mock_get_logger.return_value = mock_logger
+                async with lifespan(app):
+                    pass
+                mock_logger.warning.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_shutdown_closes_redis():
+    """Cover the shutdown path that closes Redis."""
+    from main import lifespan, app
+
+    mock_redis = AsyncMock()
+    with patch("routers.health.check_tools", return_value={}):
+        with patch("main.setup_logging"):
+            with patch("main.get_logger") as mock_get_logger:
+                mock_get_logger.return_value = MagicMock()
+                with patch("security.rate_limiter._redis", mock_redis):
+                    async with lifespan(app):
+                        pass
+                    mock_redis.close.assert_awaited_once()
+
+
+# --- middleware.py — _get_client_ip ---
+
+
+def test_get_client_ip_forwarded_for():
+    """Cover middleware._get_client_ip parsing X-Forwarded-For header."""
+    from middleware import _get_client_ip
+
+    mock_request = MagicMock()
+    mock_request.headers = {"X-Forwarded-For": "1.2.3.4, 5.6.7.8, 9.10.11.12"}
+    mock_request.client.host = "127.0.0.1"
+
+    ip = _get_client_ip(mock_request)
+    assert ip == "1.2.3.4"
+
+
+def test_get_client_ip_single_forwarded():
+    """Cover single IP in X-Forwarded-For."""
+    from middleware import _get_client_ip
+
+    mock_request = MagicMock()
+    mock_request.headers = {"X-Forwarded-For": " 10.0.0.1 "}
+    mock_request.client.host = "127.0.0.1"
+
+    ip = _get_client_ip(mock_request)
+    assert ip == "10.0.0.1"

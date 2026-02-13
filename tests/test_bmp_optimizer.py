@@ -1,6 +1,7 @@
 """Tests for BMP optimizer quality tiers: lossless, palette, and RLE8."""
 
 import io
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -265,3 +266,67 @@ def test_rle8_encode_row_two_bytes():
     _rle8_encode_row(bytes([1, 2]), out)
     # Should be two encoded runs: [1, 1], [1, 2]
     assert out == bytearray([1, 1, 1, 2])
+
+
+# --- Additional BMP coverage tests ---
+
+
+@pytest.mark.asyncio
+async def test_bmp_optimizer_rgba_opaque():
+    """Cover BMP RGBA with fully opaque alpha."""
+    opt = BmpOptimizer()
+
+    img = Image.new("RGBA", (32, 32), (100, 150, 200, 255))
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="BMP")
+    data = buf.getvalue()
+
+    with patch("optimizers.bmp.Image.open", return_value=img.copy()):
+        config = OptimizationConfig(quality=60)
+        result = await opt.optimize(data, config)
+        assert result.original_size == len(data)
+
+
+@pytest.mark.asyncio
+async def test_bmp_optimizer_unusual_mode():
+    """Cover BMP unusual mode conversion."""
+    opt = BmpOptimizer()
+
+    img_i = Image.new("I", (32, 32))
+    buf = io.BytesIO()
+    img_i.convert("RGB").save(buf, format="BMP")
+    data = buf.getvalue()
+
+    with patch("optimizers.bmp.Image.open", return_value=img_i.copy()):
+        config = OptimizationConfig(quality=60)
+        result = await opt.optimize(data, config)
+        assert result.original_size == len(data)
+
+
+def test_bmp_rle8_null_palette():
+    """Cover _encode_rle8_bmp returning None when palette is None."""
+    img = Image.new("P", (10, 10))
+    img.putpalette([i % 256 for i in range(768)])
+    with patch.object(img, "getpalette", return_value=None):
+        result = BmpOptimizer._encode_rle8_bmp(img)
+        assert result is None
+
+
+def test_bmp_rle8_odd_literal_padding():
+    """Cover RLE8 odd-length literal padding."""
+    row = bytes([1, 2, 3])
+    out = bytearray()
+    _rle8_encode_row(row, out)
+
+    data = bytes(out)
+    assert len(data) > 0
+
+
+def test_bmp_rle8_odd_literal_padding_5():
+    """Cover RLE8 padding with a 5-byte literal run."""
+    row = bytes([10, 20, 30, 40, 50])
+    out = bytearray()
+    _rle8_encode_row(row, out)
+
+    data = bytes(out)
+    assert len(data) > 0

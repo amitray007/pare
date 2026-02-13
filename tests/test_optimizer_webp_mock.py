@@ -116,3 +116,18 @@ async def test_webp_max_reduction_triggers_find_capped(webp_optimizer):
             )
     mock_cap.assert_called_once()
     assert result.method == "pillow"
+
+
+@pytest.mark.asyncio
+async def test_webp_optimizer_max_reduction_binary_search():
+    """Cover WebP _find_capped_quality binary search break/lo adjustment."""
+    opt = WebpOptimizer()
+
+    img = Image.new("RGB", (128, 128), (200, 100, 50))
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=100)
+    data = buf.getvalue()
+
+    config = OptimizationConfig(quality=20, max_reduction=5.0)
+    result = await opt.optimize(data, config)
+    assert result.original_size == len(data)

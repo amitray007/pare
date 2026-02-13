@@ -59,3 +59,40 @@ def test_ssrf_dns_resolution_failure():
     with patch("socket.getaddrinfo", side_effect=socket.gaierror("no such host")):
         with pytest.raises(SSRFError, match="resolve"):
             validate_url("https://nonexistent.invalid/image.png")
+
+
+def test_ssrf_validate_url_happy_path():
+    """Cover validate_url returning the URL for a valid public IP."""
+    with patch("security.ssrf.socket.getaddrinfo") as mock_dns:
+        mock_dns.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ]
+        result = validate_url("https://example.com/image.png")
+        assert result == "https://example.com/image.png"
+
+
+# --- svg_sanitizer _find_parent ---
+
+
+def test_svg_sanitizer_find_parent_root():
+    """Cover _find_parent returning None for root element."""
+    from security.svg_sanitizer import _find_parent
+    from xml.etree.ElementTree import Element
+
+    root = Element("svg")
+    result = _find_parent(root, root)
+    assert result is None
+
+
+def test_svg_sanitizer_find_parent_not_found():
+    """Cover _find_parent returning None when target not in tree."""
+    from security.svg_sanitizer import _find_parent
+    from xml.etree.ElementTree import Element
+
+    root = Element("svg")
+    child = Element("rect")
+    root.append(child)
+    orphan = Element("circle")
+
+    result = _find_parent(root, orphan)
+    assert result is None

@@ -6,8 +6,14 @@ from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
     _bpp_to_quality,
     _predict_apng,
+    _predict_avif,
+    _predict_bmp,
+    _predict_gif,
+    _predict_heic,
     _predict_jpeg,
+    _predict_jxl,
     _predict_png,
+    _predict_png_by_complexity,
     _webp_interpolated_reduction,
     predict_reduction,
 )
@@ -404,3 +410,181 @@ def test_max_reduction_webp_cap():
     config = OptimizationConfig(quality=60, max_reduction=5.0)
     result = predict_reduction(info, ImageFormat.WEBP, config)
     assert result.reduction_percent <= 5.0
+
+
+# --- JXL prediction ---
+
+
+def test_predict_jxl_with_dimensions():
+    """Cover _predict_jxl with valid dimensions."""
+    info = _make_info(
+        ImageFormat.JXL,
+        file_size=50000,
+        width=256,
+        height=256,
+    )
+
+    config = OptimizationConfig(quality=40)
+    result = _predict_jxl(info, config)
+    assert result.confidence == "high"
+    assert result.reduction_percent >= 0
+
+
+def test_predict_jxl_no_dimensions():
+    """Cover _predict_jxl fallback with zero dimensions."""
+    info = _make_info(
+        ImageFormat.JXL,
+        file_size=50000,
+        width=0,
+        height=0,
+    )
+
+    for quality in [40, 60, 80]:
+        config = OptimizationConfig(quality=quality)
+        result = _predict_jxl(info, config)
+        assert result.confidence == "low"
+
+
+def test_predict_jxl_already_optimized():
+    """Cover _predict_jxl when source_bpp <= target_bpp."""
+    info = _make_info(
+        ImageFormat.JXL,
+        file_size=100,
+        width=256,
+        height=256,
+    )
+
+    config = OptimizationConfig(quality=80)
+    result = _predict_jxl(info, config)
+    assert result.already_optimized is True
+
+
+# --- PNG complexity path ---
+
+
+def test_predict_png_no_probes_no_cr():
+    """Cover _predict_png_by_complexity returning 'low' confidence."""
+    info = _make_info(
+        ImageFormat.PNG,
+        file_size=100000,
+        width=256,
+        height=256,
+    )
+    info.oxipng_probe_ratio = None
+    info.png_quantize_ratio = None
+    info.png_pngquant_probe_ratio = None
+    info.flat_pixel_ratio = None
+    info.unique_color_ratio = None
+
+    config = OptimizationConfig(quality=60)
+    reduction, potential, method, confidence = _predict_png_by_complexity(info, config)
+    assert confidence == "low"
+
+
+def test_predict_png_lossless_fallback():
+    """Cover _predict_png_by_complexity lossless_reduction = 5.0 fallback."""
+    info = _make_info(
+        ImageFormat.PNG,
+        file_size=100000,
+        width=256,
+        height=256,
+    )
+    info.oxipng_probe_ratio = None
+    info.png_quantize_ratio = None
+    info.png_pngquant_probe_ratio = None
+    info.flat_pixel_ratio = None
+    info.unique_color_ratio = 0.01
+
+    config = OptimizationConfig(quality=80)
+    reduction, potential, method, confidence = _predict_png_by_complexity(info, config)
+    assert reduction >= 0
+
+
+# --- WebP curve branches ---
+
+
+def test_webp_curve_80_high_delta():
+    """Cover _curve_80 delta > 40 branch."""
+    result = _webp_interpolated_reduction(80, 50)
+    assert result > 0
+
+
+def test_webp_curve_95_mid_delta():
+    """Cover _curve_95 delta 15-35 branch."""
+    result = _webp_interpolated_reduction(95, 25)
+    assert result > 0
+
+
+def test_bpp_to_quality_mid_range():
+    """Cover _bpp_to_quality bpp 3.0-5.2 branch."""
+    result = _bpp_to_quality(4.0)
+    assert 80 <= result <= 95
+
+
+# --- GIF, AVIF, HEIC, BMP predictions ---
+
+
+def test_predict_gif_palette_bonus():
+    """Cover GIF non-gradient palette reduction bonus."""
+    info = _make_info(
+        ImageFormat.GIF,
+        file_size=10000,
+        width=100,
+        height=100,
+    )
+    info.bit_depth = 8
+    info.frame_count = 1
+    info.unique_color_ratio = 0.1
+    info.flat_pixel_ratio = 0.5
+
+    config = OptimizationConfig(quality=40)
+    result = _predict_gif(info, config)
+    assert result.reduction_percent >= 0
+
+
+def test_predict_avif_no_dimensions():
+    """Cover AVIF fallback quality branches."""
+    info = _make_info(
+        ImageFormat.AVIF,
+        file_size=50000,
+        width=0,
+        height=0,
+    )
+
+    for quality in [40, 60, 80]:
+        config = OptimizationConfig(quality=quality)
+        result = _predict_avif(info, config)
+        assert result.confidence == "low"
+
+
+def test_predict_heic_no_dimensions():
+    """Cover HEIC fallback quality branches."""
+    info = _make_info(
+        ImageFormat.HEIC,
+        file_size=50000,
+        width=0,
+        height=0,
+    )
+
+    config_high = OptimizationConfig(quality=40)
+    result_high = _predict_heic(info, config_high)
+    assert result_high.reduction_percent == 35.0
+
+    config_low = OptimizationConfig(quality=80)
+    result_low = _predict_heic(info, config_low)
+    assert result_low.reduction_percent == 8.0
+
+
+def test_predict_bmp_photo_rle_bonus():
+    """Cover BMP prediction RLE bonus for photographic content."""
+    info = _make_info(
+        ImageFormat.BMP,
+        file_size=100000,
+        width=200,
+        height=200,
+    )
+    info.flat_pixel_ratio = 0.2
+
+    config = OptimizationConfig(quality=40)
+    result = _predict_bmp(info, config)
+    assert result.reduction_percent >= 0

@@ -221,3 +221,13 @@ async def test_png_strip_metadata_not_lossy(png_optimizer):
             )
     mock_strip.assert_called_once()
     assert result.success
+
+
+@pytest.mark.asyncio
+async def test_png_optimizer_no_strip_metadata(png_optimizer):
+    """Cover PngOptimizer with strip_metadata=False."""
+    data = _make_png()
+
+    config = OptimizationConfig(quality=60, strip_metadata=False)
+    result = await png_optimizer.optimize(data, config)
+    assert result.original_size == len(data)
