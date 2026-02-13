@@ -3,12 +3,12 @@
 import io
 from unittest.mock import MagicMock, patch
 
-from estimation.heuristics import _jpeg_probe, _png_lossy_probe
-
 from PIL import Image
 
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
+    _jpeg_probe,
+    _png_lossy_probe,
     _predict_avif,
     _predict_bmp,
     _predict_gif,
@@ -427,7 +427,7 @@ def test_jpeg_probe_cmyk():
     img.save(buf, format="JPEG")
     data = buf.getvalue()
 
-    result = _jpeg_probe(data, 60)
+    _jpeg_probe(data, 60)
     # Should handle CMYK conversion without error
 
 

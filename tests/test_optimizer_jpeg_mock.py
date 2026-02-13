@@ -1,7 +1,7 @@
 """Tests for JPEG optimizer with Pillow encoding path and mocked jpegtran."""
 
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -57,9 +57,7 @@ async def test_jpeg_optimize_basic(jpeg_optimizer):
     """Basic JPEG optimization: picks smallest of jpegli vs jpegtran."""
     data = _make_jpeg(quality=95)
     with (
-        patch.object(
-            JpegOptimizer, "_pillow_encode", _mock_pillow_encode_smaller
-        ),
+        patch.object(JpegOptimizer, "_pillow_encode", _mock_pillow_encode_smaller),
         patch("optimizers.jpeg.run_tool", side_effect=_mock_run_tool_jpegtran),
         patch("optimizers.jpeg.settings") as mock_settings,
     ):
@@ -124,9 +122,7 @@ async def test_jpeg_optimize_no_progressive(jpeg_optimizer):
         patch("optimizers.jpeg.settings") as mock_settings,
     ):
         mock_settings.jpeg_encoder = "pillow"
-        await jpeg_optimizer.optimize(
-            data, OptimizationConfig(quality=60, progressive_jpeg=False)
-        )
+        await jpeg_optimizer.optimize(data, OptimizationConfig(quality=60, progressive_jpeg=False))
 
     assert all(p is False for p in pillow_calls)
     for call in jpegtran_calls:
@@ -137,7 +133,6 @@ async def test_jpeg_optimize_no_progressive(jpeg_optimizer):
 async def test_jpeg_max_reduction_triggers_cap(jpeg_optimizer):
     """max_reduction caps Pillow lossy when reduction exceeds limit."""
     data = _make_jpeg(quality=95, size=(200, 200))
-    original_size = len(data)
     encode_calls = []
 
     original_encode = JpegOptimizer._pillow_encode
@@ -166,9 +161,7 @@ async def test_jpeg_max_reduction_q100_exceeds_cap(jpeg_optimizer):
     data = _make_jpeg(quality=95, size=(200, 200))
 
     with (
-        patch.object(
-            JpegOptimizer, "_pillow_encode", _mock_pillow_encode_smaller
-        ),
+        patch.object(JpegOptimizer, "_pillow_encode", _mock_pillow_encode_smaller),
         patch("optimizers.jpeg.run_tool", side_effect=_mock_run_tool_jpegtran),
         patch("optimizers.jpeg.settings") as mock_settings,
     ):
@@ -190,9 +183,7 @@ async def test_jpeg_jpegtran_wins(jpeg_optimizer):
         return data_in, b"", 0
 
     with (
-        patch.object(
-            JpegOptimizer, "_pillow_encode", _mock_pillow_encode_larger
-        ),
+        patch.object(JpegOptimizer, "_pillow_encode", _mock_pillow_encode_larger),
         patch("optimizers.jpeg.run_tool", side_effect=mock_run_tool),
         patch("optimizers.jpeg.settings") as mock_settings,
     ):
@@ -263,9 +254,7 @@ async def test_jpeg_metadata_preserved(jpeg_optimizer):
         patch("optimizers.jpeg.settings") as mock_settings,
     ):
         mock_settings.jpeg_encoder = "pillow"
-        await jpeg_optimizer.optimize(
-            data, OptimizationConfig(quality=60, strip_metadata=False)
-        )
+        await jpeg_optimizer.optimize(data, OptimizationConfig(quality=60, strip_metadata=False))
 
     # EXIF bytes should have been passed to encoder
     assert any(kw["exif"] is not None for kw in encode_kwargs)
@@ -292,9 +281,7 @@ async def test_jpeg_metadata_stripped(jpeg_optimizer):
         patch("optimizers.jpeg.settings") as mock_settings,
     ):
         mock_settings.jpeg_encoder = "pillow"
-        await jpeg_optimizer.optimize(
-            data, OptimizationConfig(quality=60, strip_metadata=True)
-        )
+        await jpeg_optimizer.optimize(data, OptimizationConfig(quality=60, strip_metadata=True))
 
     # No metadata should be passed
     assert all(kw["icc_profile"] is None for kw in encode_kwargs)
@@ -436,7 +423,7 @@ async def test_jpeg_optimizer_cjpeg_max_reduction():
             q = int(cmd[q_idx]) if q_idx > 0 else 80
             ratio = q / 100.0
             size = int(len(data) * ratio)
-            return data[:max(size, 100)], b"", 0
+            return data[: max(size, 100)], b"", 0
         return data, b"", 0
 
     config = OptimizationConfig(quality=30, max_reduction=5.0)
@@ -466,7 +453,7 @@ async def test_jpeg_cjpeg_progressive():
     with patch("optimizers.jpeg.settings") as mock_settings:
         mock_settings.jpeg_encoder = "cjpeg"
         with patch("optimizers.jpeg.run_tool", side_effect=mock_run_tool):
-            result = await opt._optimize_cjpeg(data, config)
+            await opt._optimize_cjpeg(data, config)
             assert called_with_progressive[0]
 
 
