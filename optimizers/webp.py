@@ -1,3 +1,4 @@
+import asyncio
 import io
 import os
 import shutil
@@ -12,38 +13,43 @@ from utils.subprocess_runner import run_tool
 
 
 class WebpOptimizer(BaseOptimizer):
-    """WebP optimization: Pillow (primary) + cwebp CLI (fallback).
+    """WebP optimization: Pillow + cwebp CLI run concurrently, pick smallest.
 
     Pipeline:
-    1. Check for animated WebP (n_frames > 1) → Pillow with save_all
-    2. Pillow decode + re-encode at target quality
-    3. If Pillow result >= 90% of input → try cwebp fallback
-    4. Use whichever output is smaller
+    1. Run Pillow re-encode and cwebp CLI in parallel
+    2. Pick the smallest result
+    3. If max_reduction set and exceeded, binary search quality
     """
 
     format = ImageFormat.WEBP
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        pillow_result = self._pillow_optimize(data, config.quality)
-        method = "pillow"
+        # Run Pillow and cwebp concurrently — pick smallest
+        pillow_task = asyncio.to_thread(self._pillow_optimize, data, config.quality)
+        cwebp_task = self._cwebp_fallback(data, config.quality)
 
-        # If Pillow result is suspiciously poor, try cwebp fallback
-        if len(pillow_result) >= len(data) * 0.9:
-            cwebp_result = await self._cwebp_fallback(data, config.quality)
-            if cwebp_result and len(cwebp_result) < len(pillow_result):
-                pillow_result = cwebp_result
-                method = "cwebp"
+        pillow_result, cwebp_result = await asyncio.gather(
+            pillow_task, cwebp_task
+        )
+
+        best = pillow_result
+        method = "pillow"
+        if cwebp_result and len(cwebp_result) < len(best):
+            best = cwebp_result
+            method = "cwebp"
 
         # Cap reduction if max_reduction is set
         if config.max_reduction is not None:
-            reduction = (1 - len(pillow_result) / len(data)) * 100
+            reduction = (1 - len(best) / len(data)) * 100
             if reduction > config.max_reduction:
-                capped = self._find_capped_quality(data, config)
+                capped = await asyncio.to_thread(
+                    self._find_capped_quality, data, config
+                )
                 if capped is not None:
-                    pillow_result = capped
+                    best = capped
                     method = "pillow"
 
-        return self._build_result(data, pillow_result, method)
+        return self._build_result(data, best, method)
 
     def _find_capped_quality(self, data: bytes, config: OptimizationConfig) -> bytes | None:
         """Binary search Pillow quality to cap reduction at max_reduction.
@@ -91,7 +97,7 @@ class WebpOptimizer(BaseOptimizer):
         save_kwargs = {
             "format": "WEBP",
             "quality": quality,
-            "method": 6,  # Slowest but best compression
+            "method": 4,  # Good compression, 2-3x faster than method=6
         }
 
         if is_animated:
@@ -120,7 +126,7 @@ class WebpOptimizer(BaseOptimizer):
             out_path = in_path + ".out.webp"
 
             stdout, stderr, rc = await run_tool(
-                ["cwebp", "-q", str(quality), "-m", "6", in_path, "-o", out_path],
+                ["cwebp", "-q", str(quality), "-m", "4", "-mt", in_path, "-o", out_path],
                 b"",  # No stdin needed
             )
 

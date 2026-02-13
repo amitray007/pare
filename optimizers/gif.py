@@ -8,14 +8,15 @@ class GifOptimizer(BaseOptimizer):
     """GIF optimization via gifsicle.
 
     Pipeline varies by quality setting:
-    - quality < 50:  --optimize=3 --lossy=80 (aggressive lossy)
-    - quality < 70:  --optimize=3 --lossy=30 (moderate lossy)
+    - quality < 50:  --optimize=3 --lossy=80 --colors 128 (aggressive)
+    - quality < 70:  --optimize=3 --lossy=30 --colors 192 (moderate)
     - quality >= 70: --optimize=3 (lossless only)
 
     gifsicle --optimize=3 performs lossless optimization (frame bbox
     shrinking, disposal method optimization, LZW recompression).
     --lossy enables lossy LZW compression that modifies pixel values
     slightly for better compression ratios.
+    --colors reduces the palette size for better LZW compression.
     """
 
     format = ImageFormat.GIF
@@ -24,11 +25,11 @@ class GifOptimizer(BaseOptimizer):
         cmd = ["gifsicle", "--optimize=3"]
 
         if config.quality < 50:
-            cmd.append("--lossy=80")
-            method = "gifsicle --lossy=80"
+            cmd.extend(["--lossy=80", "--colors", "128"])
+            method = "gifsicle --lossy=80 --colors=128"
         elif config.quality < 70:
-            cmd.append("--lossy=30")
-            method = "gifsicle --lossy=30"
+            cmd.extend(["--lossy=30", "--colors", "192"])
+            method = "gifsicle --lossy=30 --colors=192"
         else:
             method = "gifsicle"
 

@@ -141,7 +141,7 @@ async def test_png_quality_aggressive_settings(png_optimizer):
         with patch.object(png_optimizer, "_run_oxipng", side_effect=mock_oxipng):
             await png_optimizer.optimize(data, OptimizationConfig(quality=40, png_lossy=True))
     assert pngquant_calls[0]["max_colors"] == 64
-    assert pngquant_calls[0]["speed"] == 1
+    assert pngquant_calls[0]["speed"] == 3
 
 
 @pytest.mark.asyncio

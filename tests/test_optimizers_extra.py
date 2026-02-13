@@ -201,7 +201,7 @@ async def test_gif_lossy_moderate(gif_optimizer, sample_gif):
     """quality 50-69: --lossy=30."""
     result = await gif_optimizer.optimize(sample_gif, OptimizationConfig(quality=60))
     assert result.success
-    assert result.method == "gifsicle --lossy=30"
+    assert result.method == "gifsicle --lossy=30 --colors=192"
 
 
 @pytest.mark.asyncio
@@ -210,7 +210,7 @@ async def test_gif_lossy_aggressive(gif_optimizer, sample_gif):
     """quality<50: --lossy=80."""
     result = await gif_optimizer.optimize(sample_gif, OptimizationConfig(quality=30))
     assert result.success
-    assert result.method == "gifsicle --lossy=80"
+    assert result.method == "gifsicle --lossy=80 --colors=128"
 
 
 # --- SVG Optimizer ---

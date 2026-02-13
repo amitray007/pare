@@ -39,8 +39,11 @@ class PngOptimizer(BaseOptimizer):
             data_clean = data
 
         # Quality-dependent oxipng level: higher = slower but better compression
+        # Level 6 = 180 filter trials (too slow for API use on large images)
+        # Level 4 = 24 trials (good tradeoff for aggressive preset)
+        # Level 3 is NOT used — it misses critical filters for screenshots
         if config.quality < 50:
-            oxipng_level = 6
+            oxipng_level = 4
         elif config.quality < 70:
             oxipng_level = 4
         else:
@@ -55,7 +58,7 @@ class PngOptimizer(BaseOptimizer):
         # Quality-dependent pngquant settings
         if config.quality < 50:
             max_colors = 64
-            speed = 1  # slowest, best palette selection
+            speed = 3  # good palette quality, 3-5x faster than speed=1
         else:
             max_colors = 256
             speed = 4  # default balanced

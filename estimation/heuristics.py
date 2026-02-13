@@ -640,22 +640,47 @@ def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         else:
             reduction = 12.0 if info.file_size < 2500 else 15.0
 
-        # Lossy mode bonus — only helps gradient/photo content (high bpp).
-        # Graphic content (low bpp) already compresses well; lossy can't
+        # Content classification: high bpp AND not tiny = true gradient/photo.
+        # Tiny files (<1000 bytes) have inflated bpp due to header overhead,
+        # so they should NOT get gradient-level bonuses.
+        is_gradient_content = bpp >= 0.05 and info.file_size >= 1000
+
+        # Lossy mode bonus — only helps gradient/photo content.
+        # Graphic content already compresses well; lossy can't
         # find additional redundancy.
-        if bpp >= 0.05:
+        if is_gradient_content:
             if config.quality < 50:
                 reduction += 8.0
             elif config.quality < 70:
                 reduction += 4.0
 
+        # Palette reduction bonus (--colors flag reduces per-frame palette).
+        # Gradient content benefits enormously from fewer colors — LZW
+        # compresses reduced palettes much better. The effect is stronger
+        # on smaller images (fewer unique gradient steps to preserve).
+        # Calibrated from benchmarks:
+        #   small gradient HIGH: ~47% bonus (over base 2%)
+        #   large gradient HIGH: ~32% bonus
+        #   graphics: ~2-3% bonus (already use few colors)
+        if is_gradient_content:
+            if config.quality < 50:
+                # Smaller gradients benefit more from palette reduction
+                size_factor = max(0.6, min(1.0, 10000 / max(info.file_size, 1)))
+                reduction += 20.0 + 18.0 * size_factor
+            elif config.quality < 70:
+                reduction += 12.0
+        elif config.quality < 50:
+            reduction += 2.0
+        elif config.quality < 70:
+            reduction += 1.0
+
         potential = "medium" if reduction >= 10 else "low"
 
     method = "gifsicle"
     if config.quality < 50:
-        method = "gifsicle --lossy=80"
+        method = "gifsicle --lossy=80 --colors=128"
     elif config.quality < 70:
-        method = "gifsicle --lossy=30"
+        method = "gifsicle --lossy=30 --colors=192"
 
     return Prediction(
         estimated_size=int(info.file_size * (1 - reduction / 100)),
