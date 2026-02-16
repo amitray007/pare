@@ -24,7 +24,7 @@ RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /l
              -DJPEGXL_ENABLE_SJPEG=OFF \
              -DJPEGXL_ENABLE_OPENEXR=OFF \
              .. \
-    && make -j$(nproc) jpegli-static jpegli-libjpeg-shared cjxl djxl \
+    && make -j$(nproc) jpegli-static jpeg cjxl djxl \
     && make install
 
 # ---- Stage 1: Build MozJPEG from source ----
