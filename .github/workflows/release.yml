@@ -66,6 +66,27 @@ jobs:
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "Bump: $(cat "$GITHUB_OUTPUT" | grep bump | cut -d= -f2) -> $NEXT"
 
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG="${{ steps.latest_tag.outputs.tag }}"
+          # Check if previous tag exists in git history
+          if git rev-parse "$PREV_TAG" >/dev/null 2>&1; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          # Build changelog from commit messages (first line only, skip [skip *] tags)
+          CHANGES=$(git log "$RANGE" --pretty=format:"- %s (%h)" --no-merges \
+            | sed 's/ \[skip ci\]//g; s/ \[skip release\]//g; s/ \[minor\]//g; s/ \[major\]//g; s/ \[patch\]//g')
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- Maintenance release"
+          fi
+          # Write to file to preserve newlines
+          echo "$CHANGES" > /tmp/changelog.md
+          echo "Changelog:"
+          cat /tmp/changelog.md
+
       - name: Create tag
         run: |
           git config user.name "github-actions[bot]"
@@ -78,7 +99,7 @@ jobs:
         with:
           tag_name: ${{ steps.next_version.outputs.version }}
           name: ${{ steps.next_version.outputs.version }}
-          generate_release_notes: true
+          body_path: /tmp/changelog.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
