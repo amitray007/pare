@@ -51,6 +51,10 @@ RUN curl -L https://github.com/mozilla/mozjpeg/archive/refs/tags/v${MOZJPEG_VERS
 # ---- Stage 2: Production image ----
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/amitray007/pare"
+LABEL org.opencontainers.image.description="Serverless image compression API"
+LABEL org.opencontainers.image.licenses="MIT"
+
 # Copy jpegli libjpeg.so.62 (Pillow picks this up via ldconfig)
 COPY --from=jpegli-builder /opt/jpegli/lib/libjpeg.so.62* /usr/local/lib/
 # Copy JPEG XL CLI tools

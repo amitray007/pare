@@ -298,6 +298,45 @@ Deploys to Cloud Run via Cloud Build (`cloudbuild.yaml`). The Dockerfile builds 
 docker build -t pare .
 ```
 
+### Docker Image (GHCR)
+
+Pre-built images are published to GitHub Container Registry on every release:
+
+```bash
+# Latest
+docker pull ghcr.io/amitray007/pare:latest
+
+# Specific version
+docker pull ghcr.io/amitray007/pare:0.1.4
+
+# Run it
+docker run -p 8080:8080 ghcr.io/amitray007/pare:latest
+```
+
+## Releases & Versioning
+
+Releases are fully automated. Every push to `main` creates a new version tag, a GitHub Release with an auto-generated changelog, and publishes a Docker image.
+
+### Version Bumps
+
+By default, the **patch** version is incremented. To bump minor or major, include a tag in your commit message:
+
+| Commit message | Version change |
+|---|---|
+| `fix edge case in PNG optimizer` | `v0.1.3` → `v0.1.4` (patch) |
+| `add JPEG XL support [minor]` | `v0.1.4` → `v0.2.0` (minor) |
+| `rewrite API v2 [major]` | `v0.2.0` → `v1.0.0` (major) |
+
+### Skipping Releases
+
+To push without triggering a release, include `[skip ci]` or `[skip release]` in the commit message:
+
+```bash
+git commit -m "update README [skip ci]"
+```
+
+Changes to `*.md` files and `docs/` are also ignored by the release workflow.
+
 ## License
 
 [MIT](LICENSE)

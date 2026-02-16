@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Skip when commit message contains [skip ci] or [skip release]
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !contains(github.event.head_commit.message, '[skip release]')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: latest_tag
+        run: |
+          git fetch --tags
+          TAG=$(git tag -l "v*" --sort=-v:refname | head -n1)
+          if [ -z "$TAG" ]; then
+            TAG="v0.0.0"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest tag: $TAG"
+
+      - name: Determine version bump
+        id: next_version
+        run: |
+          TAG="${{ steps.latest_tag.outputs.tag }}"
+          VERSION="${TAG#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+          MSG="${{ github.event.head_commit.message }}"
+
+          if echo "$MSG" | grep -qi '\[major\]'; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            echo "bump=major" >> "$GITHUB_OUTPUT"
+          elif echo "$MSG" | grep -qi '\[minor\]'; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+          else
+            PATCH=$((PATCH + 1))
+            echo "bump=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+          NEXT="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Bump: $(cat "$GITHUB_OUTPUT" | grep bump | cut -d= -f2) -> $NEXT"
+
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.next_version.outputs.version }}"
+          git push origin "${{ steps.next_version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.next_version.outputs.version }}
+          name: ${{ steps.next_version.outputs.version }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
