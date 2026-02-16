@@ -3,7 +3,7 @@ FROM debian:bookworm-slim AS jpegli-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake build-essential git ca-certificates pkg-config \
-    libbrotli-dev libhwy-dev \
+    libbrotli-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /libjxl \
@@ -23,7 +23,6 @@ RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /l
              -DJPEGXL_ENABLE_SKCMS=ON \
              -DJPEGXL_ENABLE_SJPEG=OFF \
              -DJPEGXL_ENABLE_OPENEXR=OFF \
-             -DJPEGXL_FORCE_SYSTEM_HWY=ON \
              .. \
     && make -j$(nproc) jpegli-static jpegli-libjpeg-shared cjxl djxl \
     && make install
