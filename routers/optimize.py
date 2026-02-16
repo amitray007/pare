@@ -44,7 +44,10 @@ async def optimize(
         opt_config, storage_config = _parse_form_options(options)
     elif "application/json" in content_type:
         # JSON URL mode
-        body = await request.json()
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError) as e:
+            raise BadRequestError(f"Invalid JSON body: {e}")
         url = body.get("url")
         if not url:
             raise BadRequestError("Missing 'url' field in JSON body")

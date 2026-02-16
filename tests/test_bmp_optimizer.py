@@ -63,8 +63,8 @@ def _make_noisy_bmp(width=100, height=100):
 
 @pytest.mark.asyncio
 async def test_bmp_lossless_rgb_no_reduction(bmp_optimizer):
-    """24-bit RGB BMP at quality>=70: no reduction (already optimal)."""
-    data = _make_rgb_bmp()
+    """24-bit RGB BMP with many colors at quality>=70: no reduction."""
+    data = _make_noisy_bmp()
     result = await bmp_optimizer.optimize(data, OptimizationConfig(quality=80))
     assert result.success
     assert result.optimized_size <= result.original_size
@@ -72,13 +72,23 @@ async def test_bmp_lossless_rgb_no_reduction(bmp_optimizer):
 
 
 @pytest.mark.asyncio
+async def test_bmp_lossless_palette_solid(bmp_optimizer):
+    """Solid-color BMP at quality>=70: lossless palette compression."""
+    data = _make_rgb_bmp()
+    result = await bmp_optimizer.optimize(data, OptimizationConfig(quality=80))
+    assert result.success
+    assert result.optimized_size < result.original_size
+    assert result.method in ("bmp-palette-lossless", "bmp-rle8-lossless")
+
+
+@pytest.mark.asyncio
 async def test_bmp_lossless_rgba_downconvert(bmp_optimizer):
-    """32-bit RGBA BMP at quality>=70: 32->24 bit (~25% reduction)."""
+    """32-bit RGBA BMP at quality>=70: reduction via 32->24 bit or lossless palette."""
     data = _make_rgba_bmp()
     result = await bmp_optimizer.optimize(data, OptimizationConfig(quality=80))
     assert result.success
     assert result.optimized_size < result.original_size
-    assert result.method == "pillow-bmp"
+    assert result.method in ("pillow-bmp", "bmp-palette-lossless", "bmp-rle8-lossless")
     assert result.reduction_percent > 20.0
 
 
@@ -87,8 +97,8 @@ async def test_bmp_lossless_rgba_downconvert(bmp_optimizer):
 
 @pytest.mark.asyncio
 async def test_bmp_palette_quantization(bmp_optimizer):
-    """quality 50-69: palette quantization gives ~66% reduction."""
-    data = _make_rgb_bmp()
+    """quality 50-69: palette quantization gives ~66% reduction on many-color images."""
+    data = _make_noisy_bmp()
     result = await bmp_optimizer.optimize(data, OptimizationConfig(quality=60))
     assert result.success
     assert result.method == "pillow-bmp-palette"
@@ -97,11 +107,11 @@ async def test_bmp_palette_quantization(bmp_optimizer):
 
 @pytest.mark.asyncio
 async def test_bmp_palette_rgba(bmp_optimizer):
-    """RGBA BMP at quality<70: palette beats 32->24 bit."""
+    """RGBA BMP at quality<70: palette or lossless palette beats 32->24 bit."""
     data = _make_rgba_bmp()
     result = await bmp_optimizer.optimize(data, OptimizationConfig(quality=60))
     assert result.success
-    assert result.method == "pillow-bmp-palette"
+    assert result.method in ("pillow-bmp-palette", "bmp-palette-lossless", "bmp-rle8-lossless")
     assert result.reduction_percent > 50.0
 
 
@@ -114,7 +124,7 @@ async def test_bmp_rle8_screenshot(bmp_optimizer):
     data = _make_screenshot_bmp()
     result = await bmp_optimizer.optimize(data, OptimizationConfig(quality=30))
     assert result.success
-    assert result.method == "bmp-rle8"
+    assert result.method in ("bmp-rle8", "bmp-rle8-lossless")
     assert result.reduction_percent > 80.0
 
 
@@ -134,7 +144,7 @@ async def test_bmp_rle8_decodes_correctly(bmp_optimizer):
     """RLE8 output is a valid BMP that Pillow can decode."""
     data = _make_screenshot_bmp()
     result = await bmp_optimizer.optimize(data, OptimizationConfig(quality=30))
-    assert result.method == "bmp-rle8"
+    assert result.method in ("bmp-rle8", "bmp-rle8-lossless")
     # Verify Pillow can open and read the RLE8 BMP
     img = Image.open(io.BytesIO(result.optimized_bytes))
     assert img.size == (100, 100)

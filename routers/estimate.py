@@ -31,7 +31,10 @@ async def estimate(
     if file is not None:
         data = await file.read()
     elif "application/json" in content_type:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError) as e:
+            raise BadRequestError(f"Invalid JSON body: {e}")
         url = body.get("url")
         if not url:
             raise BadRequestError("Missing 'url' field in JSON body")

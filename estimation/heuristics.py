@@ -1003,11 +1003,30 @@ def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         confidence = "high"
         method = "pillow-bmp"
     else:
-        reduction = 0.0
-        potential = "low"
-        already_optimized = True
-        confidence = "low"
-        method = "pillow-bmp"
+        # Standard 24-bit BMP. Lossless palette conversion is possible if
+        # the image has <= 256 unique colors (common for icons, UI, diagrams).
+        # Use flat_pixel_ratio as a proxy: very flat content (> 0.90) likely
+        # has few unique colors and benefits from palette + RLE8.
+        fpr = info.flat_pixel_ratio
+        if fpr is not None and fpr > 0.90:
+            # Flat/icon content: predict palette + RLE8 lossless savings.
+            # 8-bit palette row = (w+3)&~3 bytes vs 24-bit row = (w*3+3)&~3.
+            # RLE8 bonus on flat content gives additional ~30-50% on top.
+            row_bytes_8 = (w + 3) & ~3
+            expected_8bit = 54 + 1024 + row_bytes_8 * h
+            palette_reduction = max(0.0, (1 - expected_8bit / info.file_size) * 100)
+            rle_bonus = min(30.0, (100.0 - palette_reduction) * 0.4)
+            reduction = round(min(palette_reduction + rle_bonus, 99.0), 1)
+            potential = "high" if reduction > 40 else "medium"
+            already_optimized = False
+            confidence = "medium"
+            method = "bmp-rle8-lossless"
+        else:
+            reduction = 0.0
+            potential = "low"
+            already_optimized = True
+            confidence = "low"
+            method = "pillow-bmp"
 
     estimated_size = int(info.file_size * (1 - reduction / 100))
     return Prediction(

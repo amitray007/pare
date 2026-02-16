@@ -47,6 +47,20 @@ class BmpOptimizer(BaseOptimizer):
             best = candidate
             best_method = "pillow-bmp"
 
+        # --- Tier 1.5 (all presets): lossless palette for images with <= 256 colors ---
+        if img.mode in ("RGB", "L"):
+            lossless_result = self._try_lossless_palette(img)
+            if lossless_result is not None:
+                palette_img_lossless, palette_bmp, palette_method = lossless_result
+                if len(palette_bmp) < len(best):
+                    best = palette_bmp
+                    best_method = palette_method
+                # Also try RLE8 on the lossless palette image
+                rle_candidate = self._encode_rle8_bmp(palette_img_lossless)
+                if rle_candidate is not None and len(rle_candidate) < len(best):
+                    best = rle_candidate
+                    best_method = "bmp-rle8-lossless"
+
         # --- Tier 2 (quality < 70): palette quantization (8-bit, 256 colors) ---
         if config.quality < 70:
             palette_img = self._quantize_to_palette(img)
@@ -66,6 +80,45 @@ class BmpOptimizer(BaseOptimizer):
                     best_method = "bmp-rle8"
 
         return best, best_method
+
+    @staticmethod
+    def _try_lossless_palette(img: Image.Image) -> tuple[Image.Image, bytes, str] | None:
+        """Try lossless conversion to 8-bit palette BMP.
+
+        If the image has <= 256 unique colors, builds an exact palette
+        (no quantization, no color loss) and returns (palette_img, bmp_bytes, method).
+        Returns None if the image has too many colors.
+        """
+        pixels = list(img.getdata())
+        unique_colors = list(set(pixels))
+        if len(unique_colors) > 256:
+            return None
+
+        w, h = img.size
+        color_to_idx = {c: i for i, c in enumerate(unique_colors)}
+
+        # Build palette image with exact color mapping
+        palette_img = Image.new("P", (w, h))
+        palette_data = bytes(color_to_idx[p] for p in pixels)
+        palette_img.putdata(list(palette_data))
+
+        # Build RGB palette (Pillow expects flat R,G,B list of 768 entries)
+        flat_palette = [0] * 768
+        for i, color in enumerate(unique_colors):
+            if isinstance(color, int):
+                # Grayscale
+                flat_palette[i * 3] = color
+                flat_palette[i * 3 + 1] = color
+                flat_palette[i * 3 + 2] = color
+            else:
+                flat_palette[i * 3] = color[0]
+                flat_palette[i * 3 + 1] = color[1]
+                flat_palette[i * 3 + 2] = color[2]
+        palette_img.putpalette(flat_palette)
+
+        buf = io.BytesIO()
+        palette_img.save(buf, format="BMP")
+        return palette_img, buf.getvalue(), "bmp-palette-lossless"
 
     @staticmethod
     def _quantize_to_palette(img: Image.Image) -> Image.Image:
