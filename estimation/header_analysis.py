@@ -53,6 +53,20 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
     if fmt in (ImageFormat.SVG, ImageFormat.SVGZ):
         return _analyze_svg(data, fmt, info)
 
+    # Register optional format plugins so Pillow can open JXL/HEIC
+    if fmt == ImageFormat.JXL:
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            pass
+    elif fmt == ImageFormat.HEIC:
+        try:
+            import pillow_heif
+
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            pass
+
     # Use Pillow lazy mode for raster formats
     try:
         img = Image.open(io.BytesIO(data))

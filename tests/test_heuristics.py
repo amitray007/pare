@@ -248,7 +248,7 @@ def test_tiff_mid_flat_ratio():
 
 
 def test_tiff_compressed_input():
-    """Already-compressed TIFF (ratio < 0.8) uses lower deflate estimate."""
+    """Already-compressed TIFF (ratio < 0.7) detects source compression."""
     info = _make_info(
         ImageFormat.TIFF,
         width=300,
@@ -258,7 +258,8 @@ def test_tiff_compressed_input():
         flat_pixel_ratio=None,
     )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
-    assert result.confidence == "low"
+    assert result.confidence == "medium"
+    assert result.reduction_percent < 15  # Limited gains on already-compressed
 
 
 # --- _predict_avif / _predict_heic (bpp-based model) ---
@@ -322,7 +323,7 @@ def test_heic_no_dimensions_fallback():
     """No dimensions → uses flat fallback reduction."""
     info = _make_info(ImageFormat.HEIC, width=0, height=0, file_size=50_000)
     result = _predict_heic(info, OptimizationConfig(quality=60))
-    assert result.reduction_percent == 22.0
+    assert result.reduction_percent == 25.0
     assert result.confidence == "low"
 
 

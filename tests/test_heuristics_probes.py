@@ -309,7 +309,7 @@ def test_tiff_flat_content():
     """TIFF with flat content (screenshot): high deflate compression."""
     info = _make_info(ImageFormat.TIFF, file_size=1440000, flat_pixel_ratio=0.9)
     result = _predict_tiff(info, OptimizationConfig(quality=80))
-    assert result.reduction_percent > 90
+    assert result.reduction_percent > 80
 
 
 def test_tiff_no_flat_ratio():

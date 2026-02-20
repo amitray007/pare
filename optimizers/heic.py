@@ -46,6 +46,7 @@ class HeicOptimizer(BaseOptimizer):
         """Strip metadata from HEIC using pillow-heif."""
         import pillow_heif
 
+        pillow_heif.register_heif_opener()
         heif_file = pillow_heif.open_heif(data)
         img = heif_file.to_pillow()
 
@@ -67,6 +68,7 @@ class HeicOptimizer(BaseOptimizer):
         """Re-encode HEIC at target quality via x265 (HEVC) encoder."""
         import pillow_heif
 
+        pillow_heif.register_heif_opener()
         heif_file = pillow_heif.open_heif(data)
         img = heif_file.to_pillow()
         icc_profile = img.info.get("icc_profile")

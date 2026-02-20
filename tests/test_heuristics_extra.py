@@ -344,12 +344,12 @@ def test_jpeg_delta_in_20_40_range():
 
 
 def test_bpp_to_quality_low():
-    assert _bpp_to_quality(0.05) == 20
+    assert _bpp_to_quality(0.05) == 65  # Floor raised for real-world WebP
 
 
 def test_bpp_to_quality_mid():
     q = _bpp_to_quality(2.5)
-    assert 60 <= q <= 80
+    assert 80 <= q <= 92  # Recalibrated for real-world corpus data
 
 
 def test_bpp_to_quality_high():
@@ -568,11 +568,11 @@ def test_predict_heic_no_dimensions():
 
     config_high = OptimizationConfig(quality=40)
     result_high = _predict_heic(info, config_high)
-    assert result_high.reduction_percent == 35.0
+    assert result_high.reduction_percent == 55.0
 
     config_low = OptimizationConfig(quality=80)
     result_low = _predict_heic(info, config_low)
-    assert result_low.reduction_percent == 8.0
+    assert result_low.reduction_percent == 0.0
 
 
 def test_predict_bmp_photo_rle_bonus():

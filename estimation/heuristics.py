@@ -243,19 +243,24 @@ def _predict_png_by_complexity(
             lossy_reduction = (1.0 - qpr) * 100.0
 
     elif not is_full_file_probe:
-        # Large files: heuristic for lossy path
-        if is_flat:
-            lossy_reduction = 0.0
-        elif is_photo:
-            # Photos: pngquant with floor=1 always succeeds. 256 colors
-            # on photo content gives ~68% (calibrated across sizes).
+        # Large files: heuristic for lossy path.
+        # With floor=1, pngquant always succeeds on any content.
+        # Real-world PNG photos achieve 60-80%+ with pngquant + oxipng.
+        if is_photo:
             lossy_reduction = 68.0
         elif cr is not None and cr < 0.005:
             lossy_reduction = 90.0
         elif cr is not None and cr < 0.20:
-            lossy_reduction = 55.0
-        elif qpr is not None and qpr < 0.50:
-            lossy_reduction = 55.0
+            lossy_reduction = 65.0
+        elif is_flat:
+            # Flat/gradient content: pngquant quantization + palette
+            # encoding achieves substantial savings on photo-sourced PNGs.
+            lossy_reduction = 60.0
+        elif qpr is not None and qpr < 0.70:
+            lossy_reduction = (1.0 - qpr) * 100.0
+        else:
+            # Unclassified content: conservative baseline for pngquant
+            lossy_reduction = 50.0
 
     # 64-color bonus: quality < 50 uses far fewer colors → ~10% more compression
     # on content with many unique colors (photos, complex graphics).
@@ -517,19 +522,23 @@ def _png_lossy_probe(data: bytes, quality: int) -> Optional[float]:
 def _bpp_to_quality(bpp: float) -> int:
     """Map bits-per-pixel to estimated WebP quality.
 
-    Piecewise linear calibrated from benchmark data (photographic content):
-        bpp ~2.1 → q60, bpp ~3.0 → q80, bpp ~5.2 → q95
+    Piecewise linear calibrated from real-world corpus data:
+        bpp ~0.5 → q70, bpp ~1.5 → q80, bpp ~3.0 → q90, bpp ~5.0 → q95
+    Real-world WebP files are almost always q=70+ (lower produces
+    visible artifacts). Minimum floor of 65 to avoid false negatives.
     """
     if bpp <= 0.1:
-        return 20
-    elif bpp <= 2.1:
-        return int(max(20, 60 - (2.1 - bpp) * 20))
+        return 65
+    elif bpp <= 0.5:
+        return int(65 + (bpp / 0.5) * 5)
+    elif bpp <= 1.5:
+        return int(70 + (bpp - 0.5) / 1.0 * 10)
     elif bpp <= 3.0:
-        return int(60 + (bpp - 2.1) / 0.9 * 20)
-    elif bpp <= 5.2:
-        return int(80 + (bpp - 3.0) / 2.2 * 15)
+        return int(80 + (bpp - 1.5) / 1.5 * 10)
+    elif bpp <= 5.0:
+        return int(90 + (bpp - 3.0) / 2.0 * 5)
     else:
-        return int(min(98, 95 + (bpp - 5.2) * 1.5))
+        return int(min(98, 95 + (bpp - 5.0) * 1.5))
 
 
 def _predict_webp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
@@ -616,6 +625,9 @@ def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     - quality < 50:  --lossy=80 → ~2× lossless savings
     - quality < 70:  --lossy=30 → ~1.5× lossless savings
     - quality >= 70: lossless only
+
+    Calibrated from real-world corpus (photo-converted GIFs):
+      HIGH: ~65% reduction, MEDIUM: ~52%, LOW: ~0% (lossless only).
     """
     if info.frame_count > 1:
         reduction = 15.0
@@ -629,7 +641,7 @@ def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         if info.file_size < 1000:
             reduction = 10.0
         elif bpp >= 0.10:
-            reduction = 2.0
+            reduction = 5.0
         elif bpp >= 0.03:
             reduction = 10.0 if info.file_size < 2500 else 14.0
         else:
@@ -641,29 +653,25 @@ def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         is_gradient_content = bpp >= 0.05 and info.file_size >= 1000
 
         # Lossy mode bonus — only helps gradient/photo content.
-        # Graphic content already compresses well; lossy can't
-        # find additional redundancy.
+        # Photo-converted GIFs benefit enormously from lossy gifsicle.
         if is_gradient_content:
             if config.quality < 50:
-                reduction += 8.0
+                reduction += 15.0
             elif config.quality < 70:
-                reduction += 4.0
+                reduction += 10.0
 
         # Palette reduction bonus (--colors flag reduces per-frame palette).
-        # Gradient content benefits enormously from fewer colors — LZW
-        # compresses reduced palettes much better. The effect is stronger
-        # on smaller images (fewer unique gradient steps to preserve).
-        # Calibrated from benchmarks:
-        #   small gradient HIGH: ~47% bonus (over base 2%)
-        #   large gradient HIGH: ~32% bonus
-        #   graphics: ~2-3% bonus (already use few colors)
+        # Gradient/photo content benefits enormously from fewer colors — LZW
+        # compresses reduced palettes much better. Calibrated from corpus:
+        #   HIGH (128 colors): ~45% bonus on gradient/photo GIFs
+        #   MEDIUM (192 colors): ~35% bonus
+        #   Graphics: ~2-3% bonus (already use few colors)
         if is_gradient_content:
             if config.quality < 50:
-                # Smaller gradients benefit more from palette reduction
                 size_factor = max(0.6, min(1.0, 10000 / max(info.file_size, 1)))
-                reduction += 20.0 + 18.0 * size_factor
+                reduction += 28.0 + 20.0 * size_factor
             elif config.quality < 70:
-                reduction += 12.0
+                reduction += 35.0
         elif config.quality < 50:
             reduction += 2.0
         elif config.quality < 70:
@@ -840,10 +848,11 @@ def _predict_avif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """HEIC — bpp-based prediction calibrated from benchmark data.
+    """HEIC — bpp-based prediction calibrated from real-world corpus data.
 
-    Same model as AVIF but HEVC target bpp is higher (less efficient codec):
-      target_bpp(q) = 0.0000875 * q^2 + 0.0065 * q - 0.074
+    Target bpp model fitted from pillow-heif re-encoding at various qualities:
+      target_bpp(q) = 0.00009 * q^2 - 0.0045 * q + 0.172
+    Calibration points: q=50 → 0.172 bpp, q=70 → 0.298 bpp, q=90 → 0.496 bpp.
     """
     w = info.dimensions.get("width", 0)
     h = info.dimensions.get("height", 0)
@@ -853,7 +862,7 @@ def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     if pixels > 0:
         source_bpp = info.file_size / pixels
-        target_bpp = 0.0000875 * heic_quality**2 + 0.0065 * heic_quality - 0.074
+        target_bpp = 0.00009 * heic_quality**2 - 0.0045 * heic_quality + 0.172
 
         if source_bpp <= target_bpp * 1.05:
             reduction = 0.0
@@ -863,15 +872,15 @@ def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         confidence = "high"
     else:
         if config.quality < 50:
-            reduction = 35.0
+            reduction = 55.0
         elif config.quality < 70:
-            reduction = 22.0
+            reduction = 25.0
         else:
-            reduction = 8.0
+            reduction = 0.0
         confidence = "low"
 
     method = "heic-reencode" if reduction > 0 else "none"
-    reduction = max(0.0, min(reduction, 80.0))
+    reduction = max(0.0, min(reduction, 85.0))
     potential = "high" if reduction >= 25 else ("medium" if reduction >= 12 else "low")
 
     return Prediction(
@@ -891,8 +900,10 @@ def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     Lossy path (quality < 70, RGB/L only): JPEG-in-TIFF at config.quality.
     Optimizer picks smallest across all methods.
 
-    Calibrated from benchmark: photo deflate_ratio ~0.91, flat ~0.009.
-    JPEG-in-TIFF on photos: ~90-95% reduction from raw, ~60-80% from deflate.
+    Calibrated from real-world corpus data:
+      photo deflate_ratio ~0.55, flat ~0.12, JPEG-in-TIFF ~0.015-0.105.
+    Source compression detection: if file_size/raw_size < 0.7, source is
+    already compressed and re-compression yields minimal gains.
     """
     w = info.dimensions.get("width", 1)
     h = info.dimensions.get("height", 1)
@@ -900,40 +911,57 @@ def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     raw_size = w * h * channels
     fpr = info.flat_pixel_ratio
 
-    if fpr is not None:
-        if fpr > 0.75:
-            deflate_ratio = 0.009
-        elif fpr < 0.30:
-            deflate_ratio = 0.91
+    # Detect if source is already compressed by comparing file_size to raw_size
+    source_ratio = info.file_size / max(raw_size, 1)
+
+    if source_ratio < 0.7:
+        # Source is already well-compressed (LZW, deflate, etc.)
+        # Re-compression gives minimal gains — maybe 5-15% at best
+        if source_ratio < 0.4:
+            lossless_reduction = 2.0
         else:
-            t = (fpr - 0.30) / 0.45
-            deflate_ratio = 0.91 * (1 - t) + 0.01 * t
-        confidence = "high"
+            lossless_reduction = max(0.0, (0.7 - source_ratio) * 30)
+        confidence = "medium"
+        lossy_reduction = 0.0
+        can_jpeg = config.quality < 70 and info.color_type != "rgba"
+        if can_jpeg and source_ratio > 0.3:
+            # JPEG-in-TIFF might still help vs lossless source compression
+            bpp_factor = 0.01 + config.quality * 0.002
+            jpeg_output = raw_size * bpp_factor
+            lossy_reduction = max(0.0, (1 - jpeg_output / max(info.file_size, 1)) * 100)
     else:
-        ratio = info.file_size / max(raw_size, 1)
-        if ratio > 0.8:
-            deflate_ratio = 0.50
+        # Source is raw/uncompressed — deflate model applies
+        if fpr is not None:
+            if fpr > 0.75:
+                deflate_ratio = 0.12
+            elif fpr < 0.30:
+                deflate_ratio = 0.55
+            else:
+                t = (fpr - 0.30) / 0.45
+                deflate_ratio = 0.55 * (1 - t) + 0.12 * t
+            confidence = "high"
         else:
-            deflate_ratio = 0.30
-        confidence = "low"
+            deflate_ratio = 0.45
+            confidence = "low"
 
-    deflate_output = raw_size * deflate_ratio
-    lossless_reduction = max(0.0, (1 - deflate_output / max(info.file_size, 1)) * 100)
+        deflate_output = raw_size * deflate_ratio
+        lossless_reduction = max(0.0, (1 - deflate_output / max(info.file_size, 1)) * 100)
 
-    # Lossy JPEG-in-TIFF for quality < 70 on RGB/L content (not RGBA).
-    # Photos compress dramatically; flat/graphic content JPEG is worse than deflate.
-    lossy_reduction = 0.0
-    is_photo = fpr is not None and fpr < 0.30
-    can_jpeg = config.quality < 70 and info.color_type != "rgba"
+        # Lossy JPEG-in-TIFF for quality < 70 on RGB/L content (not RGBA).
+        lossy_reduction = 0.0
+        can_jpeg = config.quality < 70 and info.color_type != "rgba"
 
-    if can_jpeg and is_photo:
-        # JPEG-in-TIFF on photo content: quality controls output size.
-        # Calibrated from benchmark (300x200 photo):
-        #   q=40: 32.6KB out of 180K raw → 0.185 bytes/pixel
-        #   q=60: 47.1KB out of 180K raw → 0.268 bytes/pixel
-        bpp_factor = 0.019 + config.quality * 0.00415
-        jpeg_output = raw_size * bpp_factor
-        lossy_reduction = max(0.0, (1 - jpeg_output / max(info.file_size, 1)) * 100)
+        if can_jpeg:
+            # JPEG-in-TIFF: bpp_factor calibrated from corpus.
+            # q=40: photo ~0.105, flat ~0.015. q=60: photo ~0.17, flat ~0.03.
+            if fpr is not None and fpr > 0.75:
+                bpp_factor = 0.005 + config.quality * 0.0006
+            elif fpr is not None and fpr < 0.30:
+                bpp_factor = 0.01 + config.quality * 0.0024
+            else:
+                bpp_factor = 0.008 + config.quality * 0.0015
+            jpeg_output = raw_size * bpp_factor
+            lossy_reduction = max(0.0, (1 - jpeg_output / max(info.file_size, 1)) * 100)
 
     reduction = max(lossless_reduction, lossy_reduction)
     method = "tiff_jpeg" if lossy_reduction > lossless_reduction else "tiff_adobe_deflate"
@@ -941,7 +969,7 @@ def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     if info.has_metadata_chunks and config.strip_metadata:
         reduction += 2.0
 
-    reduction = min(99.5, reduction)
+    reduction = min(99.0, reduction)
     potential = "high" if reduction >= 40 else ("medium" if reduction >= 15 else "low")
     estimated_size = int(info.file_size * (1 - reduction / 100))
 
@@ -1040,11 +1068,12 @@ def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """JXL — bpp-based prediction, similar model to AVIF.
+    """JXL — bpp-based prediction calibrated from real-world corpus data.
 
     JXL re-encoding: uses source bpp vs target bpp at the given quality.
-    JXL is slightly more efficient than AVIF, so target bpp is ~10% lower.
-    Fallback heuristic when dimensions are unavailable.
+    Target bpp model fitted from pillow-jxl encoder output:
+      target_bpp(q) = 0.0000904 * q^2 - 0.00891 * q + 0.280
+    Calibration points: q=50 → 0.0605 bpp, q=70 → 0.0993 bpp, q=90 → 0.210 bpp.
     """
     w = info.dimensions.get("width", 0)
     h = info.dimensions.get("height", 0)
@@ -1054,8 +1083,7 @@ def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     if pixels > 0:
         source_bpp = info.file_size / pixels
-        # JXL target bpp: calibrated from pillow-jxl-plugin encoder output
-        target_bpp = 0.00048 * jxl_quality**2 - 0.0529 * jxl_quality + 1.509
+        target_bpp = 0.0000904 * jxl_quality**2 - 0.00891 * jxl_quality + 0.280
 
         if source_bpp <= target_bpp * 1.05:
             reduction = 0.0
@@ -1065,11 +1093,11 @@ def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         confidence = "high"
     else:
         if config.quality < 50:
-            reduction = 35.0
+            reduction = 70.0
         elif config.quality < 70:
-            reduction = 25.0
+            reduction = 55.0
         else:
-            reduction = 10.0
+            reduction = 12.0
         confidence = "low"
 
     method = "jxl-reencode" if reduction > 0 else "none"
