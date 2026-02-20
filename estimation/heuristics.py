@@ -389,14 +389,15 @@ def _predict_jpeg(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         reduction = jpegtran_reduction
         method = "jpegtran"
 
-    # Screenshot/flat content adjustment: screenshots have fundamentally
-    # different compression characteristics — better at small deltas
-    # (flat regions → many zero DCT coefficients) but saturate earlier
-    # at large deltas (~78% ceiling vs ~93% for photos). Blend the
-    # photo-calibrated prediction toward the empirical screenshot mean.
+    # Screenshot/flat content adjustment: screenshots saturate earlier
+    # at large deltas (~78% ceiling vs ~93% for photos). Use a
+    # delta-dependent screenshot curve that caps the photo prediction.
+    # At small deltas (LOW preset), this prevents massive over-prediction
+    # from the 69% fixed blend that doesn't account for delta magnitude.
     if delta > 0 and info.flat_pixel_ratio is not None and info.flat_pixel_ratio > 0.75:
-        screenshot_mean = 69.0
-        reduction = reduction * 0.4 + screenshot_mean * 0.6
+        # Saturating curve: ~17% at delta=5, ~55% at delta=20, ~75% at delta=40+
+        screenshot_red = min(78.0, 2.5 * delta + 5.0)
+        reduction = min(reduction, screenshot_red)
 
     if info.has_exif and config.strip_metadata:
         reduction += 2.0
@@ -519,101 +520,70 @@ def _png_lossy_probe(data: bytes, quality: int) -> Optional[float]:
         return None
 
 
-def _bpp_to_quality(bpp: float) -> int:
-    """Map bits-per-pixel to estimated WebP quality.
-
-    Piecewise linear calibrated from real-world corpus data:
-        bpp ~0.5 → q70, bpp ~1.5 → q80, bpp ~3.0 → q90, bpp ~5.0 → q95
-    Real-world WebP files are almost always q=70+ (lower produces
-    visible artifacts). Minimum floor of 65 to avoid false negatives.
-    """
-    if bpp <= 0.1:
-        return 65
-    elif bpp <= 0.5:
-        return int(65 + (bpp / 0.5) * 5)
-    elif bpp <= 1.5:
-        return int(70 + (bpp - 0.5) / 1.0 * 10)
-    elif bpp <= 3.0:
-        return int(80 + (bpp - 1.5) / 1.5 * 10)
-    elif bpp <= 5.0:
-        return int(90 + (bpp - 3.0) / 2.0 * 5)
-    else:
-        return int(min(98, 95 + (bpp - 5.0) * 1.5))
 
 
 def _predict_webp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """WebP heuristics — mirrors optimizer (Pillow re-encode at config.quality).
+    """WebP heuristics — linear bpp model calibrated from real-world corpus.
 
-    Estimates source quality from bits-per-pixel, then computes
-    quality delta to predict reduction. Uses interpolation between
-    calibrated reference curves at q60, q80, and q95 source qualities.
+    Linear model: output_bpp = slope * source_bpp + intercept
+    where source_bpp = file_size / pixels (bytes per pixel, not bits).
+
+    Calibration points (target_quality → slope, intercept):
+      q=40: (0.424, -0.012)  — aggressive re-encode (HIGH)
+      q=60: (0.538, -0.002)  — moderate re-encode (MEDIUM)
+      q=80: (0.767, 0.000)   — conservative re-encode (LOW)
     """
     w = info.dimensions.get("width", 1)
     h = info.dimensions.get("height", 1)
     pixels = max(w * h, 1)
-    bpp = (info.file_size * 8) / pixels
-    est_source_q = _bpp_to_quality(bpp)
-    delta = est_source_q - config.quality
+    source_bpp = info.file_size / pixels
 
-    if delta < 0:
+    slope, intercept = _webp_linear_params(config.quality)
+    output_bpp = slope * source_bpp + intercept
+
+    if output_bpp >= source_bpp * 0.95:
         reduction = 0.0
         potential = "low"
-    elif delta == 0:
-        reduction = 5.0
-        potential = "low"
+        already_optimized = True
     else:
-        reduction = _webp_interpolated_reduction(est_source_q, delta)
-        potential = "high" if reduction >= 40 else "medium"
+        reduction = max(0.0, (1 - output_bpp / source_bpp) * 100)
+        potential = "high" if reduction >= 40 else ("medium" if reduction >= 15 else "low")
+        already_optimized = False
 
+    reduction = min(reduction, 85.0)
     estimated_size = int(info.file_size * (1 - reduction / 100))
     return Prediction(
         estimated_size=estimated_size,
         reduction_percent=round(reduction, 1),
         potential=potential,
         method="pillow",
-        already_optimized=delta <= 0,
+        already_optimized=already_optimized,
         confidence="medium",
     )
 
 
-def _webp_interpolated_reduction(est_source_q: int, delta: int) -> float:
-    """Interpolate WebP reduction from calibrated reference curves.
+def _webp_linear_params(quality: int) -> tuple[float, float]:
+    """Interpolate slope and intercept for WebP linear bpp model.
 
-    Three reference curves at q60, q80, q95 are derived from benchmark
-    data. For intermediate source qualities, linearly interpolate.
+    Calibrated points: q=40 → (0.424, -0.012), q=60 → (0.538, -0.002), q=80 → (0.767, 0.000).
     """
+    points = [(40, 0.424, -0.012), (60, 0.538, -0.002), (80, 0.767, 0.000), (95, 1.0, 0.0)]
 
-    def _curve_60(d: int) -> float:
-        return min(50.0, 7.0 + 0.92 * d)
+    if quality <= points[0][0]:
+        return points[0][1], points[0][2]
+    if quality >= points[-1][0]:
+        return points[-1][1], points[-1][2]
 
-    def _curve_80(d: int) -> float:
-        if d <= 20:
-            return 5.5 + 1.33 * d
-        elif d <= 40:
-            return 32.0 + 1.1 * (d - 20)
-        else:
-            return min(75.0, 54.0 + 0.4 * (d - 40))
+    for i in range(len(points) - 1):
+        q0, s0, b0 = points[i]
+        q1, s1, b1 = points[i + 1]
+        if quality <= q1:
+            t = (quality - q0) / (q1 - q0)
+            return s0 + t * (s1 - s0), b0 + t * (b1 - b0)
 
-    def _curve_95(d: int) -> float:
-        if d <= 15:
-            return 5.0 + 2.77 * d
-        elif d <= 35:
-            return 46.5 + 0.825 * (d - 15)
-        elif d <= 55:
-            return 63.0 + 0.475 * (d - 35)
-        else:
-            return min(78.0, 72.5 + 0.2 * (d - 55))
+    return points[-1][1], points[-1][2]
 
-    if est_source_q <= 60:
-        return _curve_60(delta)
-    elif est_source_q <= 80:
-        t = (est_source_q - 60) / 20.0
-        return _curve_60(delta) * (1 - t) + _curve_80(delta) * t
-    elif est_source_q <= 95:
-        t = (est_source_q - 80) / 15.0
-        return _curve_80(delta) * (1 - t) + _curve_95(delta) * t
-    else:
-        return min(78.0, _curve_95(delta) * 1.03)
+
 
 
 def _predict_gif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
@@ -800,12 +770,15 @@ def _predict_svgz(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _predict_avif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """AVIF — bpp-based prediction calibrated from benchmark data.
+    """AVIF — linear bpp model calibrated from real-world corpus data.
 
-    Uses source bytes-per-pixel vs target bpp at the given quality.
-    Target bpp follows a quadratic curve calibrated from actual libavif output:
-      target_bpp(q) = 0.0001125 * q^2 - 0.0045 * q + 0.154
-    Reduction = max(0, (1 - target_bpp / source_bpp) * 100).
+    Linear model: output_bpp = slope * source_bpp + intercept
+    Calibrated from 132-image Unsplash corpus across quality levels.
+
+    Calibration points (avif_quality → slope, intercept):
+      q=50: (0.601, -0.016)  — aggressive re-encode
+      q=70: (0.861, -0.005)  — moderate re-encode
+      q=90: (1.0, 0.0)       — no compression achievable
     """
     w = info.dimensions.get("width", 0)
     h = info.dimensions.get("height", 0)
@@ -815,16 +788,17 @@ def _predict_avif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     if pixels > 0:
         source_bpp = info.file_size / pixels
-        target_bpp = 0.0001125 * avif_quality**2 - 0.0045 * avif_quality + 0.154
 
-        if source_bpp <= target_bpp * 1.05:
+        slope, intercept = _avif_linear_params(avif_quality)
+        output_bpp = slope * source_bpp + intercept
+
+        if output_bpp >= source_bpp * 0.95:
             reduction = 0.0
         else:
-            reduction = (1 - target_bpp / source_bpp) * 100
+            reduction = max(0.0, (1 - output_bpp / source_bpp) * 100)
 
         confidence = "high"
     else:
-        # Fallback when dimensions unavailable
         if config.quality < 50:
             reduction = 40.0
         elif config.quality < 70:
@@ -847,12 +821,39 @@ def _predict_avif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
     )
 
 
-def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """HEIC — bpp-based prediction calibrated from real-world corpus data.
+def _avif_linear_params(avif_quality: int) -> tuple[float, float]:
+    """Interpolate slope and intercept for AVIF linear bpp model.
 
-    Target bpp model fitted from pillow-heif re-encoding at various qualities:
-      target_bpp(q) = 0.00009 * q^2 - 0.0045 * q + 0.172
-    Calibration points: q=50 → 0.172 bpp, q=70 → 0.298 bpp, q=90 → 0.496 bpp.
+    Calibrated points: q=50 → (0.601, -0.016), q=70 → (0.861, -0.005), q=90 → (1.0, 0.0).
+    """
+    points = [(50, 0.601, -0.016), (70, 0.861, -0.005), (90, 1.0, 0.0)]
+
+    if avif_quality <= points[0][0]:
+        return points[0][1], points[0][2]
+    if avif_quality >= points[-1][0]:
+        return points[-1][1], points[-1][2]
+
+    for i in range(len(points) - 1):
+        q0, s0, b0 = points[i]
+        q1, s1, b1 = points[i + 1]
+        if avif_quality <= q1:
+            t = (avif_quality - q0) / (q1 - q0)
+            return s0 + t * (s1 - s0), b0 + t * (b1 - b0)
+
+    return points[-1][1], points[-1][2]
+
+
+def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
+    """HEIC — linear bpp model calibrated from real-world corpus data.
+
+    Linear model: output_bpp = slope * source_bpp + intercept
+    Calibrated from 132-image Unsplash corpus across quality levels.
+    Slope = fraction of source complexity retained; intercept = fixed overhead.
+
+    Calibration points (heic_quality → slope, intercept):
+      q=50: (0.531, -0.038)  — aggressive re-encode
+      q=70: (0.838, -0.029)  — moderate re-encode
+      q=90: (1.0, 0.0)       — no compression achievable
     """
     w = info.dimensions.get("width", 0)
     h = info.dimensions.get("height", 0)
@@ -862,12 +863,15 @@ def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     if pixels > 0:
         source_bpp = info.file_size / pixels
-        target_bpp = 0.00009 * heic_quality**2 - 0.0045 * heic_quality + 0.172
 
-        if source_bpp <= target_bpp * 1.05:
+        # Linear interpolation of slope and intercept from calibration points
+        slope, intercept = _heic_linear_params(heic_quality)
+        output_bpp = slope * source_bpp + intercept
+
+        if output_bpp >= source_bpp * 0.95:
             reduction = 0.0
         else:
-            reduction = (1 - target_bpp / source_bpp) * 100
+            reduction = max(0.0, (1 - output_bpp / source_bpp) * 100)
 
         confidence = "high"
     else:
@@ -891,6 +895,30 @@ def _predict_heic(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         already_optimized=reduction < 5,
         confidence=confidence,
     )
+
+
+def _heic_linear_params(heic_quality: int) -> tuple[float, float]:
+    """Interpolate slope and intercept for HEIC linear bpp model.
+
+    Calibrated points: q=50 → (0.531, -0.038), q=70 → (0.838, -0.029), q=90 → (1.0, 0.0).
+    """
+    # Calibration anchors
+    points = [(50, 0.531, -0.038), (70, 0.838, -0.029), (90, 1.0, 0.0)]
+
+    if heic_quality <= points[0][0]:
+        return points[0][1], points[0][2]
+    if heic_quality >= points[-1][0]:
+        return points[-1][1], points[-1][2]
+
+    # Piecewise linear interpolation
+    for i in range(len(points) - 1):
+        q0, s0, b0 = points[i]
+        q1, s1, b1 = points[i + 1]
+        if heic_quality <= q1:
+            t = (heic_quality - q0) / (q1 - q0)
+            return s0 + t * (s1 - s0), b0 + t * (b1 - b0)
+
+    return points[-1][1], points[-1][2]
 
 
 def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
@@ -930,18 +958,25 @@ def _predict_tiff(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
             jpeg_output = raw_size * bpp_factor
             lossy_reduction = max(0.0, (1 - jpeg_output / max(info.file_size, 1)) * 100)
     else:
-        # Source is raw/uncompressed — deflate model applies
+        # Source is raw/uncompressed — deflate model applies.
+        # The 64x64 center crop fpr is a weak predictor for full-image
+        # deflate compression. Calibrated from 132-image corpus:
+        #   fpr=0.0-0.3 → actual avg ~35-55% reduction (ratio ~0.45-0.65)
+        #   fpr=0.4-0.7 → actual avg ~35-48% reduction (ratio ~0.52-0.65)
+        #   fpr=0.8-0.9 → actual avg ~38-49% reduction (ratio ~0.51-0.62)
+        #   fpr=1.0     → actual avg ~62% reduction (ratio ~0.38)
+        # Use conservative mapping to avoid over-prediction.
         if fpr is not None:
-            if fpr > 0.75:
-                deflate_ratio = 0.12
+            if fpr > 0.95:
+                deflate_ratio = 0.38
             elif fpr < 0.30:
                 deflate_ratio = 0.55
             else:
-                t = (fpr - 0.30) / 0.45
-                deflate_ratio = 0.55 * (1 - t) + 0.12 * t
-            confidence = "high"
+                t = (fpr - 0.30) / 0.65
+                deflate_ratio = 0.55 * (1 - t) + 0.38 * t
+            confidence = "medium"
         else:
-            deflate_ratio = 0.45
+            deflate_ratio = 0.50
             confidence = "low"
 
         deflate_output = raw_size * deflate_ratio
@@ -1032,29 +1067,16 @@ def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         method = "pillow-bmp"
     else:
         # Standard 24-bit BMP. Lossless palette conversion is possible if
-        # the image has <= 256 unique colors (common for icons, UI, diagrams).
-        # Use flat_pixel_ratio as a proxy: very flat content (> 0.90) likely
-        # has few unique colors and benefits from palette + RLE8.
-        fpr = info.flat_pixel_ratio
-        if fpr is not None and fpr > 0.90:
-            # Flat/icon content: predict palette + RLE8 lossless savings.
-            # 8-bit palette row = (w+3)&~3 bytes vs 24-bit row = (w*3+3)&~3.
-            # RLE8 bonus on flat content gives additional ~30-50% on top.
-            row_bytes_8 = (w + 3) & ~3
-            expected_8bit = 54 + 1024 + row_bytes_8 * h
-            palette_reduction = max(0.0, (1 - expected_8bit / info.file_size) * 100)
-            rle_bonus = min(30.0, (100.0 - palette_reduction) * 0.4)
-            reduction = round(min(palette_reduction + rle_bonus, 99.0), 1)
-            potential = "high" if reduction > 40 else "medium"
-            already_optimized = False
-            confidence = "medium"
-            method = "bmp-rle8-lossless"
-        else:
-            reduction = 0.0
-            potential = "low"
-            already_optimized = True
-            confidence = "low"
-            method = "pillow-bmp"
+        # the image has <= 256 unique colors, but this requires scanning all
+        # pixels which is too expensive for estimation. The flat_pixel_ratio
+        # proxy (fpr > 0.90) produces too many false positives on photo BMPs
+        # (37/132 over-predicted vs 17/132 under-predicted in corpus tests).
+        # Conservative: predict 0% for standard 24-bit BMPs at quality >= 70.
+        reduction = 0.0
+        potential = "low"
+        already_optimized = True
+        confidence = "low"
+        method = "pillow-bmp"
 
     estimated_size = int(info.file_size * (1 - reduction / 100))
     return Prediction(
@@ -1068,12 +1090,15 @@ def _predict_bmp(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
 
 def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
-    """JXL — bpp-based prediction calibrated from real-world corpus data.
+    """JXL — linear bpp model calibrated from real-world corpus data.
 
-    JXL re-encoding: uses source bpp vs target bpp at the given quality.
-    Target bpp model fitted from pillow-jxl encoder output:
-      target_bpp(q) = 0.0000904 * q^2 - 0.00891 * q + 0.280
-    Calibration points: q=50 → 0.0605 bpp, q=70 → 0.0993 bpp, q=90 → 0.210 bpp.
+    Linear model: output_bpp = slope * source_bpp + intercept
+    Calibrated from 132-image Unsplash corpus across quality levels.
+
+    Calibration points (jxl_quality → slope, intercept):
+      q=50: (0.300, -0.007)  — aggressive re-encode
+      q=70: (0.462, -0.010)  — moderate re-encode
+      q=90: (0.823, 0.003)   — conservative re-encode
     """
     w = info.dimensions.get("width", 0)
     h = info.dimensions.get("height", 0)
@@ -1083,12 +1108,14 @@ def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
 
     if pixels > 0:
         source_bpp = info.file_size / pixels
-        target_bpp = 0.0000904 * jxl_quality**2 - 0.00891 * jxl_quality + 0.280
 
-        if source_bpp <= target_bpp * 1.05:
+        slope, intercept = _jxl_linear_params(jxl_quality)
+        output_bpp = slope * source_bpp + intercept
+
+        if output_bpp >= source_bpp * 0.95:
             reduction = 0.0
         else:
-            reduction = (1 - target_bpp / source_bpp) * 100
+            reduction = max(0.0, (1 - output_bpp / source_bpp) * 100)
 
         confidence = "high"
     else:
@@ -1112,3 +1139,25 @@ def _predict_jxl(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         already_optimized=reduction < 3,
         confidence=confidence,
     )
+
+
+def _jxl_linear_params(jxl_quality: int) -> tuple[float, float]:
+    """Interpolate slope and intercept for JXL linear bpp model.
+
+    Calibrated points: q=50 → (0.300, -0.007), q=70 → (0.462, -0.010), q=90 → (0.823, 0.003).
+    """
+    points = [(50, 0.300, -0.007), (70, 0.462, -0.010), (90, 0.823, 0.003)]
+
+    if jxl_quality <= points[0][0]:
+        return points[0][1], points[0][2]
+    if jxl_quality >= points[-1][0]:
+        return points[-1][1], points[-1][2]
+
+    for i in range(len(points) - 1):
+        q0, s0, b0 = points[i]
+        q1, s1, b1 = points[i + 1]
+        if jxl_quality <= q1:
+            t = (jxl_quality - q0) / (q1 - q0)
+            return s0 + t * (s1 - s0), b0 + t * (b1 - b0)
+
+    return points[-1][1], points[-1][2]

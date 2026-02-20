@@ -158,11 +158,11 @@ def test_tiff_photo_content():
     )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
     assert result.reduction_percent > 0
-    assert result.confidence == "high"
+    assert result.confidence == "medium"
 
 
 def test_tiff_flat_content():
-    """Flat/screenshot content: very high deflate reduction."""
+    """Flat/screenshot content: high deflate reduction."""
     info = _make_info(
         ImageFormat.TIFF,
         width=300,
@@ -172,7 +172,8 @@ def test_tiff_flat_content():
         flat_pixel_ratio=0.9,
     )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
-    assert result.reduction_percent > 80
+    # Conservative model: fpr=0.9 → deflate_ratio≈0.39, reduction≈61%
+    assert result.reduction_percent > 55
     assert result.method == "tiff_adobe_deflate"
 
 
@@ -244,7 +245,7 @@ def test_tiff_mid_flat_ratio():
         flat_pixel_ratio=0.5,
     )
     result = _predict_tiff(info, OptimizationConfig(quality=80))
-    assert result.confidence == "high"
+    assert result.confidence == "medium"
 
 
 def test_tiff_compressed_input():
@@ -268,18 +269,21 @@ def test_tiff_compressed_input():
 def test_avif_high_bpp_aggressive():
     """High-quality AVIF (high bpp) at aggressive preset → large reduction."""
     # 300x200, 52KB → 0.87 bpp (like AVIF q=95)
+    # Linear model at avif_quality=50: slope=0.601, intercept=-0.016
+    # output_bpp = 0.601*0.867-0.016 = 0.505 → reduction ≈ 42%
     info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=52_000)
     result = _predict_avif(info, OptimizationConfig(quality=40))
-    assert result.reduction_percent > 70
+    assert result.reduction_percent > 35
     assert result.method == "avif-reencode"
     assert result.potential == "high"
 
 
-def test_avif_low_bpp_aggressive():
-    """Already-compressed AVIF (low bpp) at aggressive → no reduction."""
-    # 300x200, 12KB → 0.20 bpp (below target_bpp*1.05 ≈ 0.22 at q=50)
+def test_avif_low_bpp_conservative():
+    """Already-compressed AVIF at conservative preset → no reduction."""
+    # 300x200, 12KB → 0.20 bpp. At quality=80, avif_quality=90,
+    # slope=1.0 → output_bpp = source_bpp → already optimized.
     info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=12_000)
-    result = _predict_avif(info, OptimizationConfig(quality=40))
+    result = _predict_avif(info, OptimizationConfig(quality=80))
     assert result.reduction_percent == 0.0
     assert result.method == "none"
 
@@ -287,9 +291,11 @@ def test_avif_low_bpp_aggressive():
 def test_avif_medium_bpp_moderate():
     """Mid-quality AVIF at moderate preset → moderate reduction."""
     # 300x200, 30KB → 0.50 bpp (like AVIF q=75)
+    # Linear model at avif_quality=70: slope=0.861, intercept=-0.005
+    # output_bpp = 0.861*0.5-0.005 = 0.426 → reduction ≈ 15%
     info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=30_000)
     result = _predict_avif(info, OptimizationConfig(quality=60))
-    assert 15 < result.reduction_percent < 30
+    assert 10 < result.reduction_percent < 25
     assert result.method == "avif-reencode"
 
 
@@ -304,9 +310,11 @@ def test_avif_no_dimensions_fallback():
 def test_heic_high_bpp_aggressive():
     """High-quality HEIC at aggressive preset → large reduction."""
     # 300x200, 78KB → 1.30 bpp (like HEIC q=95)
+    # Linear model at heic_quality=50: slope=0.531, intercept=-0.038
+    # output_bpp = 0.531*1.3-0.038 = 0.652 → reduction ≈ 50%
     info = _make_info(ImageFormat.HEIC, width=300, height=200, file_size=78_000)
     result = _predict_heic(info, OptimizationConfig(quality=40))
-    assert result.reduction_percent > 60
+    assert result.reduction_percent > 40
     assert result.method == "heic-reencode"
 
 

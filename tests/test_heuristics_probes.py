@@ -307,9 +307,10 @@ def test_tiff_lossless_quality():
 
 def test_tiff_flat_content():
     """TIFF with flat content (screenshot): high deflate compression."""
+    # Conservative model: fpr=0.9 → deflate_ratio≈0.39, reduction≈61%
     info = _make_info(ImageFormat.TIFF, file_size=1440000, flat_pixel_ratio=0.9)
     result = _predict_tiff(info, OptimizationConfig(quality=80))
-    assert result.reduction_percent > 80
+    assert result.reduction_percent > 55
 
 
 def test_tiff_no_flat_ratio():
@@ -363,18 +364,20 @@ def test_bmp_already_24bit():
 
 
 def test_avif_prediction():
-    # 800x600, 50KB → bpp=0.104, very low → no savings at q=70
+    # 800x600, 50KB → bpp=0.104. Linear model at avif_quality=70:
+    # output_bpp = 0.861*0.104-0.005 = 0.085 → reduction ≈ 19%
     info = _make_info(ImageFormat.AVIF, file_size=50000)
     result = _predict_avif(info, OptimizationConfig(quality=60))
-    assert result.reduction_percent == 0.0
-    assert result.method == "none"
+    assert result.reduction_percent > 10
+    assert result.method == "avif-reencode"
 
 
 def test_avif_prediction_high_bpp():
-    # 300x200, 52KB → bpp=0.867, high quality → significant savings
+    # 300x200, 52KB → bpp=0.867. Linear model at avif_quality=70:
+    # output_bpp = 0.861*0.867-0.005 = 0.741 → reduction ≈ 15%
     info = _make_info(ImageFormat.AVIF, width=300, height=200, file_size=52000)
     result = _predict_avif(info, OptimizationConfig(quality=60))
-    assert result.reduction_percent > 50
+    assert result.reduction_percent > 10
     assert result.method == "avif-reencode"
 
 

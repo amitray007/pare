@@ -4,7 +4,6 @@ import pytest
 
 from estimation.header_analysis import HeaderInfo
 from estimation.heuristics import (
-    _bpp_to_quality,
     _predict_apng,
     _predict_avif,
     _predict_bmp,
@@ -14,7 +13,6 @@ from estimation.heuristics import (
     _predict_jxl,
     _predict_png,
     _predict_png_by_complexity,
-    _webp_interpolated_reduction,
     predict_reduction,
 )
 from schemas import OptimizationConfig
@@ -343,56 +341,6 @@ def test_jpeg_delta_in_20_40_range():
 # --- WebP ---
 
 
-def test_bpp_to_quality_low():
-    assert _bpp_to_quality(0.05) == 65  # Floor raised for real-world WebP
-
-
-def test_bpp_to_quality_mid():
-    q = _bpp_to_quality(2.5)
-    assert 80 <= q <= 92  # Recalibrated for real-world corpus data
-
-
-def test_bpp_to_quality_high():
-    q = _bpp_to_quality(5.5)
-    assert q >= 95
-
-
-def test_webp_interpolated_below_60():
-    """Source quality <= 60 -> curve_60."""
-    result = _webp_interpolated_reduction(50, 10)
-    assert result > 0
-
-
-def test_webp_interpolated_60_80():
-    """Source quality 60-80 -> interpolated."""
-    result = _webp_interpolated_reduction(70, 10)
-    assert result > 0
-
-
-def test_webp_interpolated_80_95():
-    """Source quality 80-95 -> interpolated."""
-    result = _webp_interpolated_reduction(88, 10)
-    assert result > 0
-
-
-def test_webp_interpolated_above_95():
-    """Source quality > 95 -> curve_95 * 1.03."""
-    result = _webp_interpolated_reduction(98, 10)
-    assert result > 0
-
-
-def test_webp_curve_80_large_delta():
-    """WebP curve_80 at large delta (>40)."""
-    result = _webp_interpolated_reduction(80, 50)
-    assert result > 50
-
-
-def test_webp_curve_95_large_delta():
-    """WebP curve_95 at large delta (>55)."""
-    result = _webp_interpolated_reduction(95, 60)
-    assert result > 60
-
-
 # --- max_reduction cap (JPEG path) ---
 
 
@@ -498,27 +446,6 @@ def test_predict_png_lossless_fallback():
     config = OptimizationConfig(quality=80)
     reduction, potential, method, confidence = _predict_png_by_complexity(info, config)
     assert reduction >= 0
-
-
-# --- WebP curve branches ---
-
-
-def test_webp_curve_80_high_delta():
-    """Cover _curve_80 delta > 40 branch."""
-    result = _webp_interpolated_reduction(80, 50)
-    assert result > 0
-
-
-def test_webp_curve_95_mid_delta():
-    """Cover _curve_95 delta 15-35 branch."""
-    result = _webp_interpolated_reduction(95, 25)
-    assert result > 0
-
-
-def test_bpp_to_quality_mid_range():
-    """Cover _bpp_to_quality bpp 3.0-5.2 branch."""
-    result = _bpp_to_quality(4.0)
-    assert 80 <= result <= 95
 
 
 # --- GIF, AVIF, HEIC, BMP predictions ---
