@@ -53,7 +53,7 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
     if fmt in (ImageFormat.SVG, ImageFormat.SVGZ):
         return _analyze_svg(data, fmt, info)
 
-    # Register optional format plugins so Pillow can open JXL/HEIC
+    # Register optional format plugins so Pillow can open JXL/HEIC/AVIF
     if fmt == ImageFormat.JXL:
         try:
             import pillow_jxl  # noqa: F401
@@ -64,6 +64,11 @@ def analyze_header(data: bytes, fmt: ImageFormat) -> HeaderInfo:
             import pillow_heif
 
             pillow_heif.register_heif_opener()
+        except ImportError:
+            pass
+    elif fmt == ImageFormat.AVIF:
+        try:
+            import pillow_avif  # noqa: F401
         except ImportError:
             pass
 

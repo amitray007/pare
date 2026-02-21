@@ -245,30 +245,30 @@ def _predict_png_by_complexity(
     elif not is_full_file_probe:
         # Large files: heuristic for lossy path.
         # With floor=1, pngquant always succeeds on any content.
-        # Real-world PNG photos achieve 60-80%+ with pngquant + oxipng.
+        # Calibrated from 132-image corpus: avg actual HIGH=80%, MEDIUM=75%.
         if is_photo:
-            lossy_reduction = 68.0
+            lossy_reduction = 76.0
         elif cr is not None and cr < 0.005:
             lossy_reduction = 90.0
         elif cr is not None and cr < 0.20:
-            lossy_reduction = 65.0
+            lossy_reduction = 73.0
         elif is_flat:
             # Flat/gradient content: pngquant quantization + palette
             # encoding achieves substantial savings on photo-sourced PNGs.
-            lossy_reduction = 60.0
+            lossy_reduction = 70.0
         elif qpr is not None and qpr < 0.70:
             lossy_reduction = (1.0 - qpr) * 100.0
         else:
-            # Unclassified content: conservative baseline for pngquant
-            lossy_reduction = 50.0
+            # Unclassified content: baseline for pngquant
+            lossy_reduction = 62.0
 
-    # 64-color bonus: quality < 50 uses far fewer colors → ~10% more compression
+    # 64-color bonus: quality < 50 uses far fewer colors → ~5% more compression
     # on content with many unique colors (photos, complex graphics).
-    # Calibrated: HIGH (64 colors) vs MEDIUM (256 colors) diff is ~10pp on photos.
+    # Calibrated: HIGH (64 colors) vs MEDIUM (256 colors) diff is ~5pp on photos.
     # Files < 1KB excluded: too few pixels for color count to matter.
     if config.quality < 50 and lossy_reduction > 0 and info.file_size > 1000:
         if is_photo or (cr is not None and cr > 0.20):
-            lossy_reduction = min(95.0, lossy_reduction + 10.0)
+            lossy_reduction = min(95.0, lossy_reduction + 5.0)
 
     # Pick the better path (matches optimizer: picks smallest output)
     if lossy_reduction > lossless_reduction:
@@ -790,6 +790,12 @@ def _predict_avif(info: HeaderInfo, config: OptimizationConfig) -> Prediction:
         source_bpp = info.file_size / pixels
 
         slope, intercept = _avif_linear_params(avif_quality)
+        # Phase out negative intercept for low source_bpp to prevent
+        # over-prediction. At low bpp, the intercept can make output_bpp
+        # negative, causing wildly inflated reduction estimates.
+        if intercept < 0:
+            fade = min(1.0, source_bpp / (abs(intercept) * 5))
+            intercept = intercept * fade
         output_bpp = slope * source_bpp + intercept
 
         if output_bpp >= source_bpp * 0.95:
