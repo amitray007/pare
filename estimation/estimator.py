@@ -19,6 +19,7 @@ from utils.format_detect import ImageFormat, detect_format
 
 SAMPLE_MAX_WIDTH = 300
 JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
+LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
 
 
@@ -122,7 +123,12 @@ async def _estimate_by_sample(
     # JPEG uses a larger sample (1200px) because JPEG BPP doesn't scale
     # linearly — small samples have proportionally more header overhead and
     # less DCT block coherence, inflating BPP relative to the full image.
-    max_width = JPEG_SAMPLE_MAX_WIDTH if fmt == ImageFormat.JPEG else SAMPLE_MAX_WIDTH
+    if fmt == ImageFormat.JPEG:
+        max_width = JPEG_SAMPLE_MAX_WIDTH
+    elif fmt in (ImageFormat.HEIC, ImageFormat.AVIF, ImageFormat.JXL):
+        max_width = LOSSY_SAMPLE_MAX_WIDTH
+    else:
+        max_width = SAMPLE_MAX_WIDTH
 
     # Proportional resize
     ratio = max_width / width
@@ -135,6 +141,37 @@ async def _estimate_by_sample(
     if fmt == ImageFormat.JPEG:
         output_bpp, method = await asyncio.to_thread(
             _jpeg_sample_bpp, img, sample_width, sample_height, config
+        )
+        estimated_size = int(output_bpp * original_pixels / 8)
+        estimated_size = min(estimated_size, file_size)
+
+        reduction = round((file_size - estimated_size) / file_size * 100, 1)
+        reduction = max(0.0, reduction)
+
+        return EstimateResponse(
+            original_size=file_size,
+            original_format=fmt.value,
+            dimensions={"width": width, "height": height},
+            color_type=color_type,
+            bit_depth=bit_depth,
+            estimated_optimized_size=estimated_size,
+            estimated_reduction_percent=reduction,
+            optimization_potential=_classify_potential(reduction),
+            method=method,
+            already_optimized=reduction == 0,
+            confidence="high",
+        )
+
+    # HEIC/AVIF/JXL: same pattern as JPEG — direct encode at target quality
+    if fmt in (ImageFormat.HEIC, ImageFormat.AVIF, ImageFormat.JXL):
+        bpp_fn = {
+            ImageFormat.HEIC: _heic_sample_bpp,
+            ImageFormat.AVIF: _avif_sample_bpp,
+            ImageFormat.JXL: _jxl_sample_bpp,
+        }[fmt]
+
+        output_bpp, method = await asyncio.to_thread(
+            bpp_fn, img, sample_width, sample_height, config
         )
         estimated_size = int(output_bpp * original_pixels / 8)
         estimated_size = min(estimated_size, file_size)
@@ -231,6 +268,79 @@ def _jpeg_sample_bpp(
     sample_pixels = sample_width * sample_height
 
     return (output_size * 8 / sample_pixels, "pillow_jpeg")
+
+
+def _heic_sample_bpp(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+) -> tuple[float, str]:
+    """Encode a HEIC sample at target quality and return output BPP."""
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+    if sample.mode not in ("RGB", "RGBA"):
+        sample = sample.convert("RGB")
+
+    heic_quality = max(30, min(90, config.quality + 10))
+
+    buf = io.BytesIO()
+    sample.save(buf, format="HEIF", quality=heic_quality)
+    output_size = buf.tell()
+    sample_pixels = sample_width * sample_height
+
+    return (output_size * 8 / sample_pixels, "heic-reencode")
+
+
+def _avif_sample_bpp(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+) -> tuple[float, str]:
+    """Encode an AVIF sample at target quality and return output BPP."""
+    import pillow_avif  # noqa: F401
+
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+    if sample.mode not in ("RGB", "RGBA"):
+        sample = sample.convert("RGB")
+
+    avif_quality = max(30, min(90, config.quality + 10))
+
+    buf = io.BytesIO()
+    sample.save(buf, format="AVIF", quality=avif_quality, speed=6)
+    output_size = buf.tell()
+    sample_pixels = sample_width * sample_height
+
+    return (output_size * 8 / sample_pixels, "avif-reencode")
+
+
+def _jxl_sample_bpp(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+) -> tuple[float, str]:
+    """Encode a JXL sample at target quality and return output BPP."""
+    try:
+        import pillow_jxl  # noqa: F401
+    except ImportError:
+        import jxlpy  # noqa: F401
+
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+    if sample.mode not in ("RGB", "RGBA", "L"):
+        sample = sample.convert("RGB")
+
+    jxl_quality = max(30, min(95, config.quality + 10))
+
+    buf = io.BytesIO()
+    sample.save(buf, format="JXL", quality=jxl_quality)
+    output_size = buf.tell()
+    sample_pixels = sample_width * sample_height
+
+    return (output_size * 8 / sample_pixels, "jxl-reencode")
 
 
 def _create_sample(
