@@ -228,3 +228,58 @@ async def test_already_optimized_image():
     # quality=80 is higher than source quality=20, so little/no reduction expected
     assert result.estimated_reduction_percent >= 0
     assert result.estimated_optimized_size <= result.original_size
+
+
+# --- Large image estimation accuracy ---
+
+
+@pytest.mark.asyncio
+async def test_large_png_screenshot_not_zero():
+    """Large PNG screenshot should estimate meaningful reduction, not 0%."""
+    from PIL import ImageDraw
+
+    img = Image.new("RGB", (1000, 800))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, 1000, 40], fill=(50, 50, 60))
+    draw.rectangle([0, 40, 200, 800], fill=(240, 240, 240))
+    draw.rectangle([200, 40, 1000, 800], fill=(255, 255, 255))
+    draw.rectangle([200, 700, 1000, 800], fill=(230, 230, 230))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", compress_level=6)
+    data = buf.getvalue()
+
+    result = await estimate(data, OptimizationConfig(quality=60, png_lossy=True))
+    assert result.original_format == "png"
+    assert (
+        result.estimated_reduction_percent > 0
+    ), f"Large PNG screenshot should not estimate 0%, got method={result.method}"
+
+
+@pytest.mark.asyncio
+async def test_large_png_lossless_estimation():
+    """Large PNG in lossless mode should still produce a reasonable estimate."""
+    img = Image.new("RGB", (800, 600), color=(100, 150, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", compress_level=0)
+    data = buf.getvalue()
+
+    result = await estimate(data, OptimizationConfig(quality=80, png_lossy=False))
+    assert result.original_format == "png"
+    assert result.estimated_reduction_percent > 0
+
+
+@pytest.mark.asyncio
+async def test_large_webp_not_zero():
+    """Large WebP should estimate meaningful reduction."""
+    raw = os.urandom(800 * 600 * 3)
+    img = Image.frombytes("RGB", (800, 600), raw)
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=95)
+    data = buf.getvalue()
+
+    result = await estimate(data, OptimizationConfig(quality=60))
+    assert result.original_format == "webp"
+    assert result.method != "none", "WebP should not report 'none' method"
+    assert (
+        result.estimated_reduction_percent > 0
+    ), "Large WebP at q=95 estimated at q=60 should show reduction"
