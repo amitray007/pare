@@ -21,20 +21,23 @@ class HeicOptimizer(BaseOptimizer):
     format = ImageFormat.HEIC
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        candidates = []
+        tasks = []
 
         if config.strip_metadata:
-            try:
-                stripped = await asyncio.to_thread(self._strip_metadata, data)
-                candidates.append((stripped, "metadata-strip"))
-            except Exception:
-                pass
+            tasks.append(asyncio.to_thread(self._strip_metadata, data))
+        tasks.append(asyncio.to_thread(self._reencode, data, config.quality))
 
-        try:
-            reencoded = await asyncio.to_thread(self._reencode, data, config.quality)
-            candidates.append((reencoded, "heic-reencode"))
-        except Exception:
-            pass
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        candidates = []
+        method_names = []
+        if config.strip_metadata:
+            method_names.append("metadata-strip")
+        method_names.append("heic-reencode")
+
+        for result, method in zip(results, method_names):
+            if not isinstance(result, Exception):
+                candidates.append((result, method))
 
         if not candidates:
             return self._build_result(data, data, "none")
@@ -46,6 +49,7 @@ class HeicOptimizer(BaseOptimizer):
         """Strip metadata from HEIC using pillow-heif."""
         import pillow_heif
 
+        pillow_heif.register_heif_opener()
         heif_file = pillow_heif.open_heif(data)
         img = heif_file.to_pillow()
 
@@ -67,6 +71,7 @@ class HeicOptimizer(BaseOptimizer):
         """Re-encode HEIC at target quality via x265 (HEVC) encoder."""
         import pillow_heif
 
+        pillow_heif.register_heif_opener()
         heif_file = pillow_heif.open_heif(data)
         img = heif_file.to_pillow()
         icc_profile = img.info.get("icc_profile")

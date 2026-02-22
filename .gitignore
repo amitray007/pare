@@ -42,5 +42,8 @@ htmlcov/
 # Benchmark reports
 reports/
 
+# Test corpus (downloaded Unsplash images, ~1.9GB)
+tests/corpus/
+
 # Custom Ignores
 nul

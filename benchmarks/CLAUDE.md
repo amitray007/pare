@@ -24,7 +24,7 @@ Reports are saved to `reports/` as timestamped HTML + JSON files.
 - **`constants.py`**: Quality presets (HIGH q=40, MEDIUM q=60, LOW q=80), size definitions, format-specific quality levels. Single source of truth for preset configs.
 - **`cases.py`**: `BenchmarkCase` definitions — pairs content generators with formats/sizes. `build_all_cases()` generates the full matrix.
 - **`generators.py`**: Deterministic image generators (seeded RNG): `photo_like`, `screenshot_like`, `graphic_like`, `gradient`, `solid`, `transparent_png`, SVG variants. Also encodes to all raster formats (PNG, JPEG, WebP, GIF, BMP, TIFF, AVIF, HEIC, JXL). Used by cases.py.
-- **`runner.py`**: Executes optimization + estimation concurrently per case. Pre-computes header analysis once per image (shared across presets). Semaphore-bounded parallelism.
+- **`runner.py`**: Executes optimization + estimation concurrently per case. Uses sample-based estimation via `estimation.estimator.estimate()`. Semaphore-bounded parallelism.
 - **`report.py`**: Console table, HTML dashboard, and JSON export. The console report includes format summaries, per-case details, and estimation accuracy tables.
 - **`run.py`**: CLI entry point with argparse. Also handles `--compare` mode (delta between two JSON reports).
 

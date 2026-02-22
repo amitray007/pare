@@ -42,7 +42,7 @@ class TiffOptimizer(BaseOptimizer):
         results = await asyncio.gather(
             *[
                 asyncio.to_thread(
-                    self._try_compression, img, compression, config, exif_bytes, icc_profile
+                    self._try_compression, img.copy(), compression, config, exif_bytes, icc_profile
                 )
                 for compression in methods
             ]
@@ -58,6 +58,7 @@ class TiffOptimizer(BaseOptimizer):
     def _decode(self, data: bytes) -> tuple[Image.Image, bytes | None, bytes | None]:
         """Decode TIFF and extract metadata — runs once, shared across threads."""
         img = Image.open(io.BytesIO(data))
+        img.load()  # Force pixel data into memory for thread-safe concurrent saves
         exif_bytes = img.info.get("exif")
         icc_profile = img.info.get("icc_profile")
         return img, exif_bytes, icc_profile

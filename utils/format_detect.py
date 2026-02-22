@@ -58,6 +58,10 @@ def detect_format(data: bytes) -> ImageFormat:
     if data[:2] == b"\xff\x0a":
         return ImageFormat.JXL
 
+    # JXL ISOBMFF container: \x00\x00\x00\x0C\x4A\x58\x4C\x20\x0D\x0A\x87\x0A
+    if data[:12] == b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a":
+        return ImageFormat.JXL
+
     # PNG: \x89PNG\r\n\x1a\n
     if data[:8] == b"\x89PNG\r\n\x1a\n":
         if is_apng(data):

@@ -12,11 +12,9 @@ from dataclasses import dataclass, field
 
 from benchmarks.cases import BenchmarkCase, build_all_cases
 from benchmarks.constants import ALL_PRESETS, QualityPreset
-from estimation.header_analysis import HeaderInfo, analyze_header
-from estimation.heuristics import predict_reduction
+from estimation.estimator import estimate as run_estimate
 from optimizers.router import optimize_image
 from schemas import OptimizationConfig
-from utils.format_detect import ImageFormat, detect_format
 
 
 @dataclass
@@ -51,34 +49,14 @@ class BenchmarkSuite:
     presets_used: list[str] = field(default_factory=list)
 
 
-def _precompute_headers(cases: list[BenchmarkCase]) -> dict[int, tuple[ImageFormat, HeaderInfo]]:
-    """Pre-compute header analysis for each unique case.
-
-    Header analysis (probes, oxipng, quantize) depends only on image data,
-    not on quality settings. Computing once and reusing across presets
-    avoids redundant work.
-    """
-    cache: dict[int, tuple[ImageFormat, HeaderInfo]] = {}
-    for case in cases:
-        key = id(case.data)
-        if key not in cache:
-            fmt = detect_format(case.data)
-            info = analyze_header(case.data, fmt)
-            cache[key] = (fmt, info)
-    return cache
-
-
 async def run_single(
     case: BenchmarkCase,
     config: OptimizationConfig,
     preset_name: str = "",
-    header_cache: dict[int, tuple[ImageFormat, HeaderInfo]] | None = None,
 ) -> BenchmarkResult:
     """Run optimize + estimate on a single benchmark case.
 
     Optimization and estimation run concurrently since they're independent.
-    When header_cache is provided, estimation uses pre-computed headers
-    instead of re-analyzing the image.
     """
     result = BenchmarkResult(case=case, preset_name=preset_name)
 
@@ -99,28 +77,12 @@ async def run_single(
     async def _estimate():
         try:
             t0 = time.perf_counter()
-            if header_cache and id(case.data) in header_cache:
-                fmt, header_info = header_cache[id(case.data)]
-                prediction = predict_reduction(header_info, fmt, config)
-            else:
-                from estimation.estimator import estimate as run_estimate
-
-                est_result = await run_estimate(case.data, config)
-                prediction = type(
-                    "P",
-                    (),
-                    {
-                        "estimated_size": est_result.estimated_optimized_size,
-                        "reduction_percent": est_result.estimated_reduction_percent,
-                        "potential": est_result.optimization_potential,
-                        "confidence": est_result.confidence,
-                    },
-                )()
+            est_result = await run_estimate(case.data, config)
             result.est_time_ms = (time.perf_counter() - t0) * 1000
-            result.est_size = prediction.estimated_size
-            result.est_reduction_pct = prediction.reduction_percent
-            result.est_potential = prediction.potential
-            result.est_confidence = prediction.confidence
+            result.est_size = est_result.estimated_optimized_size
+            result.est_reduction_pct = est_result.estimated_reduction_percent
+            result.est_potential = est_result.optimization_potential
+            result.est_confidence = est_result.confidence
         except Exception as e:
             result.est_error = str(e)
 
@@ -170,9 +132,6 @@ async def run_suite(
     suite = BenchmarkSuite()
     suite.presets_used = [name for name, _ in run_list]
 
-    # Pre-compute header analysis once per unique image (shared across presets)
-    header_cache = _precompute_headers(cases)
-
     # Flatten all (case, preset) combinations for maximum parallelism
     all_tasks_args: list[tuple[BenchmarkCase, OptimizationConfig, str]] = []
     for preset_name, opt_config in run_list:
@@ -190,7 +149,7 @@ async def run_suite(
     async def _run_with_sem(case, opt_config, preset_name):
         nonlocal done
         async with sem:
-            result = await run_single(case, opt_config, preset_name, header_cache)
+            result = await run_single(case, opt_config, preset_name)
         done += 1
         if progress:
             elapsed = time.perf_counter() - t_start

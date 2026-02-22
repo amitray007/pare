@@ -12,7 +12,7 @@ Format-specific image optimization engines. Each optimizer takes raw image bytes
 2. Set `format = ImageFormat.<FORMAT>` class attribute
 3. Implement `async optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult`
 4. Register in `router.py`'s `OPTIMIZERS` dict
-5. Add matching `_predict_<format>()` in `estimation/heuristics.py`
+5. Estimation adapts automatically (sample-based — no heuristics to update)
 6. Add format detection in `utils/format_detect.py` (magic bytes + enum + MIME type)
 7. Add to Dockerfile if new system dependencies are needed
 8. Add benchmark cases in `benchmarks/cases.py` and encoder in `benchmarks/generators.py`
