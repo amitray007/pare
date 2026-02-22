@@ -1,3 +1,4 @@
+import io
 import json
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -11,6 +12,8 @@ from utils.format_detect import detect_format
 from utils.url_fetch import fetch_image
 
 router = APIRouter()
+
+LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
 
 
 @router.post("/estimate", response_model=EstimateResponse)
@@ -61,6 +64,30 @@ async def estimate(
                 raise BadRequestError(str(e))
 
         is_authenticated = getattr(request.state, "is_authenticated", False)
+
+        # Large-image thumbnail path
+        thumbnail_url = body.get("thumbnail_url")
+        client_file_size = body.get("file_size")
+
+        if thumbnail_url and client_file_size and client_file_size >= LARGE_FILE_THRESHOLD:
+            from estimation.estimator import estimate_from_thumbnail
+
+            thumbnail_data = await fetch_image(thumbnail_url, is_authenticated=is_authenticated)
+            detect_format(thumbnail_data)
+
+            # Get original dimensions via Range request
+            original_width, original_height = await _fetch_dimensions(
+                url, is_authenticated
+            )
+
+            return await estimate_from_thumbnail(
+                thumbnail_data=thumbnail_data,
+                original_file_size=client_file_size,
+                original_width=original_width,
+                original_height=original_height,
+                config=config,
+            )
+
         data = await fetch_image(url, is_authenticated=is_authenticated)
     else:
         raise BadRequestError("Expected multipart/form-data or application/json")
@@ -77,3 +104,25 @@ async def estimate(
     detect_format(data)
 
     return await run_estimate(data, config)
+
+
+async def _fetch_dimensions(url: str, is_authenticated: bool) -> tuple[int, int]:
+    """Fetch just enough of the image to parse dimensions.
+
+    Downloads first 8KB via Range request, parses with Pillow.
+    Falls back to full download if Range not supported.
+    """
+    import httpx
+    from PIL import Image
+
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"Range": "bytes=0-8191"})
+            partial = resp.content
+            img = Image.open(io.BytesIO(partial))
+            return img.size
+    except Exception:
+        # Fallback: download full image just for dimensions
+        data = await fetch_image(url, is_authenticated=is_authenticated)
+        img = Image.open(io.BytesIO(data))
+        return img.size

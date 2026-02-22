@@ -224,6 +224,75 @@ def _create_sample(
     return buf.getvalue()
 
 
+async def estimate_from_thumbnail(
+    thumbnail_data: bytes,
+    original_file_size: int,
+    original_width: int,
+    original_height: int,
+    config: OptimizationConfig | None = None,
+) -> EstimateResponse:
+    """Estimate using a pre-downsized thumbnail (for large images).
+
+    Used when the original image is >= 10MB and a CDN thumbnail is available.
+    The thumbnail is compressed with the actual optimizer and BPP is
+    extrapolated to the original dimensions.
+    """
+    if config is None:
+        config = OptimizationConfig()
+
+    fmt = detect_format(thumbnail_data)
+    original_pixels = original_width * original_height
+
+    # Decode thumbnail for pixel count
+    img = await asyncio.to_thread(_open_image, thumbnail_data)
+    thumb_width, thumb_height = img.size
+    thumb_pixels = thumb_width * thumb_height
+    color_type = _get_color_type(img)
+    bit_depth = _get_bit_depth(img)
+
+    # Compress thumbnail with actual optimizer
+    result = await optimize_image(thumbnail_data, config)
+
+    if result.method == "none":
+        return EstimateResponse(
+            original_size=original_file_size,
+            original_format=fmt.value,
+            dimensions={"width": original_width, "height": original_height},
+            color_type=color_type,
+            bit_depth=bit_depth,
+            estimated_optimized_size=original_file_size,
+            estimated_reduction_percent=0.0,
+            optimization_potential="low",
+            method="none",
+            already_optimized=True,
+            confidence="medium",
+        )
+
+    # Extrapolate BPP
+    thumb_output_bpp = result.optimized_size * 8 / thumb_pixels
+    estimated_size = int(thumb_output_bpp * original_pixels / 8)
+    estimated_size = min(estimated_size, original_file_size)
+
+    reduction = round(
+        (original_file_size - estimated_size) / original_file_size * 100, 1
+    )
+    reduction = max(0.0, reduction)
+
+    return EstimateResponse(
+        original_size=original_file_size,
+        original_format=fmt.value,
+        dimensions={"width": original_width, "height": original_height},
+        color_type=color_type,
+        bit_depth=bit_depth,
+        estimated_optimized_size=estimated_size,
+        estimated_reduction_percent=reduction,
+        optimization_potential=_classify_potential(reduction),
+        method=result.method,
+        already_optimized=reduction == 0,
+        confidence="medium",  # CDN thumbnail may have re-compression artifacts
+    )
+
+
 def _classify_potential(reduction: float) -> str:
     """Classify reduction percentage into potential category."""
     if reduction >= 30:
