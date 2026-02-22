@@ -109,12 +109,17 @@ async def _fetch_dimensions(url: str, is_authenticated: bool) -> tuple[int, int]
 
     Downloads first 8KB via Range request, parses with Pillow.
     Falls back to full download if Range not supported.
+    SSRF validation applied before any outbound request.
     """
     import httpx
     from PIL import Image
 
+    from security.ssrf import validate_url
+
+    validate_url(url)
+
     try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
             resp = await client.get(url, headers={"Range": "bytes=0-8191"})
             partial = resp.content
             img = Image.open(io.BytesIO(partial))

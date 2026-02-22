@@ -68,7 +68,7 @@ async def estimate(
 
 
 def _open_image(data: bytes) -> Image.Image:
-    """Open image in Pillow (lazy decode — reads header only)."""
+    """Open image in Pillow and fully load pixel data into memory."""
     img = Image.open(io.BytesIO(data))
     img.load()
     return img
