@@ -51,10 +51,23 @@ curl -X POST http://localhost:8080/optimize \
 
 ### POST /estimate
 
-Predict compression savings without running the full optimizer (~20-50ms).
+Predict compression savings without running the full optimizer (~50-500ms depending on format).
 
 ```bash
-curl -X POST http://localhost:8080/estimate -F "file=@photo.png"
+# File upload with preset
+curl -X POST http://localhost:8080/estimate \
+  -F "file=@photo.png" \
+  -F "preset=high"
+
+# File upload with custom options
+curl -X POST http://localhost:8080/estimate \
+  -F "file=@photo.png" \
+  -F 'options={"quality": 60, "png_lossy": true}'
+
+# URL-based
+curl -X POST http://localhost:8080/estimate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/photo.png", "preset": "medium"}'
 ```
 
 ### GET /health

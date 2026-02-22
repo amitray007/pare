@@ -19,6 +19,12 @@ pytest tests/
 pytest tests/ -k "bmp"
 pytest tests/test_security.py
 
+# Run a single test
+pytest tests/test_sample_estimator.py::test_large_jpeg_extrapolation -v
+
+# Lint and format check
+python -m ruff check . && python -m black --check .
+
 # Run benchmarks (all formats, all presets)
 python -m benchmarks.run
 
@@ -35,36 +41,60 @@ docker build -t pare .     # Full build with jpegli, MozJPEG, JXL tools
 
 ## Architecture
 
-### Optimization Pipeline
+### Request Flow
 
-Request flow: `routers/optimize.py` -> `optimizers/router.py` (format detection + dispatch) -> format-specific optimizer -> `BaseOptimizer._build_result()` (enforces output <= input guarantee).
+Three endpoints in `routers/`:
+
+- **`POST /optimize`**: Multipart file upload or JSON with URL -> `optimizers/router.py` (format detection + dispatch) -> format-specific optimizer -> binary response (or JSON with GCS storage URL). Acquires `CompressionGate` semaphore slot.
+- **`POST /estimate`**: Same input modes -> `estimation/estimator.py` (sample-based compression) -> JSON response. Does **not** acquire semaphore slot. Latency: ~50-500ms depending on format.
+- **`GET /health`**: Returns `"ok"` or `"degraded"` based on CLI tool availability.
+
+Middleware chain (in `middleware.py`): request ID injection -> authentication -> rate limiting -> route handler.
+
+### Optimization Pipeline
 
 Each optimizer in `optimizers/` inherits `BaseOptimizer` and implements `async optimize(data, config) -> OptimizeResult`. The router holds a singleton registry (`OPTIMIZERS` dict) mapping `ImageFormat` enum values to optimizer instances.
 
+`_build_result()` in `base.py` enforces the output-never-larger guarantee: if optimization produces a bigger file, it returns the original with `method="none"`.
+
 ### Estimation Engine (sample-based)
 
-`routers/estimate.py` -> `estimation/estimator.py` -> `optimizers/router.py`
+`estimation/estimator.py` has three modes:
 
-Estimates compression by compressing a downsized sample (~300px wide) with the actual optimizer and extrapolating BPP to the full image size. For small images (<150K pixels), SVG, and animated formats, compresses the full file for exact results.
+1. **Exact mode** (<150K pixels, SVG, animated): Compresses the full file with the real optimizer.
+2. **Direct-encode mode** (JPEG, HEIC, AVIF, JXL, WebP, PNG): Encodes a downsized sample at target quality using format-specific `_*_sample_bpp()` helpers, extrapolates BPP to full image. Each helper mirrors the corresponding optimizer's quality mapping — if you change an optimizer's quality logic, update the matching helper.
+3. **Generic fallback mode** (GIF, BMP, TIFF): Creates a minimally-compressed sample via `_create_sample()`, runs the actual optimizer, extrapolates BPP.
 
-Accepts presets (HIGH/MEDIUM/LOW) mapped to quality levels in `estimation/presets.py`. For images >= 10MB, supports an optional `thumbnail_url` to avoid downloading the full original.
+Sample widths: JPEG 1200px, HEIC/AVIF/JXL/WebP/PNG 800px, GIF/BMP/TIFF 300px. Presets (HIGH/MEDIUM/LOW) mapped in `estimation/presets.py`.
 
 ### Quality Controls
 
-`OptimizationConfig.quality` (1-100) drives format-specific behavior. Lower quality = more aggressive compression. The benchmark presets map to: HIGH (q=40), MEDIUM (q=60), LOW (q=80). Each optimizer defines its own quality thresholds (e.g., `quality < 70` = lossy path, `quality < 50` = aggressive).
+`OptimizationConfig.quality` (1-100) drives format-specific behavior. Lower quality = more aggressive compression. Benchmark presets: HIGH (q=40), MEDIUM (q=60), LOW (q=80). Standard quality breakpoints across optimizers: `< 50` = aggressive lossy, `< 70` = moderate lossy, `>= 70` = lossless only.
 
-`max_reduction` caps how much the optimizer is allowed to shrink a file.
+`max_reduction` caps how much the optimizer is allowed to shrink a file (binary search for the right quality).
 
 ### Concurrency
 
-`utils/concurrency.py` has a `CompressionGate` (semaphore + queue depth cap). When the queue is full, the API returns 503 immediately rather than buffering unbounded 32MB payloads.
+`CompressionGate` in `utils/concurrency.py` is a semaphore (CPU count) + queue depth cap (2x semaphore). Returns 503 immediately when full to prevent OOM.
 
-All CPU-bound Pillow operations are wrapped in `asyncio.to_thread()` to avoid blocking the event loop. Some optimizers (TIFF, PNG, JPEG) use `asyncio.gather()` to run independent compression methods concurrently in separate threads.
+All CPU-bound Pillow operations are wrapped in `asyncio.to_thread()`. Many optimizers use `asyncio.gather()` to run independent compression methods concurrently (PNG: pngquant + oxipng, JPEG: jpegli + jpegtran, HEIC/AVIF/JXL: metadata-strip + re-encode).
+
+### Security
+
+Applied per-request via `SecurityMiddleware`. Auth (Bearer token, empty key = dev mode), Redis-backed rate limiting (fail-open design), SSRF validation on all URL fetches (DNS resolution + IP range blocking at each redirect hop), SVG sanitization (strips scripts, event handlers, foreignObject).
 
 ## Key Conventions
 
-- **Optimizer pattern**: Try multiple methods, pick the smallest output. See `optimizers/tiff.py` and `optimizers/bmp.py` for the clearest examples of this "try all, pick best" pattern.
-- **Estimation automatically matches optimizers**: The sample-based estimator calls the actual optimizers, so estimation accuracy adapts automatically when optimizer logic changes.
-- **Output guarantee**: `_build_result()` in `base.py` ensures the API never returns a file larger than the input. If optimization makes it bigger, it returns the original with method="none".
+- **Optimizer pattern**: Try multiple methods, pick the smallest output. See `optimizers/tiff.py` and `optimizers/bmp.py` for the clearest examples.
+- **Estimation mirrors optimizers**: Direct-encode BPP helpers must match their optimizer's encoding parameters. When changing quality mappings in an optimizer, update the corresponding `_*_sample_bpp()` helper in `estimation/estimator.py`.
+- **Output guarantee**: `_build_result()` ensures the API never returns a file larger than the input.
 - **Format detection**: Done by magic bytes in `utils/format_detect.py`, never by file extension or Content-Type header.
 - **Benchmark verification**: After changing optimizer or estimation logic, run `python -m benchmarks.run --fmt <format>` and check that preset differentiation exists (HIGH > MEDIUM > LOW reduction) and estimation accuracy (Avg Err column) stays under ~15%.
+- **Async discipline**: Wrap CPU-bound work in `asyncio.to_thread()`. Use `asyncio.gather()` for concurrent independent operations.
+- **CLI tools via stdin/stdout**: `utils/subprocess_runner.py`'s `run_tool()` pipes bytes through CLI tools — no temp files. Use `allowed_exit_codes` for expected non-zero exits (e.g., pngquant exit 99).
+
+## Code Style
+
+- **Formatter**: Black, line-length 100, Python 3.12
+- **Linter**: Ruff with E, F, W, I rules (E501 ignored — handled by Black)
+- **Async test framework**: pytest with `pytest-asyncio` (strict mode)
