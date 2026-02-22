@@ -10,22 +10,34 @@ Sample-based compression estimation. Instead of heuristic prediction, this modul
 
 Two files:
 
-1. **`estimator.py`** — Entry point. Downloads/receives image, determines whether to use exact mode (small/SVG/animated) or extrapolation mode (large raster). Calls the real optimizers via `optimize_image()`.
+1. **`estimator.py`** — Entry point. Downloads/receives image, determines whether to use exact mode (small/SVG/animated) or extrapolation mode (large raster).
 
 2. **`presets.py`** — Maps preset names (high/medium/low) to `OptimizationConfig` instances.
-
-## Key Design Property
-
-Estimation calls the actual optimizers. When optimizer logic changes, estimation automatically adapts. No parallel heuristic system to maintain.
 
 ## Modes
 
 - **Exact mode** (<150K pixels, SVG, animated): Compresses the full file with the real optimizer. 100% accurate.
-- **Extrapolation mode** (>150K pixels): Downsamples to ~300px wide, compresses sample, measures output BPP, scales to original pixel count.
+- **Direct-encode mode** (JPEG, HEIC, AVIF, JXL, WebP, PNG, APNG): Encodes a downsized sample directly at target quality using format-specific `_*_sample_bpp()` helpers, then extrapolates BPP to original pixel count. Bypasses the optimizer pipeline to avoid its output-never-larger gate breaking on small samples.
+- **Generic fallback mode** (GIF, BMP, TIFF): Creates a minimally-compressed sample via `_create_sample()`, runs the actual optimizer on it, extrapolates BPP.
+
+## Direct-Encode BPP Helpers
+
+Each helper mirrors the corresponding optimizer's encoding settings:
+
+| Helper | Optimizer match | Quality mapping |
+|--------|----------------|-----------------|
+| `_jpeg_sample_bpp` | `optimizers/jpeg.py` Pillow path | `config.quality` directly |
+| `_heic_sample_bpp` | `optimizers/heic.py` `_reencode` | `max(30, min(90, quality + 10))` |
+| `_avif_sample_bpp` | `optimizers/avif.py` `_reencode` | `max(30, min(90, quality + 10))`, speed=6 |
+| `_jxl_sample_bpp` | `optimizers/jxl.py` `_reencode` | `max(30, min(95, quality + 10))` |
+| `_webp_sample_bpp` | `optimizers/webp.py` Pillow path | `config.quality`, method=4 |
+| `_png_sample_bpp` | `optimizers/png.py` pipeline | oxipng level + optional pngquant quantization |
+
+**IMPORTANT:** When changing quality mappings or encoding parameters in an optimizer, update the corresponding `_*_sample_bpp()` helper to match.
 
 ## Verification
 
-After changes to optimizers, run:
+After changes to optimizers or estimation helpers, run:
 ```
 python -m benchmarks.run --fmt <format>
 ```

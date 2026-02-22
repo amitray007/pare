@@ -131,6 +131,7 @@ async def _estimate_by_sample(
         ImageFormat.JXL,
         ImageFormat.WEBP,
         ImageFormat.PNG,
+        ImageFormat.APNG,
     ):
         max_width = LOSSY_SAMPLE_MAX_WIDTH
     else:
@@ -143,111 +144,34 @@ async def _estimate_by_sample(
     sample_height = max(1, int(height * ratio))
     sample_pixels = sample_width * sample_height
 
-    # JPEG: encode sample directly at target quality (bypasses optimizer pipeline
-    # whose output-never-larger gate breaks on small samples with header overhead)
-    if fmt == ImageFormat.JPEG:
-        output_bpp, method = await asyncio.to_thread(
-            _jpeg_sample_bpp, img, sample_width, sample_height, config
-        )
-        estimated_size = int(output_bpp * original_pixels / 8)
-        estimated_size = min(estimated_size, file_size)
+    # Direct-encode path: encode sample at target quality, bypassing the
+    # optimizer pipeline whose output-never-larger gate breaks on small samples.
+    # Maps format -> BPP helper function.
+    _DIRECT_ENCODE_BPP_FNS = {
+        ImageFormat.JPEG: _jpeg_sample_bpp,
+        ImageFormat.HEIC: _heic_sample_bpp,
+        ImageFormat.AVIF: _avif_sample_bpp,
+        ImageFormat.JXL: _jxl_sample_bpp,
+        ImageFormat.WEBP: _webp_sample_bpp,
+        ImageFormat.PNG: _png_sample_bpp,
+        ImageFormat.APNG: _png_sample_bpp,
+    }
 
-        reduction = round((file_size - estimated_size) / file_size * 100, 1)
-        reduction = max(0.0, reduction)
-
-        return EstimateResponse(
-            original_size=file_size,
-            original_format=fmt.value,
-            dimensions={"width": width, "height": height},
-            color_type=color_type,
-            bit_depth=bit_depth,
-            estimated_optimized_size=estimated_size,
-            estimated_reduction_percent=reduction,
-            optimization_potential=_classify_potential(reduction),
-            method=method,
-            already_optimized=reduction == 0,
-            confidence="high",
-        )
-
-    # HEIC/AVIF/JXL: same pattern as JPEG — direct encode at target quality
-    if fmt in (ImageFormat.HEIC, ImageFormat.AVIF, ImageFormat.JXL):
-        bpp_fn = {
-            ImageFormat.HEIC: _heic_sample_bpp,
-            ImageFormat.AVIF: _avif_sample_bpp,
-            ImageFormat.JXL: _jxl_sample_bpp,
-        }[fmt]
-
-        output_bpp, method = await asyncio.to_thread(
-            bpp_fn, img, sample_width, sample_height, config
-        )
-        estimated_size = int(output_bpp * original_pixels / 8)
-        estimated_size = min(estimated_size, file_size)
-
-        reduction = round((file_size - estimated_size) / file_size * 100, 1)
-        reduction = max(0.0, reduction)
-
-        return EstimateResponse(
-            original_size=file_size,
-            original_format=fmt.value,
-            dimensions={"width": width, "height": height},
-            color_type=color_type,
-            bit_depth=bit_depth,
-            estimated_optimized_size=estimated_size,
-            estimated_reduction_percent=reduction,
-            optimization_potential=_classify_potential(reduction),
-            method=method,
-            already_optimized=reduction == 0,
-            confidence="high",
-        )
-
-    # WebP: direct encode at target quality (same pattern as JPEG/HEIC/AVIF/JXL)
-    if fmt == ImageFormat.WEBP:
-        output_bpp, method = await asyncio.to_thread(
-            _webp_sample_bpp, img, sample_width, sample_height, config
-        )
-        estimated_size = int(output_bpp * original_pixels / 8)
-        estimated_size = min(estimated_size, file_size)
-
-        reduction = round((file_size - estimated_size) / file_size * 100, 1)
-        reduction = max(0.0, reduction)
-
-        return EstimateResponse(
-            original_size=file_size,
-            original_format=fmt.value,
-            dimensions={"width": width, "height": height},
-            color_type=color_type,
-            bit_depth=bit_depth,
-            estimated_optimized_size=estimated_size,
-            estimated_reduction_percent=reduction,
-            optimization_potential=_classify_potential(reduction),
-            method=method,
-            already_optimized=reduction == 0,
-            confidence="high",
-        )
-
-    # PNG: direct encode to measure achievable compression
-    if fmt in (ImageFormat.PNG, ImageFormat.APNG):
-        output_bpp, method = await asyncio.to_thread(
-            _png_sample_bpp, img, sample_width, sample_height, config
-        )
-        estimated_size = int(output_bpp * original_pixels / 8)
-        estimated_size = min(estimated_size, file_size)
-
-        reduction = round((file_size - estimated_size) / file_size * 100, 1)
-        reduction = max(0.0, reduction)
-
-        return EstimateResponse(
-            original_size=file_size,
-            original_format=fmt.value,
-            dimensions={"width": width, "height": height},
-            color_type=color_type,
-            bit_depth=bit_depth,
-            estimated_optimized_size=estimated_size,
-            estimated_reduction_percent=reduction,
-            optimization_potential=_classify_potential(reduction),
-            method=method,
-            already_optimized=reduction == 0,
-            confidence="high",
+    bpp_fn = _DIRECT_ENCODE_BPP_FNS.get(fmt)
+    if bpp_fn is not None:
+        return await _bpp_to_estimate(
+            bpp_fn,
+            img,
+            sample_width,
+            sample_height,
+            config,
+            original_pixels,
+            file_size,
+            fmt,
+            width,
+            height,
+            color_type,
+            bit_depth,
         )
 
     # Create sample encoded with minimal compression
@@ -295,6 +219,40 @@ async def _estimate_by_sample(
     )
 
 
+async def _bpp_to_estimate(
+    bpp_fn,
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+    original_pixels: int,
+    file_size: int,
+    fmt: ImageFormat,
+    width: int,
+    height: int,
+    color_type: str | None,
+    bit_depth: int | None,
+) -> EstimateResponse:
+    """Encode a sample with bpp_fn and extrapolate BPP to full image size."""
+    output_bpp, method = await asyncio.to_thread(bpp_fn, img, sample_width, sample_height, config)
+    estimated_size = min(int(output_bpp * original_pixels / 8), file_size)
+    reduction = max(0.0, round((file_size - estimated_size) / file_size * 100, 1))
+
+    return EstimateResponse(
+        original_size=file_size,
+        original_format=fmt.value,
+        dimensions={"width": width, "height": height},
+        color_type=color_type,
+        bit_depth=bit_depth,
+        estimated_optimized_size=estimated_size,
+        estimated_reduction_percent=reduction,
+        optimization_potential=_classify_potential(reduction),
+        method=method,
+        already_optimized=reduction == 0,
+        confidence="high",
+    )
+
+
 def _jpeg_sample_bpp(
     img: Image.Image,
     sample_width: int,
@@ -334,9 +292,8 @@ def _heic_sample_bpp(
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode a HEIC sample at target quality and return output BPP."""
-    import pillow_heif
+    import pillow_heif  # noqa: F401 — registers HEIF plugin
 
-    pillow_heif.register_heif_opener()
     sample = img.resize((sample_width, sample_height), Image.LANCZOS)
     if sample.mode not in ("RGB", "RGBA"):
         sample = sample.convert("RGB")
@@ -473,21 +430,14 @@ def _create_sample(
 ) -> bytes:
     """Resize image and encode with minimal compression.
 
+    Used only for formats without a direct-encode BPP helper (GIF, BMP, TIFF).
     Minimal compression ensures the optimizer always has room to work,
     preventing false "already optimized" results on the sample.
     """
     sample = img.resize((sample_width, sample_height), Image.LANCZOS)
     buf = io.BytesIO()
 
-    if fmt == ImageFormat.JPEG:
-        if sample.mode not in ("RGB", "L"):
-            sample = sample.convert("RGB")
-        sample.save(buf, format="JPEG", quality=100)
-    elif fmt in (ImageFormat.PNG, ImageFormat.APNG):
-        sample.save(buf, format="PNG", compress_level=0)
-    elif fmt == ImageFormat.WEBP:
-        sample.save(buf, format="WEBP", lossless=True)
-    elif fmt == ImageFormat.GIF:
+    if fmt == ImageFormat.GIF:
         if sample.mode != "P":
             sample = sample.quantize(256)
         sample.save(buf, format="GIF")
@@ -497,21 +447,6 @@ def _create_sample(
         if sample.mode not in ("RGB", "L", "P"):
             sample = sample.convert("RGB")
         sample.save(buf, format="BMP")
-    elif fmt == ImageFormat.AVIF:
-        try:
-            sample.save(buf, format="AVIF", quality=100)
-        except Exception:
-            sample.save(buf, format="PNG", compress_level=0)
-    elif fmt == ImageFormat.HEIC:
-        try:
-            sample.save(buf, format="HEIF", quality=100)
-        except Exception:
-            sample.save(buf, format="PNG", compress_level=0)
-    elif fmt == ImageFormat.JXL:
-        try:
-            sample.save(buf, format="JXL", quality=100)
-        except Exception:
-            sample.save(buf, format="PNG", compress_level=0)
     else:
         sample.save(buf, format="PNG", compress_level=0)
 
@@ -607,7 +542,20 @@ def _get_color_type(img: Image.Image) -> str | None:
 
 
 def _get_bit_depth(img: Image.Image) -> int | None:
-    """Extract bit depth from Pillow image."""
-    if img.mode == "1":
-        return 1
-    return img.info.get("bits") or 8
+    """Extract bit depth (per channel) from Pillow image."""
+    mode_to_bits = {
+        "1": 1,
+        "L": 8,
+        "P": 8,
+        "RGB": 8,
+        "RGBA": 8,
+        "LA": 8,
+        "I": 32,
+        "F": 32,
+        "I;16": 16,
+    }
+    # Prefer explicit value from image metadata (e.g. PNG sBIT chunk)
+    explicit = img.info.get("bits")
+    if explicit:
+        return explicit
+    return mode_to_bits.get(img.mode, 8)

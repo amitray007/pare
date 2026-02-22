@@ -283,3 +283,34 @@ async def test_large_webp_not_zero():
     assert (
         result.estimated_reduction_percent > 0
     ), "Large WebP at q=95 estimated at q=60 should show reduction"
+
+
+# --- Generic fallback path (GIF/BMP/TIFF) ---
+
+
+@pytest.mark.asyncio
+async def test_large_bmp_estimation():
+    """Large BMP uses generic fallback path (no direct-encode helper)."""
+    img = Image.new("RGB", (800, 600), color=(100, 150, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="BMP")
+    data = buf.getvalue()
+
+    result = await estimate(data, OptimizationConfig(quality=60))
+    assert result.original_format == "bmp"
+    assert result.estimated_reduction_percent > 0
+    assert result.estimated_optimized_size < result.original_size
+
+
+@pytest.mark.asyncio
+async def test_large_tiff_estimation():
+    """Large TIFF uses generic fallback path (no direct-encode helper)."""
+    img = Image.new("RGB", (800, 600), color=(100, 150, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="TIFF", compression="raw")
+    data = buf.getvalue()
+
+    result = await estimate(data, OptimizationConfig(quality=60))
+    assert result.original_format == "tiff"
+    assert result.estimated_reduction_percent > 0
+    assert result.estimated_optimized_size < result.original_size

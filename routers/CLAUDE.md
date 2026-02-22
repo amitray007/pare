@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 FastAPI endpoint handlers. Three routes:
 
 - **`POST /optimize`** (`optimize.py`): Two input modes (multipart file upload, JSON with URL) and two response modes (raw bytes with X-* headers, JSON with storage URL). Acquires a `CompressionGate` semaphore slot before optimization.
-- **`POST /estimate`** (`estimate.py`): Same input modes as /optimize but lightweight (~20-50ms). Does **not** acquire a semaphore slot.
+- **`POST /estimate`** (`estimate.py`): Same input modes as /optimize. Uses sample-based compression (~50-500ms depending on format; PNG with oxipng is slowest). Does **not** acquire a semaphore slot.
 - **`GET /health`** (`health.py`): Checks availability of all CLI tools and Python libraries. Returns `"ok"` or `"degraded"`.
 
 ## Request Flow
