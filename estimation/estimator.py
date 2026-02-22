@@ -1,116 +1,252 @@
+"""Sample-based estimation engine.
+
+Instead of heuristic prediction, this module compresses a downsized sample
+of the image using the actual optimizers and extrapolates BPP (bits per pixel)
+to the full image size.
+
+For small images (<150K pixels), SVG, and animated formats, it compresses the
+full file for an exact result.
+"""
+
+import asyncio
 import io
 
 from PIL import Image
 
-from estimation.header_analysis import HeaderInfo, analyze_header
-from estimation.heuristics import Prediction, predict_reduction
+from optimizers.router import optimize_image
 from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
 
+SAMPLE_MAX_WIDTH = 300
+EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
 
-async def estimate(data: bytes, config: OptimizationConfig | None = None) -> EstimateResponse:
-    """Estimate compression savings without full compression.
 
-    Three-layer estimation:
-    1. Header analysis — format, dimensions, bit depth, color type (~1ms)
-    2. Format heuristics — predicted reduction based on signals (~1ms)
-    3. Thumbnail compression — JPEG/WebP only (~15-30ms)
+async def estimate(
+    data: bytes,
+    config: OptimizationConfig | None = None,
+) -> EstimateResponse:
+    """Estimate compression savings by compressing a sample.
 
-    Target latency: ~20-50ms.
+    For small images, SVGs, and animated images: compresses the full file.
+    For large raster images: downsamples to ~300px wide, compresses the
+    sample, and extrapolates output BPP to the original pixel count.
     """
     if config is None:
         config = OptimizationConfig()
 
     fmt = detect_format(data)
-    header_info = analyze_header(data, fmt)
-    prediction = predict_reduction(header_info, fmt, config)
+    file_size = len(data)
 
-    # Layer 3: thumbnail compression — disabled for now.
-    # The calibrated heuristic model for JPEG (jpegli encoder bonus +
-    # piecewise delta curve + jpegtran source-quality scaling) is accurate
-    # enough without content-specific correction. The thumbnail probe
-    # measures q100→target compression ratio which doesn't correlate well
-    # with jpegli re-encoding savings at the source's existing quality.
-    # WebP is also skipped: decoded-pixel compressibility doesn't predict
-    # re-compression of an already-compressed WebP file.
+    # SVG/SVGZ: no pixel data — compress the whole file
+    if fmt in (ImageFormat.SVG, ImageFormat.SVGZ):
+        return await _estimate_exact(data, fmt, config, file_size)
+
+    # Decode image for dimensions and animation detection
+    img = await asyncio.to_thread(_open_image, data)
+    width, height = img.size
+    original_pixels = width * height
+    color_type = _get_color_type(img)
+    bit_depth = _get_bit_depth(img)
+
+    # Animated images: compress full file (inter-frame redundancy matters)
+    frame_count = getattr(img, "n_frames", 1)
+    if frame_count > 1:
+        return await _estimate_exact(
+            data, fmt, config, file_size, width, height, color_type, bit_depth
+        )
+
+    # Small images: compress fully for exact result
+    if original_pixels <= EXACT_PIXEL_THRESHOLD:
+        return await _estimate_exact(
+            data, fmt, config, file_size, width, height, color_type, bit_depth
+        )
+
+    # Large raster images: downsample + compress sample + extrapolate BPP
+    return await _estimate_by_sample(
+        data, img, fmt, config, file_size, width, height, color_type, bit_depth
+    )
+
+
+def _open_image(data: bytes) -> Image.Image:
+    """Open image in Pillow (lazy decode — reads header only)."""
+    img = Image.open(io.BytesIO(data))
+    img.load()
+    return img
+
+
+async def _estimate_exact(
+    data: bytes,
+    fmt: ImageFormat,
+    config: OptimizationConfig,
+    file_size: int,
+    width: int = 0,
+    height: int = 0,
+    color_type: str | None = None,
+    bit_depth: int | None = None,
+) -> EstimateResponse:
+    """Compress the full image with the actual optimizer. Returns exact result."""
+    result = await optimize_image(data, config)
+    already_optimized = result.method == "none"
+    reduction = result.reduction_percent if not already_optimized else 0.0
 
     return EstimateResponse(
-        original_size=len(data),
+        original_size=file_size,
         original_format=fmt.value,
-        dimensions=header_info.dimensions,
-        color_type=header_info.color_type,
-        bit_depth=header_info.bit_depth,
-        estimated_optimized_size=prediction.estimated_size,
-        estimated_reduction_percent=prediction.reduction_percent,
-        optimization_potential=prediction.potential,
-        method=prediction.method,
-        already_optimized=prediction.already_optimized,
-        confidence=prediction.confidence,
+        dimensions={"width": width, "height": height},
+        color_type=color_type,
+        bit_depth=bit_depth,
+        estimated_optimized_size=result.optimized_size,
+        estimated_reduction_percent=reduction,
+        optimization_potential=_classify_potential(reduction),
+        method=result.method,
+        already_optimized=already_optimized,
+        confidence="high",
     )
 
 
-async def _thumbnail_compress(data: bytes, fmt: ImageFormat, quality: int) -> float | None:
-    """Resize to 64x64, compress with actual tool, return compression ratio.
+async def _estimate_by_sample(
+    data: bytes,
+    img: Image.Image,
+    fmt: ImageFormat,
+    config: OptimizationConfig,
+    file_size: int,
+    width: int,
+    height: int,
+    color_type: str | None,
+    bit_depth: int | None,
+) -> EstimateResponse:
+    """Downsample to ~300px wide, compress sample, extrapolate BPP."""
+    original_pixels = width * height
 
-    Only used for JPEG and WebP where thumbnail compression
-    ratio scales roughly linearly with resolution.
+    # Proportional resize
+    ratio = SAMPLE_MAX_WIDTH / width
+    sample_width = SAMPLE_MAX_WIDTH
+    sample_height = max(1, int(height * ratio))
+    sample_pixels = sample_width * sample_height
 
-    Returns:
-        Compression ratio (e.g., 0.4 means 60% reduction), or None on failure.
+    # Create sample encoded with minimal compression
+    sample_data = await asyncio.to_thread(
+        _create_sample, img, sample_width, sample_height, fmt
+    )
+
+    # Compress sample with the actual optimizer
+    result = await optimize_image(sample_data, config)
+
+    # If optimizer says "already optimized", propagate that
+    if result.method == "none":
+        return EstimateResponse(
+            original_size=file_size,
+            original_format=fmt.value,
+            dimensions={"width": width, "height": height},
+            color_type=color_type,
+            bit_depth=bit_depth,
+            estimated_optimized_size=file_size,
+            estimated_reduction_percent=0.0,
+            optimization_potential="low",
+            method="none",
+            already_optimized=True,
+            confidence="high",
+        )
+
+    # Extrapolate output BPP to original pixel count
+    sample_output_bpp = result.optimized_size * 8 / sample_pixels
+    estimated_size = int(sample_output_bpp * original_pixels / 8)
+    estimated_size = min(estimated_size, file_size)
+
+    reduction = round((file_size - estimated_size) / file_size * 100, 1)
+    reduction = max(0.0, reduction)
+
+    return EstimateResponse(
+        original_size=file_size,
+        original_format=fmt.value,
+        dimensions={"width": width, "height": height},
+        color_type=color_type,
+        bit_depth=bit_depth,
+        estimated_optimized_size=estimated_size,
+        estimated_reduction_percent=reduction,
+        optimization_potential=_classify_potential(reduction),
+        method=result.method,
+        already_optimized=reduction == 0,
+        confidence="high",
+    )
+
+
+def _create_sample(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    fmt: ImageFormat,
+) -> bytes:
+    """Resize image and encode with minimal compression.
+
+    Minimal compression ensures the optimizer always has room to work,
+    preventing false "already optimized" results on the sample.
     """
-    try:
-        img = Image.open(io.BytesIO(data))
-        img.thumbnail((64, 64))
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+    buf = io.BytesIO()
 
-        # Save at q100 to get baseline
-        original_buf = io.BytesIO()
-        thumb_format = "JPEG" if fmt == ImageFormat.JPEG else "WEBP"
-        img.save(original_buf, format=thumb_format, quality=100)
-        original_size = original_buf.tell()
-
-        # Save at target quality from config
-        compressed_buf = io.BytesIO()
-        img.save(compressed_buf, format=thumb_format, quality=quality)
-        compressed_size = compressed_buf.tell()
-
-        if original_size == 0:
-            return None
-
-        return compressed_size / original_size
-    except Exception:
-        return None
-
-
-def _combine_with_thumbnail(
-    prediction: Prediction,
-    thumbnail_ratio: float,
-    info: HeaderInfo,
-) -> Prediction:
-    """Adjust prediction using thumbnail compression ratio.
-
-    Weighted average: 70% heuristic, 30% thumbnail. The heuristic
-    captures format-specific knowledge (jpegli encoder bonus, quality
-    delta curves) while the thumbnail provides content-specific correction
-    (smooth paintings compress more, noisy photos less).
-    """
-    thumbnail_reduction = round((1 - thumbnail_ratio) * 100, 1)
-
-    heuristic_reduction = prediction.reduction_percent
-
-    combined_reduction = round(heuristic_reduction * 0.7 + thumbnail_reduction * 0.3, 1)
-
-    if abs(heuristic_reduction - thumbnail_reduction) < 15:
-        confidence = "high"
+    if fmt == ImageFormat.JPEG:
+        if sample.mode not in ("RGB", "L"):
+            sample = sample.convert("RGB")
+        sample.save(buf, format="JPEG", quality=100)
+    elif fmt in (ImageFormat.PNG, ImageFormat.APNG):
+        sample.save(buf, format="PNG", compress_level=0)
+    elif fmt == ImageFormat.WEBP:
+        sample.save(buf, format="WEBP", lossless=True)
+    elif fmt == ImageFormat.GIF:
+        if sample.mode != "P":
+            sample = sample.quantize(256)
+        sample.save(buf, format="GIF")
+    elif fmt == ImageFormat.TIFF:
+        sample.save(buf, format="TIFF", compression="raw")
+    elif fmt == ImageFormat.BMP:
+        if sample.mode not in ("RGB", "L", "P"):
+            sample = sample.convert("RGB")
+        sample.save(buf, format="BMP")
+    elif fmt == ImageFormat.AVIF:
+        try:
+            sample.save(buf, format="AVIF", quality=100)
+        except Exception:
+            sample.save(buf, format="PNG", compress_level=0)
+    elif fmt == ImageFormat.HEIC:
+        try:
+            sample.save(buf, format="HEIF", quality=100)
+        except Exception:
+            sample.save(buf, format="PNG", compress_level=0)
+    elif fmt == ImageFormat.JXL:
+        try:
+            sample.save(buf, format="JXL", quality=100)
+        except Exception:
+            sample.save(buf, format="PNG", compress_level=0)
     else:
-        confidence = "medium"
+        sample.save(buf, format="PNG", compress_level=0)
 
-    estimated_size = int(info.file_size * (1 - combined_reduction / 100))
+    return buf.getvalue()
 
-    return Prediction(
-        estimated_size=estimated_size,
-        reduction_percent=combined_reduction,
-        potential=prediction.potential,
-        method=prediction.method,
-        already_optimized=prediction.already_optimized,
-        confidence=confidence,
-    )
+
+def _classify_potential(reduction: float) -> str:
+    """Classify reduction percentage into potential category."""
+    if reduction >= 30:
+        return "high"
+    elif reduction >= 10:
+        return "medium"
+    return "low"
+
+
+def _get_color_type(img: Image.Image) -> str | None:
+    """Map Pillow mode to color type string."""
+    return {
+        "RGB": "rgb",
+        "RGBA": "rgba",
+        "P": "palette",
+        "L": "grayscale",
+        "LA": "grayscale",
+        "1": "grayscale",
+    }.get(img.mode)
+
+
+def _get_bit_depth(img: Image.Image) -> int | None:
+    """Extract bit depth from Pillow image."""
+    if img.mode == "1":
+        return 1
+    return img.info.get("bits") or 8
