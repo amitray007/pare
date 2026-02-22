@@ -18,6 +18,7 @@ from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
 
 SAMPLE_MAX_WIDTH = 300
+JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
 
 
@@ -115,14 +116,45 @@ async def _estimate_by_sample(
     color_type: str | None,
     bit_depth: int | None,
 ) -> EstimateResponse:
-    """Downsample to ~300px wide, compress sample, extrapolate BPP."""
+    """Downsample, compress sample, extrapolate BPP to full image."""
     original_pixels = width * height
 
+    # JPEG uses a larger sample (1200px) because JPEG BPP doesn't scale
+    # linearly — small samples have proportionally more header overhead and
+    # less DCT block coherence, inflating BPP relative to the full image.
+    max_width = JPEG_SAMPLE_MAX_WIDTH if fmt == ImageFormat.JPEG else SAMPLE_MAX_WIDTH
+
     # Proportional resize
-    ratio = SAMPLE_MAX_WIDTH / width
-    sample_width = SAMPLE_MAX_WIDTH
+    ratio = max_width / width
+    sample_width = max_width
     sample_height = max(1, int(height * ratio))
     sample_pixels = sample_width * sample_height
+
+    # JPEG: encode sample directly at target quality (bypasses optimizer pipeline
+    # whose output-never-larger gate breaks on small samples with header overhead)
+    if fmt == ImageFormat.JPEG:
+        output_bpp, method = await asyncio.to_thread(
+            _jpeg_sample_bpp, img, sample_width, sample_height, config
+        )
+        estimated_size = int(output_bpp * original_pixels / 8)
+        estimated_size = min(estimated_size, file_size)
+
+        reduction = round((file_size - estimated_size) / file_size * 100, 1)
+        reduction = max(0.0, reduction)
+
+        return EstimateResponse(
+            original_size=file_size,
+            original_format=fmt.value,
+            dimensions={"width": width, "height": height},
+            color_type=color_type,
+            bit_depth=bit_depth,
+            estimated_optimized_size=estimated_size,
+            estimated_reduction_percent=reduction,
+            optimization_potential=_classify_potential(reduction),
+            method=method,
+            already_optimized=reduction == 0,
+            confidence="high",
+        )
 
     # Create sample encoded with minimal compression
     sample_data = await asyncio.to_thread(_create_sample, img, sample_width, sample_height, fmt)
@@ -167,6 +199,38 @@ async def _estimate_by_sample(
         already_optimized=reduction == 0,
         confidence="high",
     )
+
+
+def _jpeg_sample_bpp(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+) -> tuple[float, str]:
+    """Encode a JPEG sample at target quality and return output BPP.
+
+    Uses a larger sample (1200px) than other formats to ensure JPEG BPP
+    scales accurately to the full image. Bypasses the optimizer pipeline
+    whose output-never-larger gate causes false "already optimized" results.
+    """
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+    if sample.mode not in ("RGB", "L"):
+        sample = sample.convert("RGB")
+
+    buf = io.BytesIO()
+    save_kwargs = {
+        "format": "JPEG",
+        "quality": config.quality,
+        "optimize": True,
+    }
+    if config.quality < 70:
+        save_kwargs["progressive"] = True
+
+    sample.save(buf, **save_kwargs)
+    output_size = buf.tell()
+    sample_pixels = sample_width * sample_height
+
+    return (output_size * 8 / sample_pixels, "pillow_jpeg")
 
 
 def _create_sample(

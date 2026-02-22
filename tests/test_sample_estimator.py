@@ -1,6 +1,7 @@
 """Tests for the sample-based estimation engine."""
 
 import io
+import os
 
 import pytest
 from PIL import Image
@@ -90,16 +91,17 @@ async def test_large_png_extrapolation():
 async def test_extrapolation_bpp_consistency():
     """BPP should be roughly consistent: estimate for a large image should
     be proportional to the small-image result scaled by pixel count."""
-    small_data = _make_image("JPEG", 300, 300, quality=95)
-    large_data = _make_image("JPEG", 900, 900, quality=95)
+    # Both sizes must be > EXACT_PIXEL_THRESHOLD (150K) to use sample path
+    small_data = _make_image("JPEG", 500, 500, quality=95)  # 250K pixels
+    large_data = _make_image("JPEG", 1500, 1500, quality=95)  # 2.25M pixels
     config = OptimizationConfig(quality=60)
 
     small_result = await estimate(small_data, config)
     large_result = await estimate(large_data, config)
 
-    # The BPP should be similar (within ~20% for synthetic images)
-    small_bpp = small_result.estimated_optimized_size * 8 / (300 * 300)
-    large_bpp = large_result.estimated_optimized_size * 8 / (900 * 900)
+    # Both use the same sample-based path, so BPP should be similar
+    small_bpp = small_result.estimated_optimized_size * 8 / (500 * 500)
+    large_bpp = large_result.estimated_optimized_size * 8 / (1500 * 1500)
     assert abs(small_bpp - large_bpp) / max(small_bpp, large_bpp) < 0.25
 
 
@@ -173,6 +175,44 @@ async def test_animated_gif_uses_exact_mode():
 
 
 # --- Edge cases ---
+
+
+@pytest.mark.asyncio
+async def test_large_jpeg_sample_not_already_optimized():
+    """Large JPEG at q=95 estimated at q=60 should report meaningful reduction."""
+    data = _make_image("JPEG", 1000, 1000, quality=95)
+    result = await estimate(data, OptimizationConfig(quality=60))
+    assert result.original_format == "jpeg"
+    assert result.method != "none", "JPEG should not report 'none' method"
+    assert (
+        result.estimated_reduction_percent > 10
+    ), f"Expected >10% reduction, got {result.estimated_reduction_percent}%"
+    assert not result.already_optimized
+
+
+@pytest.mark.asyncio
+async def test_jpeg_preset_differentiation():
+    """Higher compression presets should estimate more reduction for JPEG."""
+    # Use random pixel data (photo-like) so quality differences are meaningful.
+    # Solid-color images compress trivially at all qualities.
+    raw = os.urandom(1000 * 1000 * 3)
+    img = Image.frombytes("RGB", (1000, 1000), raw)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    data = buf.getvalue()
+
+    high = await estimate(data, OptimizationConfig(quality=40))  # HIGH preset
+    medium = await estimate(data, OptimizationConfig(quality=60))  # MEDIUM preset
+    low = await estimate(data, OptimizationConfig(quality=80))  # LOW preset
+
+    assert high.estimated_reduction_percent > medium.estimated_reduction_percent, (
+        f"HIGH ({high.estimated_reduction_percent}%) should beat "
+        f"MEDIUM ({medium.estimated_reduction_percent}%)"
+    )
+    assert medium.estimated_reduction_percent > low.estimated_reduction_percent, (
+        f"MEDIUM ({medium.estimated_reduction_percent}%) should beat "
+        f"LOW ({low.estimated_reduction_percent}%)"
+    )
 
 
 @pytest.mark.asyncio
