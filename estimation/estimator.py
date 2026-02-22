@@ -18,7 +18,7 @@ from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
 
 SAMPLE_MAX_WIDTH = 300
-JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
+JPEG_SAMPLE_MAX_WIDTH = 1600  # JPEG needs larger samples for accurate BPP scaling
 LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
 
