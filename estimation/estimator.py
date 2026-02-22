@@ -18,7 +18,7 @@ from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
 
 SAMPLE_MAX_WIDTH = 300
-JPEG_SAMPLE_MAX_WIDTH = 1600  # JPEG needs larger samples for accurate BPP scaling
+JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
 LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
 
@@ -431,9 +431,12 @@ def _png_sample_bpp(
     """Encode a PNG sample and return output BPP.
 
     For lossy mode (quality < 70 with png_lossy=True): quantizes to palette
-    first (simulating pngquant), then encodes with maximum compression.
-    For lossless mode: encodes directly with maximum compression.
+    first (simulating pngquant), then runs oxipng for maximum compression.
+    For lossless mode: encodes with Pillow then runs oxipng (which tries
+    many more filter combinations than Pillow's compress_level=9).
     """
+    import oxipng
+
     sample = img.resize((sample_width, sample_height), Image.LANCZOS)
 
     # Lossy path: quantize to palette (simulates pngquant)
@@ -447,9 +450,15 @@ def _png_sample_bpp(
     else:
         method = "oxipng"
 
+    # Encode with Pillow first, then run oxipng for accurate lossless compression
     buf = io.BytesIO()
-    sample.save(buf, format="PNG", compress_level=9)
-    output_size = buf.tell()
+    sample.save(buf, format="PNG", compress_level=6)
+    png_data = buf.getvalue()
+
+    # oxipng matches what the actual optimizer uses
+    oxipng_level = 4 if config.quality < 70 else 2
+    optimized = oxipng.optimize_from_memory(png_data, level=oxipng_level)
+    output_size = len(optimized)
     sample_pixels = sample_width * sample_height
 
     return (output_size * 8 / sample_pixels, method)
