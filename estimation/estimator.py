@@ -125,7 +125,13 @@ async def _estimate_by_sample(
     # less DCT block coherence, inflating BPP relative to the full image.
     if fmt == ImageFormat.JPEG:
         max_width = JPEG_SAMPLE_MAX_WIDTH
-    elif fmt in (ImageFormat.HEIC, ImageFormat.AVIF, ImageFormat.JXL, ImageFormat.WEBP):
+    elif fmt in (
+        ImageFormat.HEIC,
+        ImageFormat.AVIF,
+        ImageFormat.JXL,
+        ImageFormat.WEBP,
+        ImageFormat.PNG,
+    ):
         max_width = LOSSY_SAMPLE_MAX_WIDTH
     else:
         max_width = SAMPLE_MAX_WIDTH
@@ -197,6 +203,31 @@ async def _estimate_by_sample(
     if fmt == ImageFormat.WEBP:
         output_bpp, method = await asyncio.to_thread(
             _webp_sample_bpp, img, sample_width, sample_height, config
+        )
+        estimated_size = int(output_bpp * original_pixels / 8)
+        estimated_size = min(estimated_size, file_size)
+
+        reduction = round((file_size - estimated_size) / file_size * 100, 1)
+        reduction = max(0.0, reduction)
+
+        return EstimateResponse(
+            original_size=file_size,
+            original_format=fmt.value,
+            dimensions={"width": width, "height": height},
+            color_type=color_type,
+            bit_depth=bit_depth,
+            estimated_optimized_size=estimated_size,
+            estimated_reduction_percent=reduction,
+            optimization_potential=_classify_potential(reduction),
+            method=method,
+            already_optimized=reduction == 0,
+            confidence="high",
+        )
+
+    # PNG: direct encode to measure achievable compression
+    if fmt in (ImageFormat.PNG, ImageFormat.APNG):
+        output_bpp, method = await asyncio.to_thread(
+            _png_sample_bpp, img, sample_width, sample_height, config
         )
         estimated_size = int(output_bpp * original_pixels / 8)
         estimated_size = min(estimated_size, file_size)
@@ -389,6 +420,39 @@ def _webp_sample_bpp(
     sample_pixels = sample_width * sample_height
 
     return (output_size * 8 / sample_pixels, "pillow")
+
+
+def _png_sample_bpp(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+) -> tuple[float, str]:
+    """Encode a PNG sample and return output BPP.
+
+    For lossy mode (quality < 70 with png_lossy=True): quantizes to palette
+    first (simulating pngquant), then encodes with maximum compression.
+    For lossless mode: encodes directly with maximum compression.
+    """
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+
+    # Lossy path: quantize to palette (simulates pngquant)
+    if config.png_lossy and config.quality < 70:
+        max_colors = 64 if config.quality < 50 else 256
+        if sample.mode == "RGBA":
+            sample = sample.quantize(max_colors)
+        elif sample.mode != "P":
+            sample = sample.convert("RGB").quantize(max_colors)
+        method = "pngquant + oxipng"
+    else:
+        method = "oxipng"
+
+    buf = io.BytesIO()
+    sample.save(buf, format="PNG", compress_level=9)
+    output_size = buf.tell()
+    sample_pixels = sample_width * sample_height
+
+    return (output_size * 8 / sample_pixels, method)
 
 
 def _create_sample(
