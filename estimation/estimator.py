@@ -125,7 +125,7 @@ async def _estimate_by_sample(
     # less DCT block coherence, inflating BPP relative to the full image.
     if fmt == ImageFormat.JPEG:
         max_width = JPEG_SAMPLE_MAX_WIDTH
-    elif fmt in (ImageFormat.HEIC, ImageFormat.AVIF, ImageFormat.JXL):
+    elif fmt in (ImageFormat.HEIC, ImageFormat.AVIF, ImageFormat.JXL, ImageFormat.WEBP):
         max_width = LOSSY_SAMPLE_MAX_WIDTH
     else:
         max_width = SAMPLE_MAX_WIDTH
@@ -172,6 +172,31 @@ async def _estimate_by_sample(
 
         output_bpp, method = await asyncio.to_thread(
             bpp_fn, img, sample_width, sample_height, config
+        )
+        estimated_size = int(output_bpp * original_pixels / 8)
+        estimated_size = min(estimated_size, file_size)
+
+        reduction = round((file_size - estimated_size) / file_size * 100, 1)
+        reduction = max(0.0, reduction)
+
+        return EstimateResponse(
+            original_size=file_size,
+            original_format=fmt.value,
+            dimensions={"width": width, "height": height},
+            color_type=color_type,
+            bit_depth=bit_depth,
+            estimated_optimized_size=estimated_size,
+            estimated_reduction_percent=reduction,
+            optimization_potential=_classify_potential(reduction),
+            method=method,
+            already_optimized=reduction == 0,
+            confidence="high",
+        )
+
+    # WebP: direct encode at target quality (same pattern as JPEG/HEIC/AVIF/JXL)
+    if fmt == ImageFormat.WEBP:
+        output_bpp, method = await asyncio.to_thread(
+            _webp_sample_bpp, img, sample_width, sample_height, config
         )
         estimated_size = int(output_bpp * original_pixels / 8)
         estimated_size = min(estimated_size, file_size)
@@ -341,6 +366,29 @@ def _jxl_sample_bpp(
     sample_pixels = sample_width * sample_height
 
     return (output_size * 8 / sample_pixels, "jxl-reencode")
+
+
+def _webp_sample_bpp(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+) -> tuple[float, str]:
+    """Encode a WebP sample at target quality and return output BPP.
+
+    Matches the WebP optimizer's Pillow path: lossy encode at target quality
+    with method=4 for good compression.
+    """
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+    if sample.mode not in ("RGB", "RGBA", "L"):
+        sample = sample.convert("RGB")
+
+    buf = io.BytesIO()
+    sample.save(buf, format="WEBP", quality=config.quality, method=4)
+    output_size = buf.tell()
+    sample_pixels = sample_width * sample_height
+
+    return (output_size * 8 / sample_pixels, "pillow")
 
 
 def _create_sample(
