@@ -136,7 +136,8 @@ async def _estimate_by_sample(
     else:
         max_width = SAMPLE_MAX_WIDTH
 
-    # Proportional resize
+    # Proportional resize (never upscale — cap at original dimensions)
+    max_width = min(max_width, width)
     ratio = max_width / width
     sample_width = max_width
     sample_height = max(1, int(height * ratio))
