@@ -1,6 +1,6 @@
 """Tests for preset -> OptimizationConfig mapping."""
 
-from estimation.presets import PRESET_CONFIGS, get_config_for_preset
+from estimation.presets import get_config_for_preset
 
 
 def test_high_preset_maps_to_quality_40():
@@ -28,5 +28,6 @@ def test_preset_case_insensitive():
 
 def test_invalid_preset_raises():
     import pytest
+
     with pytest.raises(ValueError, match="Invalid preset"):
         get_config_for_preset("ultra")

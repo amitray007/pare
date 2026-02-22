@@ -11,9 +11,7 @@ The original JPEGs are kept. New files are placed alongside with
 the same name but different extension.
 """
 
-import json
 import sys
-import io
 from pathlib import Path
 
 # Fix Windows console encoding
@@ -52,6 +50,7 @@ def check_optional_formats():
                 import pillow_avif  # noqa: F401
             elif module == "pillow_heif":
                 import pillow_heif
+
                 pillow_heif.register_heif_opener()
             elif module == "jxlpy":
                 try:
@@ -101,7 +100,9 @@ def main():
         sys.exit(1)
 
     print(f"\nFound {len(jpegs)} JPEG source files")
-    print(f"Converting to {len(all_conversions)} formats = ~{len(jpegs) * len(all_conversions)} new files\n")
+    print(
+        f"Converting to {len(all_conversions)} formats = ~{len(jpegs) * len(all_conversions)} new files\n"
+    )
 
     stats = {ext: {"created": 0, "skipped": 0, "failed": 0} for ext, *_ in all_conversions}
     current_category = None
@@ -141,7 +142,9 @@ def main():
         print(f"  {ext.upper():<8} {s['created']:>8} {s['skipped']:>8} {s['failed']:>8}")
 
     # Show total corpus size
-    total_bytes = sum(f.stat().st_size for f in CORPUS_DIR.rglob("*") if f.is_file() and f.name != "manifest.json")
+    total_bytes = sum(
+        f.stat().st_size for f in CORPUS_DIR.rglob("*") if f.is_file() and f.name != "manifest.json"
+    )
     total_files = sum(1 for f in CORPUS_DIR.rglob("*") if f.is_file() and f.name != "manifest.json")
     print(f"\n  Total corpus: {total_files} files, {total_bytes / 1024 / 1024:.1f} MB")
     print(f"  Location: {CORPUS_DIR}")

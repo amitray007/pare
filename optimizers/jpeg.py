@@ -154,12 +154,19 @@ class JpegOptimizer(BaseOptimizer):
         return best_out
 
     async def _run_jpegtran(self, data: bytes, progressive: bool) -> bytes:
-        """Run jpegtran for lossless Huffman table optimization."""
+        """Run jpegtran for lossless Huffman table optimization.
+
+        Returns original data if jpegtran is not installed, so the Pillow
+        path always wins the "pick smallest" comparison.
+        """
         cmd = ["jpegtran", "-optimize", "-copy", "none"]
         if progressive:
             cmd.append("-progressive")
-        stdout, stderr, rc = await run_tool(cmd, data)
-        return stdout
+        try:
+            stdout, stderr, rc = await run_tool(cmd, data)
+            return stdout
+        except (FileNotFoundError, OSError):
+            return data
 
     # --- Legacy cjpeg fallback (JPEG_ENCODER=cjpeg) ---
 

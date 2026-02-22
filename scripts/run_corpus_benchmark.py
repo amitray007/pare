@@ -28,8 +28,8 @@ def check_corpus():
     if not CORPUS_DIR.is_dir():
         print(f"Corpus not found at {CORPUS_DIR}")
         print("Download it first:")
-        print(f"  python scripts/download_unsplash_corpus.py --key YOUR_KEY")
-        print(f"  python scripts/convert_corpus_formats.py")
+        print("  python scripts/download_unsplash_corpus.py --key YOUR_KEY")
+        print("  python scripts/convert_corpus_formats.py")
         sys.exit(1)
 
     image_exts = {".jpg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".avif", ".heic", ".jxl"}
@@ -50,7 +50,9 @@ def find_latest_report() -> Path | None:
 
 def main():
     parser = argparse.ArgumentParser(description="Run Pare corpus benchmarks")
-    parser.add_argument("--fmt", help="Filter by format (jpeg, png, webp, gif, bmp, tiff, avif, heic, jxl)")
+    parser.add_argument(
+        "--fmt", help="Filter by format (jpeg, png, webp, gif, bmp, tiff, avif, heic, jxl)"
+    )
     parser.add_argument("--preset", help="Run only this preset (high, medium, low)")
     parser.add_argument("--no-open", action="store_true", help="Don't open HTML report in browser")
     parser.add_argument("--json", action="store_true", help="Also print JSON to stdout")

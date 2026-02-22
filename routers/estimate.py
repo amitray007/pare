@@ -76,9 +76,7 @@ async def estimate(
             detect_format(thumbnail_data)
 
             # Get original dimensions via Range request
-            original_width, original_height = await _fetch_dimensions(
-                url, is_authenticated
-            )
+            original_width, original_height = await _fetch_dimensions(url, is_authenticated)
 
             return await estimate_from_thumbnail(
                 thumbnail_data=thumbnail_data,

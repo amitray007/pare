@@ -23,7 +23,5 @@ def get_config_for_preset(preset: str) -> OptimizationConfig:
     """
     key = preset.lower()
     if key not in PRESET_CONFIGS:
-        raise ValueError(
-            f"Invalid preset: '{preset}'. Must be 'high', 'medium', or 'low'."
-        )
+        raise ValueError(f"Invalid preset: '{preset}'. Must be 'high', 'medium', or 'low'.")
     return PRESET_CONFIGS[key]

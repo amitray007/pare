@@ -5,7 +5,7 @@ import io
 import pytest
 from PIL import Image
 
-from estimation.estimator import estimate, EXACT_PIXEL_THRESHOLD, SAMPLE_MAX_WIDTH
+from estimation.estimator import estimate
 from schemas import OptimizationConfig
 
 
@@ -162,9 +162,7 @@ async def test_response_has_all_fields():
 async def test_animated_gif_uses_exact_mode():
     """Animated GIFs compress the full file, never sample."""
     # Create a 2-frame GIF
-    frames = [
-        Image.new("P", (400, 400), color=i) for i in range(2)
-    ]
+    frames = [Image.new("P", (400, 400), color=i) for i in range(2)]
     buf = io.BytesIO()
     frames[0].save(buf, format="GIF", save_all=True, append_images=frames[1:])
     data = buf.getvalue()

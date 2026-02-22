@@ -376,8 +376,9 @@ def _classify_size(data: bytes, fmt: str) -> str:
     if fmt in ("svg", "svgz"):
         return "vector"
     try:
-        from PIL import Image
         import io
+
+        from PIL import Image
 
         img = Image.open(io.BytesIO(data))
         max_dim = max(img.size)
@@ -430,6 +431,7 @@ def load_corpus_cases(corpus_dir: str | Path) -> list[BenchmarkCase]:
         )
 
     return cases
+
 
 JXL_QUALITIES = [95, 75, 50]
 

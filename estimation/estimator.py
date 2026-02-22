@@ -125,9 +125,7 @@ async def _estimate_by_sample(
     sample_pixels = sample_width * sample_height
 
     # Create sample encoded with minimal compression
-    sample_data = await asyncio.to_thread(
-        _create_sample, img, sample_width, sample_height, fmt
-    )
+    sample_data = await asyncio.to_thread(_create_sample, img, sample_width, sample_height, fmt)
 
     # Compress sample with the actual optimizer
     result = await optimize_image(sample_data, config)
@@ -273,9 +271,7 @@ async def estimate_from_thumbnail(
     estimated_size = int(thumb_output_bpp * original_pixels / 8)
     estimated_size = min(estimated_size, original_file_size)
 
-    reduction = round(
-        (original_file_size - estimated_size) / original_file_size * 100, 1
-    )
+    reduction = round((original_file_size - estimated_size) / original_file_size * 100, 1)
     reduction = max(0.0, reduction)
 
     return EstimateResponse(

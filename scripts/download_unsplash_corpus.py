@@ -13,9 +13,9 @@ import json
 import os
 import sys
 import time
-import urllib.request
 import urllib.error
 import urllib.parse
+import urllib.request
 from pathlib import Path
 
 # Fix Windows console encoding
@@ -106,13 +106,21 @@ def build_download_url(photo: dict, width: int) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Download Unsplash test corpus")
-    parser.add_argument("--key",
-                        default=os.environ.get("UNSPLASH_ACCESS_KEY"),
-                        help="Unsplash API access key (env: UNSPLASH_ACCESS_KEY)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Show what would be downloaded without downloading")
-    parser.add_argument("--sizes", nargs="+", choices=["small", "medium", "large"],
-                        default=None, help="Only download specific sizes (default: all)")
+    parser.add_argument(
+        "--key",
+        default=os.environ.get("UNSPLASH_ACCESS_KEY"),
+        help="Unsplash API access key (env: UNSPLASH_ACCESS_KEY)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be downloaded without downloading"
+    )
+    parser.add_argument(
+        "--sizes",
+        nargs="+",
+        choices=["small", "medium", "large"],
+        default=None,
+        help="Only download specific sizes (default: all)",
+    )
     args = parser.parse_args()
 
     if not args.key:
@@ -120,7 +128,7 @@ def main():
         sys.exit(1)
 
     access_key = args.key
-    sizes = [(l, w) for l, w in SIZES if args.sizes is None or l in args.sizes]
+    sizes = [(label, w) for label, w in SIZES if args.sizes is None or label in args.sizes]
 
     CORPUS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +153,9 @@ def main():
         for i, photo in enumerate(photos[:count]):
             photo_id = photo["id"]
             author = photo["user"]["name"]
-            description = photo.get("alt_description") or photo.get("description") or "no description"
+            description = (
+                photo.get("alt_description") or photo.get("description") or "no description"
+            )
             orig_w = photo["width"]
             orig_h = photo["height"]
 
@@ -176,7 +186,9 @@ def main():
                 url = build_download_url(photo, effective_width)
 
                 if args.dry_run:
-                    print(f"    Would download: {size_label} ({effective_width}px) -> {dest.relative_to(CORPUS_DIR)}")
+                    print(
+                        f"    Would download: {size_label} ({effective_width}px) -> {dest.relative_to(CORPUS_DIR)}"
+                    )
                     continue
 
                 if dest.exists():
@@ -187,7 +199,9 @@ def main():
                     ok = download_file(url, dest)
                     if ok:
                         size_kb = dest.stat().st_size / 1024
-                        print(f"    {size_label} ({effective_width}px): downloaded ({size_kb:.0f} KB)")
+                        print(
+                            f"    {size_label} ({effective_width}px): downloaded ({size_kb:.0f} KB)"
+                        )
                         total_downloaded += 1
                     else:
                         total_failed += 1
@@ -207,7 +221,7 @@ def main():
         print(f"\nManifest saved to {MANIFEST_FILE}")
 
     print(f"\n{'='*60}")
-    print(f"Summary:")
+    print("Summary:")
     print(f"  Downloaded: {total_downloaded}")
     print(f"  Skipped (exists): {total_skipped}")
     print(f"  Failed: {total_failed}")
