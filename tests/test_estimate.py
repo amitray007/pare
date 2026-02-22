@@ -93,3 +93,41 @@ def test_estimate_400_no_input(client):
     """No file and no JSON body -> 400."""
     resp = client.post("/estimate")
     assert resp.status_code == 400
+
+
+# --- Preset-based estimation ---
+
+
+def test_estimate_json_with_preset(client, sample_png):
+    """File upload with preset returns valid estimate."""
+    resp = client.post(
+        "/estimate",
+        files={"file": ("test.png", sample_png, "image/png")},
+        data={"preset": "high"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["original_format"] == "png"
+    assert data["estimated_reduction_percent"] >= 0
+
+
+def test_estimate_preset_overrides_options(client, sample_jpeg):
+    """When preset is provided, it takes precedence over options."""
+    resp = client.post(
+        "/estimate",
+        files={"file": ("test.jpg", sample_jpeg, "image/jpeg")},
+        data={"preset": "high"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["estimated_reduction_percent"] >= 0
+
+
+def test_estimate_invalid_preset(client, sample_png):
+    """Invalid preset returns 400."""
+    resp = client.post(
+        "/estimate",
+        files={"file": ("test.png", sample_png, "image/png")},
+        data={"preset": "ultra"},
+    )
+    assert resp.status_code == 400
