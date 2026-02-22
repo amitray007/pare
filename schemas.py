@@ -37,6 +37,15 @@ class OptimizeRequest(BaseModel):
     storage: Optional[StorageConfig] = None
 
 
+class EstimateRequest(BaseModel):
+    """JSON body for URL-based estimation."""
+
+    url: str
+    preset: str = Field(default="medium", pattern=r"^(high|medium|low)$")
+    thumbnail_url: Optional[str] = None
+    file_size: Optional[int] = Field(default=None, gt=0)
+
+
 class OptimizeResult(BaseModel):
     """Internal result passed between optimizer and response formatter."""
 

@@ -41,11 +41,13 @@ Request flow: `routers/optimize.py` -> `optimizers/router.py` (format detection 
 
 Each optimizer in `optimizers/` inherits `BaseOptimizer` and implements `async optimize(data, config) -> OptimizeResult`. The router holds a singleton registry (`OPTIMIZERS` dict) mapping `ImageFormat` enum values to optimizer instances.
 
-### Estimation Engine (3-layer, no optimization)
+### Estimation Engine (sample-based)
 
-`routers/estimate.py` -> `estimation/estimator.py` -> two layers:
-1. **Header analysis** (`estimation/header_analysis.py`): Parses magic bytes, dimensions, color type, bit depth, JPEG quantization tables. For small files (<50KB), runs quick content probes (oxipng, pngquant).
-2. **Format heuristics** (`estimation/heuristics.py`): Per-format prediction functions (`_predict_png`, `_predict_jpeg`, etc.) that take `HeaderInfo` + `OptimizationConfig` and return a `Prediction` dataclass. Target: <50ms latency, <15% average estimation error on benchmarks.
+`routers/estimate.py` -> `estimation/estimator.py` -> `optimizers/router.py`
+
+Estimates compression by compressing a downsized sample (~300px wide) with the actual optimizer and extrapolating BPP to the full image size. For small images (<150K pixels), SVG, and animated formats, compresses the full file for exact results.
+
+Accepts presets (HIGH/MEDIUM/LOW) mapped to quality levels in `estimation/presets.py`. For images >= 10MB, supports an optional `thumbnail_url` to avoid downloading the full original.
 
 ### Quality Controls
 
@@ -62,7 +64,7 @@ All CPU-bound Pillow operations are wrapped in `asyncio.to_thread()` to avoid bl
 ## Key Conventions
 
 - **Optimizer pattern**: Try multiple methods, pick the smallest output. See `optimizers/tiff.py` and `optimizers/bmp.py` for the clearest examples of this "try all, pick best" pattern.
-- **Estimation must match optimizer behavior**: If you add a compression tier to an optimizer, update the corresponding `_predict_*` function in `heuristics.py` to predict the new tier based on the same quality thresholds.
+- **Estimation automatically matches optimizers**: The sample-based estimator calls the actual optimizers, so estimation accuracy adapts automatically when optimizer logic changes.
 - **Output guarantee**: `_build_result()` in `base.py` ensures the API never returns a file larger than the input. If optimization makes it bigger, it returns the original with method="none".
 - **Format detection**: Done by magic bytes in `utils/format_detect.py`, never by file extension or Content-Type header.
 - **Benchmark verification**: After changing optimizer or estimation logic, run `python -m benchmarks.run --fmt <format>` and check that preset differentiation exists (HIGH > MEDIUM > LOW reduction) and estimation accuracy (Avg Err column) stays under ~15%.

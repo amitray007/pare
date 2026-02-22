@@ -2,9 +2,13 @@
 
 Defines all image variants to test across sizes, content types, formats,
 and quality levels. Each case is deterministic (seeded RNG).
+
+Also supports loading real-world image files from a corpus directory
+via load_corpus_cases().
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from benchmarks.constants import (
     JPEG_LARGE_QUALITIES,
@@ -332,6 +336,99 @@ def _avif_heic_cases() -> list[BenchmarkCase]:
             )
     except ImportError:
         pass
+
+    return cases
+
+
+# ---------------------------------------------------------------------------
+# Corpus loader (real-world images from disk)
+# ---------------------------------------------------------------------------
+
+# Map file extensions to benchmark format strings
+_EXT_TO_FMT = {
+    ".jpg": "jpeg",
+    ".jpeg": "jpeg",
+    ".png": "png",
+    ".webp": "webp",
+    ".gif": "gif",
+    ".bmp": "bmp",
+    ".tiff": "tiff",
+    ".tif": "tiff",
+    ".avif": "avif",
+    ".heic": "heic",
+    ".heif": "heic",
+    ".jxl": "jxl",
+    ".svg": "svg",
+    ".svgz": "svgz",
+}
+
+# Size thresholds (by largest dimension) for category labels
+_SIZE_THRESHOLDS = [
+    (200, "tiny"),
+    (500, "small"),
+    (1000, "medium"),
+    (2000, "large"),
+]
+
+
+def _classify_size(data: bytes, fmt: str) -> str:
+    """Classify image into a size category based on pixel dimensions."""
+    if fmt in ("svg", "svgz"):
+        return "vector"
+    try:
+        import io
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(data))
+        max_dim = max(img.size)
+        for threshold, label in _SIZE_THRESHOLDS:
+            if max_dim <= threshold:
+                return label
+        return "xlarge"
+    except Exception:
+        # Fall back to file size heuristic
+        size = len(data)
+        if size < 50_000:
+            return "small"
+        if size < 500_000:
+            return "medium"
+        return "large"
+
+
+def load_corpus_cases(corpus_dir: str | Path) -> list[BenchmarkCase]:
+    """Load real-world images from a corpus directory as benchmark cases.
+
+    Expected structure: corpus_dir/<category>/<name>.<ext>
+    The parent folder name becomes the content category.
+    """
+    corpus_path = Path(corpus_dir)
+    if not corpus_path.is_dir():
+        raise FileNotFoundError(f"Corpus directory not found: {corpus_path}")
+
+    cases = []
+    for filepath in sorted(corpus_path.rglob("*")):
+        if not filepath.is_file():
+            continue
+        ext = filepath.suffix.lower()
+        fmt = _EXT_TO_FMT.get(ext)
+        if fmt is None:
+            continue  # skip non-image files (manifest.json, etc.)
+
+        data = filepath.read_bytes()
+        content = filepath.parent.name  # folder name = content category
+        size_cat = _classify_size(data, fmt)
+        name = f"{content}/{filepath.stem} [{fmt.upper()}]"
+
+        cases.append(
+            BenchmarkCase(
+                name=name,
+                data=data,
+                fmt=fmt,
+                category=size_cat,
+                content=content,
+            )
+        )
 
     return cases
 

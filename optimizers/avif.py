@@ -28,22 +28,23 @@ class AvifOptimizer(BaseOptimizer):
     format = ImageFormat.AVIF
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        candidates = []
+        tasks = []
 
-        # Always try metadata strip (cheap, lossless)
         if config.strip_metadata:
-            try:
-                stripped = await asyncio.to_thread(self._strip_metadata, data)
-                candidates.append((stripped, "metadata-strip"))
-            except Exception:
-                pass
+            tasks.append(asyncio.to_thread(self._strip_metadata, data))
+        tasks.append(asyncio.to_thread(self._reencode, data, config.quality))
 
-        # Try lossy re-encoding at target quality
-        try:
-            reencoded = await asyncio.to_thread(self._reencode, data, config.quality)
-            candidates.append((reencoded, "avif-reencode"))
-        except Exception:
-            pass
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        candidates = []
+        method_names = []
+        if config.strip_metadata:
+            method_names.append("metadata-strip")
+        method_names.append("avif-reencode")
+
+        for result, method in zip(results, method_names):
+            if not isinstance(result, Exception):
+                candidates.append((result, method))
 
         if not candidates:
             return self._build_result(data, data, "none")
