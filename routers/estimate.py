@@ -56,12 +56,14 @@ async def estimate(
         if not url:
             raise BadRequestError("Missing 'url' field in JSON body")
 
-        # Use preset from JSON body if provided
+        # Use preset or optimization config from JSON body
         if not preset and body.get("preset"):
             try:
                 config = get_config_for_preset(body["preset"])
             except ValueError as e:
                 raise BadRequestError(str(e))
+        elif body.get("optimization"):
+            config = OptimizationConfig(**body["optimization"])
 
         is_authenticated = getattr(request.state, "is_authenticated", False)
 
