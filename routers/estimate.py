@@ -1,4 +1,3 @@
-import io
 import json
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -109,12 +108,12 @@ async def estimate(
 async def _fetch_dimensions(url: str, is_authenticated: bool) -> tuple[int, int]:
     """Fetch just enough of the image to parse dimensions.
 
-    Downloads first 8KB via Range request, parses with Pillow.
+    Downloads first 8KB via Range request, parses with pyvips.
     Falls back to full download if Range not supported.
     SSRF validation applied before any outbound request.
     """
     import httpx
-    from PIL import Image
+    import pyvips
 
     from security.ssrf import validate_url
 
@@ -124,10 +123,9 @@ async def _fetch_dimensions(url: str, is_authenticated: bool) -> tuple[int, int]
         async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
             resp = await client.get(url, headers={"Range": "bytes=0-8191"})
             partial = resp.content
-            img = Image.open(io.BytesIO(partial))
-            return img.size
+            img = pyvips.Image.new_from_buffer(partial, "")
+            return (img.width, img.height)
     except Exception:
-        # Fallback: download full image just for dimensions
         data = await fetch_image(url, is_authenticated=is_authenticated)
-        img = Image.open(io.BytesIO(data))
-        return img.size
+        img = pyvips.Image.new_from_buffer(data, "")
+        return (img.width, img.height)
