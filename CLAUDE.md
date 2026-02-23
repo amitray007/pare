@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Pare?
 
-Pare is a serverless image compression API built on FastAPI + Google Cloud Run. It optimizes 12 image formats (PNG, APNG, JPEG, WebP, GIF, SVG, SVGZ, AVIF, HEIC, TIFF, BMP, JXL) using format-specific pipelines that combine CLI tools (MozJPEG, pngquant, oxipng, gifsicle, cwebp, cjxl/djxl) with Python libraries (Pillow, jpegli, pillow-heif, pillow-avif-plugin, jxlpy, scour).
+Pare is a serverless image compression API built on FastAPI + Google Cloud Run. It optimizes 12 image formats (PNG, APNG, JPEG, WebP, GIF, SVG, SVGZ, AVIF, HEIC, TIFF, BMP, JXL) using pyvips (libvips compiled with jpegli, libimagequant, libwebp, libheif, libjxl, cgif) plus gifsicle (animated GIF), oxipng (PNG lossless enhancement), and scour (SVG).
 
 ## Common Commands
 
@@ -36,7 +36,7 @@ python -m benchmarks.run --compare
 
 # Docker
 docker-compose up          # Pare + Redis (local dev)
-docker build -t pare .     # Full build with jpegli, MozJPEG, JXL tools
+docker build -t pare .     # Full build with libvips + jpegli + all codecs
 ```
 
 ## Architecture
@@ -47,7 +47,7 @@ Three endpoints in `routers/`:
 
 - **`POST /optimize`**: Multipart file upload or JSON with URL -> `optimizers/router.py` (format detection + dispatch) -> format-specific optimizer -> binary response (or JSON with GCS storage URL). Acquires `CompressionGate` semaphore slot.
 - **`POST /estimate`**: Same input modes -> `estimation/estimator.py` (sample-based compression) -> JSON response. Does **not** acquire semaphore slot. Latency: ~50-500ms depending on format.
-- **`GET /health`**: Returns `"ok"` or `"degraded"` based on CLI tool availability.
+- **`GET /health`**: Returns `"ok"` or `"degraded"` based on pyvips codec availability.
 
 Middleware chain (in `middleware.py`): request ID injection -> authentication -> rate limiting -> route handler.
 
@@ -77,7 +77,7 @@ Sample widths: JPEG 1200px, HEIC/AVIF/JXL/WebP/PNG 800px, GIF/BMP/TIFF 300px. Pr
 
 `CompressionGate` in `utils/concurrency.py` is a semaphore (CPU count) + queue depth cap (2x semaphore). Returns 503 immediately when full to prevent OOM.
 
-All CPU-bound Pillow operations are wrapped in `asyncio.to_thread()`. Many optimizers use `asyncio.gather()` to run independent compression methods concurrently (PNG: pngquant + oxipng, JPEG: jpegli + jpegtran, HEIC/AVIF/JXL: metadata-strip + re-encode).
+All CPU-bound pyvips operations are wrapped in `asyncio.to_thread()`. Many optimizers use `asyncio.gather()` to run independent compression methods concurrently (PNG: libimagequant lossy + oxipng lossless, TIFF: deflate/LZW/JPEG concurrently).
 
 ### Security
 
@@ -91,7 +91,7 @@ Applied per-request via `SecurityMiddleware`. Auth (Bearer token, empty key = de
 - **Format detection**: Done by magic bytes in `utils/format_detect.py`, never by file extension or Content-Type header.
 - **Benchmark verification**: After changing optimizer or estimation logic, run `python -m benchmarks.run --fmt <format>` and check that preset differentiation exists (HIGH > MEDIUM > LOW reduction) and estimation accuracy (Avg Err column) stays under ~15%.
 - **Async discipline**: Wrap CPU-bound work in `asyncio.to_thread()`. Use `asyncio.gather()` for concurrent independent operations.
-- **CLI tools via stdin/stdout**: `utils/subprocess_runner.py`'s `run_tool()` pipes bytes through CLI tools — no temp files. Use `allowed_exit_codes` for expected non-zero exits (e.g., pngquant exit 99).
+- **CLI tools via stdin/stdout**: `utils/subprocess_runner.py`'s `run_tool()` pipes bytes through gifsicle — no temp files. Use `allowed_exit_codes` for expected non-zero exits.
 
 ## Code Style
 

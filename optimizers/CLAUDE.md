@@ -22,7 +22,7 @@ See `jxl.py` and `avif.py` for recent examples of the full end-to-end pattern.
 
 ## Key Pattern: Try All, Pick Best
 
-Optimizers try multiple compression methods and return the smallest result. See `tiff.py` (deflate vs LZW vs JPEG-in-TIFF) and `bmp.py` (24-bit vs palette vs RLE8) for the clearest examples. The `_build_result()` method in `base.py` enforces the output-never-larger-than-input guarantee automatically.
+Optimizers try multiple compression methods and return the smallest result. See `tiff.py` (deflate vs LZW vs JPEG-in-TIFF) and `bmp.py` (24-bit vs palette) for the clearest examples. The `_build_result()` method in `base.py` enforces the output-never-larger-than-input guarantee automatically.
 
 ## Quality Thresholds
 
@@ -33,17 +33,17 @@ Optimizers try multiple compression methods and return the smallest result. See 
 
 Each optimizer defines its own thresholds — these are conventions, not hard rules.
 
-## CLI Tools vs Libraries
+## Libraries
 
-- **CLI tools** (pngquant, jpegtran, gifsicle, cwebp, cjxl/djxl): Invoked via `utils/subprocess_runner.py`'s `run_tool()` — bytes in via stdin, bytes out via stdout, no temp files
-- **Python libraries** (oxipng, Pillow/jpegli, pillow-heif, pillow-avif-plugin, jxlpy, scour): Called directly in-process
-
-Note: JPEG encoding uses Pillow with jpegli (libjpeg.so.62 from libjxl) in Docker, falling back to libjpeg-turbo locally. The `cjpeg` MozJPEG fallback is available via `JPEG_ENCODER=cjpeg` config.
+- **pyvips** (libvips): Core image processing library. Handles JPEG (via jpegli), PNG (via libimagequant for palette quantization), WebP (via libwebp), AVIF (via libheif + libaom), HEIC (via libheif + x265), JXL (via libjxl), TIFF, BMP. All encode/decode happens in-process via pyvips API.
+- **gifsicle** (CLI): Animated GIF inter-frame optimization. Invoked via `utils/subprocess_runner.py`'s `run_tool()`.
+- **oxipng** (Python): PNG lossless post-processing enhancement. Called directly in-process.
+- **scour** (Python): SVG optimization. Called directly in-process.
 
 ## Conventions
 
-- `config.strip_metadata` should be handled early (before optimization) using `utils/metadata.py`
+- `config.strip_metadata` is handled via pyvips `strip=True` parameter in save calls
 - `config.max_reduction` caps lossy methods — lossless methods are never capped
-- Method names reported in results should be descriptive (e.g., `"pngquant + oxipng"`, `"bmp-rle8"`, `"jpegli"`)
-- Wrap CPU-bound Pillow ops in `asyncio.to_thread()` to avoid blocking the event loop
-- Use `asyncio.gather()` for concurrent independent operations (e.g., PNG runs pngquant and oxipng-only in parallel, TIFF runs deflate/LZW/JPEG concurrently, JPEG runs jpegli and jpegtran concurrently)
+- Method names reported in results should be descriptive (e.g., `"pngquant + oxipng"`, `"pyvips-bmp-palette"`, `"jpegli"`)
+- Wrap CPU-bound pyvips ops in `asyncio.to_thread()` to avoid blocking the event loop
+- Use `asyncio.gather()` for concurrent independent operations (e.g., PNG runs lossy and lossless paths in parallel, TIFF runs deflate/LZW/JPEG concurrently)
