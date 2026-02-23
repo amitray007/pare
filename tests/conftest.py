@@ -1,4 +1,3 @@
-import io
 from pathlib import Path
 
 import pytest
@@ -68,21 +67,14 @@ def tiny_png():
 
 @pytest.fixture
 def sample_jxl():
-    """Generate a JXL sample in-memory via jxlpy (Pillow plugin)."""
+    """Generate a JXL sample in-memory via pyvips."""
     try:
-        try:
-            import pillow_jxl  # noqa: F401
-        except ImportError:
-            import jxlpy  # noqa: F401
+        import pyvips
 
-        from PIL import Image
-
-        img = Image.new("RGB", (64, 64), color=(100, 150, 200))
-        buf = io.BytesIO()
-        img.save(buf, format="JXL", quality=90)
-        return buf.getvalue()
-    except (ImportError, KeyError):
-        pytest.skip("jxlpy not installed or JXL format not registered")
+        img = pyvips.Image.black(64, 64) + [100, 150, 200]
+        return img.jxlsave_buffer(Q=90)
+    except Exception:
+        pytest.skip("pyvips JXL support not available")
 
 
 @pytest.fixture
