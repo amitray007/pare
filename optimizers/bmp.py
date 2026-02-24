@@ -1,5 +1,6 @@
 import asyncio
 import io
+import logging
 import struct
 
 import pyvips
@@ -8,6 +9,8 @@ from PIL import Image
 from optimizers.base import BaseOptimizer
 from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat
+
+logger = logging.getLogger(__name__)
 
 
 def load_bmp(data: bytes) -> pyvips.Image:
@@ -18,9 +21,11 @@ def load_bmp(data: bytes) -> pyvips.Image:
     elif pil_img.mode not in ("L", "RGB", "RGBA"):
         pil_img = pil_img.convert("RGB")
 
+    interp = {"L": "b-w", "RGB": "srgb", "RGBA": "srgb"}[pil_img.mode]
     bands = {"L": 1, "RGB": 3, "RGBA": 4}[pil_img.mode]
     raw = pil_img.tobytes()
-    return pyvips.Image.new_from_memory(raw, pil_img.width, pil_img.height, bands, "uchar")
+    img = pyvips.Image.new_from_memory(raw, pil_img.width, pil_img.height, bands, "uchar")
+    return img.copy(interpretation=interp)
 
 
 def encode_bmp_24(img: pyvips.Image) -> bytes:
@@ -108,6 +113,6 @@ class BmpOptimizer(BaseOptimizer):
                     best = candidate
                     best_method = "pyvips-bmp-palette"
             except Exception:
-                pass
+                logger.warning("BMP palette quantization failed", exc_info=True)
 
         return best, best_method
