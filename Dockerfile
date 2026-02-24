@@ -45,7 +45,7 @@ RUN curl -L https://github.com/libvips/libvips/releases/download/v${VIPS_VERSION
 # Collect all runtime shared libraries that libvips needs
 RUN mkdir -p /runtime-libs \
     && for lib in \
-        libglib-2.0.so* libgobject-2.0.so* libgio-2.0.so* \
+        libglib-2.0.so* libgobject-2.0.so* libgmodule-2.0.so* libgio-2.0.so* \
         libexpat.so* libpng16.so* libwebp.so* libwebpmux.so* libwebpdemux.so* \
         libheif.so* libaom.so* libde265.so* libx265.so* \
         libtiff.so* libcgif.so* libimagequant.so* \
