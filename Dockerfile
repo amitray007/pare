@@ -2,7 +2,7 @@
 FROM debian:bookworm-slim AS libvips-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake build-essential git ca-certificates pkg-config nasm curl \
+    cmake build-essential ca-certificates pkg-config nasm curl \
     meson ninja-build gobject-introspection \
     # Core libvips deps
     libglib2.0-dev libexpat1-dev \
@@ -22,28 +22,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libbrotli-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Build libjxl with jpegli
-RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /libjxl \
-    && cd /libjxl \
-    && git submodule update --init --depth 1 third_party/highway third_party/skcms third_party/libjpeg-turbo \
-    && mkdir build && cd build \
-    && cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
-             -DCMAKE_BUILD_TYPE=Release \
-             -DBUILD_TESTING=OFF \
-             -DJPEGXL_ENABLE_TOOLS=OFF \
-             -DJPEGXL_ENABLE_DOXYGEN=OFF \
-             -DJPEGXL_ENABLE_MANPAGES=OFF \
-             -DJPEGXL_ENABLE_BENCHMARK=OFF \
-             -DJPEGXL_ENABLE_EXAMPLES=OFF \
-             -DJPEGXL_ENABLE_FUZZERS=OFF \
-             -DJPEGXL_ENABLE_JPEGLI=ON \
-             -DJPEGXL_ENABLE_JPEGLI_LIBJPEG=ON \
-             -DJPEGXL_ENABLE_SKCMS=ON \
-             -DJPEGXL_ENABLE_SJPEG=OFF \
-             -DJPEGXL_ENABLE_OPENEXR=OFF \
-             .. \
-    && make -j$(nproc) \
-    && make install \
+# Install libjxl + jpegli from pre-built Bookworm debs (includes libjpeg.so.62)
+ARG LIBJXL_VERSION=0.11.1
+RUN curl -L https://github.com/libjxl/libjxl/releases/download/v${LIBJXL_VERSION}/jxl-debs-amd64-debian-bookworm-v${LIBJXL_VERSION}.tar.gz \
+    | tar xz \
+    && dpkg -i *.deb \
+    && rm -f *.deb \
     && ldconfig
 
 # Build libvips from source (linked against jpegli + all codecs above)
@@ -68,8 +52,10 @@ RUN mkdir -p /runtime-libs \
         libbrotlienc.so* libbrotlidec.so* libbrotlicommon.so* \
         libffi.so* libpcre2-8.so* libz.so* libjbig.so* \
         libdeflate.so* liblerc.so* libstdc++.so* libzstd.so* \
-        liblzma.so* libsharpyuv.so* libdav1d.so* libnuma.so*; do \
-        find /usr/lib /lib -name "$lib" -exec cp -aL {} /runtime-libs/ \; 2>/dev/null || true; \
+        liblzma.so* libsharpyuv.so* libdav1d.so* libnuma.so* \
+        libjxl.so* libjxl_cms.so* libjxl_threads.so* \
+        libjpeg.so* libhwy.so*; do \
+        find /usr/lib /usr/local/lib /lib -name "$lib" -exec cp -aL {} /runtime-libs/ \; 2>/dev/null || true; \
     done
 
 # ---- Stage 1: Production image ----
@@ -79,11 +65,11 @@ LABEL org.opencontainers.image.source="https://github.com/amitray007/pare"
 LABEL org.opencontainers.image.description="Serverless image compression API"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# Copy libvips, libjxl, jpegli and all codec libraries built from source
+# Copy libvips built from source
 COPY --from=libvips-builder /usr/local/lib/ /usr/local/lib/
 COPY --from=libvips-builder /usr/local/include/ /usr/local/include/
 
-# Copy runtime shared libraries (codec deps from builder's system packages)
+# Copy runtime shared libraries (codec deps from builder)
 COPY --from=libvips-builder /runtime-libs/ /usr/lib/x86_64-linux-gnu/
 RUN ldconfig
 
