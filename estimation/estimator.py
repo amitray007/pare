@@ -336,7 +336,7 @@ def _png_sample_bpp(
 
     # Lossy path: quantize to palette (simulates pngquant via libimagequant)
     if config.png_lossy and config.quality < 70:
-        max_colors = 64 if config.quality < 50 else 256
+        max_colors = 16 if config.quality < 50 else 256
         png_data = sample.pngsave_buffer(
             palette=True, Q=config.quality, colours=max_colors, dither=1.0, strip=True
         )

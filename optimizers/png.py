@@ -60,7 +60,7 @@ class PngOptimizer(BaseOptimizer):
         img = pyvips.Image.new_from_buffer(data, "")
 
         if config.quality < 50:
-            colours = 64
+            colours = 16
             effort = 10
         else:
             colours = 256

@@ -101,7 +101,7 @@ class BmpOptimizer(BaseOptimizer):
         # (pyvips decodes palette PNGs to RGB, losing the palette)
         if config.quality < 70:
             try:
-                max_colors = 64 if config.quality < 50 else 256
+                max_colors = 16 if config.quality < 50 else 256
                 png_buf = img.pngsave_buffer(
                     palette=True, Q=config.quality, colours=max_colors, effort=1
                 )
