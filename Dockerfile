@@ -42,21 +42,17 @@ RUN curl -L https://github.com/libvips/libvips/releases/download/v${VIPS_VERSION
     && ninja install \
     && ldconfig
 
-# Collect all runtime shared libraries that libvips needs
+# Auto-discover all runtime shared libraries that libvips needs via ldd
+# (3 passes to resolve transitive dependencies)
 RUN mkdir -p /runtime-libs \
-    && for lib in \
-        libglib-2.0.so* libgobject-2.0.so* libgmodule-2.0.so* libgio-2.0.so* \
-        libexpat.so* libpng16.so* libwebp.so* libwebpmux.so* libwebpdemux.so* \
-        libheif.so* libaom.so* libde265.so* libx265.so* \
-        libtiff.so* libcgif.so* libimagequant.so* \
-        libbrotlienc.so* libbrotlidec.so* libbrotlicommon.so* \
-        libffi.so* libpcre2-8.so* libz.so* libjbig.so* \
-        libdeflate.so* liblerc.so* libstdc++.so* libzstd.so* \
-        liblzma.so* libsharpyuv.so* libdav1d.so* libnuma.so* \
-        libjxl.so* libjxl_cms.so* libjxl_threads.so* \
-        libjpeg.so* libhwy.so*; do \
-        find /usr/lib /usr/local/lib /lib -name "$lib" -exec cp -aL {} /runtime-libs/ \; 2>/dev/null || true; \
-    done
+    && for pass in 1 2 3; do \
+         { ldd /usr/local/lib/libvips.so.42 2>/dev/null; \
+           find /runtime-libs -type f -name '*.so*' -exec ldd {} + 2>/dev/null; } \
+         | awk '/=>/ && $3 ~ /^\// {print $3}' | sort -u | while read lib; do \
+           bn=$(basename "$lib"); \
+           [ -f "/runtime-libs/$bn" ] || cp -aL "$lib" /runtime-libs/ 2>/dev/null || true; \
+         done; \
+       done
 
 # ---- Stage 1: Production image ----
 FROM python:3.12-slim-bookworm
