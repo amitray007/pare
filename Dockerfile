@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG LIBJXL_VERSION=0.11.1
 RUN curl -L https://github.com/libjxl/libjxl/releases/download/v${LIBJXL_VERSION}/jxl-debs-amd64-debian-bookworm-v${LIBJXL_VERSION}.tar.gz \
     | tar xz \
-    && dpkg -i --force-depends libjxl_*.deb libjxl-dev_*.deb \
+    && dpkg -i --force-depends libjxl_*.deb libjxl-dev_*.deb libhwy_*.deb libhwy-dev_*.deb \
     && rm -f *.deb \
     && ldconfig
 
