@@ -1,11 +1,26 @@
 import asyncio
+import io
 import struct
 
 import pyvips
+from PIL import Image
 
 from optimizers.base import BaseOptimizer
 from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat
+
+
+def load_bmp(data: bytes) -> pyvips.Image:
+    """Load BMP into pyvips via Pillow (libvips has no native BMP support)."""
+    pil_img = Image.open(io.BytesIO(data))
+    if pil_img.mode == "P":
+        pil_img = pil_img.convert("RGBA" if "transparency" in pil_img.info else "RGB")
+    elif pil_img.mode not in ("L", "RGB", "RGBA"):
+        pil_img = pil_img.convert("RGB")
+
+    bands = {"L": 1, "RGB": 3, "RGBA": 4}[pil_img.mode]
+    raw = pil_img.tobytes()
+    return pyvips.Image.new_from_memory(raw, pil_img.width, pil_img.height, bands, "uchar")
 
 
 def encode_bmp_24(img: pyvips.Image) -> bytes:
@@ -94,6 +109,7 @@ class BmpOptimizer(BaseOptimizer):
     HIGH (quality < 50): Palette quantization to 256 colors (+ future RLE8).
 
     Each tier tries its methods plus all gentler methods, picks the smallest.
+    Uses Pillow for BMP reading (libvips has no native BMP support).
     """
 
     format = ImageFormat.BMP
@@ -103,7 +119,7 @@ class BmpOptimizer(BaseOptimizer):
         return self._build_result(data, best, best_method)
 
     def _optimize_sync(self, data: bytes, config: OptimizationConfig) -> tuple[bytes, str]:
-        img = pyvips.Image.new_from_buffer(data, "")
+        img = load_bmp(data)
 
         # Drop alpha if fully opaque
         if img.bands == 4 and img.interpretation == "srgb":

@@ -119,13 +119,21 @@ async def _fetch_dimensions(url: str, is_authenticated: bool) -> tuple[int, int]
 
     validate_url(url)
 
+    def _load_image(buf: bytes) -> pyvips.Image:
+        try:
+            return pyvips.Image.new_from_buffer(buf, "")
+        except pyvips.Error:
+            from optimizers.bmp import load_bmp
+
+            return load_bmp(buf)
+
     try:
         async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
             resp = await client.get(url, headers={"Range": "bytes=0-8191"})
             partial = resp.content
-            img = pyvips.Image.new_from_buffer(partial, "")
+            img = _load_image(partial)
             return (img.width, img.height)
     except Exception:
         data = await fetch_image(url, is_authenticated=is_authenticated)
-        img = pyvips.Image.new_from_buffer(data, "")
+        img = _load_image(data)
         return (img.width, img.height)

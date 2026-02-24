@@ -65,8 +65,13 @@ async def estimate(
 
 
 def _open_image(data: bytes) -> pyvips.Image:
-    """Open image with pyvips."""
-    return pyvips.Image.new_from_buffer(data, "")
+    """Open image with pyvips, falling back to Pillow for BMP."""
+    try:
+        return pyvips.Image.new_from_buffer(data, "")
+    except pyvips.Error:
+        from optimizers.bmp import load_bmp
+
+        return load_bmp(data)
 
 
 async def _estimate_exact(
