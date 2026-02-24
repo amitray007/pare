@@ -67,9 +67,7 @@ class JpegOptimizer(BaseOptimizer):
             if hi - lo <= 1:
                 break
             mid = (lo + hi) // 2
-            out_mid = img.jpegsave_buffer(
-                Q=mid, optimize_coding=True, strip=config.strip_metadata
-            )
+            out_mid = img.jpegsave_buffer(Q=mid, optimize_coding=True, strip=config.strip_metadata)
             if (1 - len(out_mid) / orig_size) * 100 > target:
                 lo = mid
             else:

@@ -116,8 +116,12 @@ async def _estimate_by_sample(
     if fmt == ImageFormat.JPEG:
         max_width = JPEG_SAMPLE_MAX_WIDTH
     elif fmt in (
-        ImageFormat.HEIC, ImageFormat.AVIF, ImageFormat.JXL,
-        ImageFormat.WEBP, ImageFormat.PNG, ImageFormat.APNG,
+        ImageFormat.HEIC,
+        ImageFormat.AVIF,
+        ImageFormat.JXL,
+        ImageFormat.WEBP,
+        ImageFormat.PNG,
+        ImageFormat.APNG,
     ):
         max_width = LOSSY_SAMPLE_MAX_WIDTH
     else:
@@ -142,8 +146,18 @@ async def _estimate_by_sample(
     bpp_fn = _DIRECT_ENCODE_BPP_FNS.get(fmt)
     if bpp_fn is not None:
         return await _bpp_to_estimate(
-            bpp_fn, img, sample_width, sample_height, config,
-            original_pixels, file_size, fmt, width, height, color_type, bit_depth,
+            bpp_fn,
+            img,
+            sample_width,
+            sample_height,
+            config,
+            original_pixels,
+            file_size,
+            fmt,
+            width,
+            height,
+            color_type,
+            bit_depth,
         )
 
     # Generic fallback: create sample, run actual optimizer
@@ -185,10 +199,18 @@ async def _estimate_by_sample(
 
 
 async def _bpp_to_estimate(
-    bpp_fn, img: pyvips.Image, sample_width: int, sample_height: int,
-    config: OptimizationConfig, original_pixels: int, file_size: int,
-    fmt: ImageFormat, width: int, height: int,
-    color_type: str | None, bit_depth: int | None,
+    bpp_fn,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+    original_pixels: int,
+    file_size: int,
+    fmt: ImageFormat,
+    width: int,
+    height: int,
+    color_type: str | None,
+    bit_depth: int | None,
 ) -> EstimateResponse:
     output_bpp, method = await asyncio.to_thread(bpp_fn, img, sample_width, sample_height, config)
     estimated_size = min(int(output_bpp * original_pixels / 8), file_size)
@@ -210,7 +232,9 @@ async def _bpp_to_estimate(
 
 
 def _jpeg_sample_bpp(
-    img: pyvips.Image, sample_width: int, sample_height: int,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode a JPEG sample at target quality and return output BPP."""
@@ -229,7 +253,9 @@ def _jpeg_sample_bpp(
 
 
 def _heic_sample_bpp(
-    img: pyvips.Image, sample_width: int, sample_height: int,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode a HEIC sample at target quality and return output BPP."""
@@ -244,7 +270,9 @@ def _heic_sample_bpp(
 
 
 def _avif_sample_bpp(
-    img: pyvips.Image, sample_width: int, sample_height: int,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode an AVIF sample at target quality and return output BPP."""
@@ -259,7 +287,9 @@ def _avif_sample_bpp(
 
 
 def _jxl_sample_bpp(
-    img: pyvips.Image, sample_width: int, sample_height: int,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode a JXL sample at target quality and return output BPP."""
@@ -274,7 +304,9 @@ def _jxl_sample_bpp(
 
 
 def _webp_sample_bpp(
-    img: pyvips.Image, sample_width: int, sample_height: int,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode a WebP sample at target quality and return output BPP."""
@@ -287,7 +319,9 @@ def _webp_sample_bpp(
 
 
 def _png_sample_bpp(
-    img: pyvips.Image, sample_width: int, sample_height: int,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode a PNG sample and return output BPP."""
@@ -315,7 +349,10 @@ def _png_sample_bpp(
 
 
 def _create_sample(
-    img: pyvips.Image, sample_width: int, sample_height: int, fmt: ImageFormat,
+    img: pyvips.Image,
+    sample_width: int,
+    sample_height: int,
+    fmt: ImageFormat,
 ) -> bytes:
     """Resize image and encode with minimal compression."""
     scale = sample_width / img.width
