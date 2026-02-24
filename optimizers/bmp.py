@@ -56,51 +56,6 @@ def encode_bmp_24(img: pyvips.Image) -> bytes:
     return file_header + info_header + b"".join(rows)
 
 
-def encode_bmp_palette(img: pyvips.Image) -> bytes:
-    """Encode a palette (indexed) pyvips image as 8-bit BMP.
-
-    Expects a 1-band image with palette metadata (from PNG palette load).
-    Falls back to 24-bit if no palette is available.
-    """
-    if img.bands != 1 or not img.get_typeof("palette"):
-        return encode_bmp_24(img)
-
-    width, height = img.width, img.height
-    padding = (4 - (width % 4)) % 4
-    padded_row = width + padding
-    pixel_size = padded_row * height
-
-    # Extract palette: pyvips stores it as a 3-band Nx1 image
-    palette_img = img.get("palette")
-    n_colors = palette_img.width
-    palette_raw = palette_img.write_to_memory()
-
-    # Build BGRA palette entries (4 bytes each, 256 max)
-    palette_data = bytearray()
-    for i in range(n_colors):
-        off = i * 3
-        r, g, b = palette_raw[off], palette_raw[off + 1], palette_raw[off + 2]
-        palette_data += struct.pack("BBBB", b, g, r, 0)
-    # Pad to 256 entries
-    palette_data += b"\x00" * (1024 - len(palette_data))
-
-    raw = img.write_to_memory()
-    pad = b"\x00" * padding
-    rows = []
-    for y in range(height - 1, -1, -1):
-        off = y * width
-        rows.append(raw[off : off + width])
-        rows.append(pad)
-
-    data_offset = 14 + 40 + 1024
-    file_size = data_offset + pixel_size
-    file_header = struct.pack("<2sIHHI", b"BM", file_size, 0, 0, data_offset)
-    info_header = struct.pack(
-        "<IiiHHIIiiII", 40, width, height, 1, 8, 0, pixel_size, 2835, 2835, n_colors, 0
-    )
-    return file_header + info_header + bytes(palette_data) + b"".join(rows)
-
-
 class BmpOptimizer(BaseOptimizer):
     """BMP optimization — quality-aware compression tiers.
 
@@ -137,11 +92,18 @@ class BmpOptimizer(BaseOptimizer):
             best_method = "pyvips-bmp"
 
         # Tier 2 (quality < 70): palette quantization to 256 colors
+        # pyvips quantizes via libimagequant, Pillow writes the palette BMP
+        # (pyvips decodes palette PNGs to RGB, losing the palette)
         if config.quality < 70:
             try:
-                png_buf = img.pngsave_buffer(palette=True, Q=config.quality, effort=1)
-                palette_img = pyvips.Image.new_from_buffer(png_buf, "")
-                candidate = encode_bmp_palette(palette_img)
+                max_colors = 64 if config.quality < 50 else 256
+                png_buf = img.pngsave_buffer(
+                    palette=True, Q=config.quality, colours=max_colors, effort=1
+                )
+                pil_img = Image.open(io.BytesIO(png_buf))
+                bio = io.BytesIO()
+                pil_img.save(bio, format="BMP")
+                candidate = bio.getvalue()
                 if len(candidate) < len(best):
                     best = candidate
                     best_method = "pyvips-bmp-palette"
