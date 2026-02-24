@@ -10,6 +10,7 @@ full file for an exact result.
 
 import asyncio
 
+import oxipng
 import pyvips
 
 from optimizers.router import optimize_image
@@ -330,8 +331,6 @@ def _png_sample_bpp(
     config: OptimizationConfig,
 ) -> tuple[float, str]:
     """Encode a PNG sample and return output BPP."""
-    import oxipng
-
     scale = sample_width / img.width
     sample = img.resize(scale)
 

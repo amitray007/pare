@@ -1,5 +1,6 @@
 import asyncio
 
+import oxipng
 import pyvips
 
 from optimizers.base import BaseOptimizer
@@ -56,8 +57,6 @@ class PngOptimizer(BaseOptimizer):
     @staticmethod
     def _lossy_encode(data: bytes, config: OptimizationConfig, strip: bool) -> bytes | None:
         """Lossy PNG: pyvips palette quantization (libimagequant) + oxipng."""
-        import oxipng
-
         img = pyvips.Image.new_from_buffer(data, "")
 
         if config.quality < 50:
@@ -92,8 +91,6 @@ class PngOptimizer(BaseOptimizer):
     @staticmethod
     def _lossless_with_oxipng(data: bytes, quality: int, strip: bool) -> bytes:
         """Lossless pyvips encode + oxipng enhancement."""
-        import oxipng
-
         img = pyvips.Image.new_from_buffer(data, "")
         lossless_buf = img.pngsave_buffer(compression=9, effort=10, strip=strip)
 
@@ -103,7 +100,5 @@ class PngOptimizer(BaseOptimizer):
     @staticmethod
     def _run_oxipng(data: bytes, quality: int) -> bytes:
         """Run oxipng for lossless post-processing enhancement."""
-        import oxipng
-
         oxipng_level = 4 if quality < 70 else 2
         return oxipng.optimize_from_memory(data, level=oxipng_level)

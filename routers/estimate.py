@@ -1,12 +1,16 @@
 import json
 
+import httpx
+import pyvips
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from config import settings
 from estimation.estimator import estimate as run_estimate
+from estimation.estimator import estimate_from_thumbnail
 from estimation.presets import get_config_for_preset
 from exceptions import BadRequestError, FileTooLargeError
 from schemas import EstimateResponse, OptimizationConfig
+from security.ssrf import validate_url
 from utils.format_detect import detect_format
 from utils.url_fetch import fetch_image
 
@@ -71,8 +75,6 @@ async def estimate(
         client_file_size = body.get("file_size")
 
         if thumbnail_url and client_file_size and client_file_size >= LARGE_FILE_THRESHOLD:
-            from estimation.estimator import estimate_from_thumbnail
-
             thumbnail_data = await fetch_image(thumbnail_url, is_authenticated=is_authenticated)
             detect_format(thumbnail_data)
 
@@ -112,11 +114,6 @@ async def _fetch_dimensions(url: str, is_authenticated: bool) -> tuple[int, int]
     Falls back to full download if Range not supported.
     SSRF validation applied before any outbound request.
     """
-    import httpx
-    import pyvips
-
-    from security.ssrf import validate_url
-
     validate_url(url)
 
     def _load_image(buf: bytes) -> pyvips.Image:
