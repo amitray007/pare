@@ -42,13 +42,12 @@ RUN curl -L https://github.com/libvips/libvips/releases/download/v${VIPS_VERSION
     && ninja install \
     && ldconfig
 
-# Collect libjxl/jpegli/highway .so files (not available via apt in production)
+# Collect libjxl/jpegli runtime .so files (not available via apt in production)
 RUN mkdir -p /jxl-libs \
-    && cp -aL /usr/lib/x86_64-linux-gnu/libjxl.so* /jxl-libs/ \
-    && cp -aL /usr/lib/x86_64-linux-gnu/libjxl_cms.so* /jxl-libs/ \
-    && cp -aL /usr/lib/x86_64-linux-gnu/libjxl_threads.so* /jxl-libs/ \
-    && cp -aL /usr/lib/x86_64-linux-gnu/libjpeg.so* /jxl-libs/ \
-    && cp -aL /usr/lib/x86_64-linux-gnu/libhwy.so* /jxl-libs/
+    && for pattern in libjxl.so* libjxl_cms.so* libjxl_threads.so* libjpeg.so* libhwy.so*; do \
+         find /usr/lib /usr/local/lib -name "$pattern" -exec cp -aL {} /jxl-libs/ \; 2>/dev/null || true; \
+       done \
+    && ls -la /jxl-libs/
 
 # ---- Stage 1: Production image ----
 FROM python:3.12-slim-bookworm
