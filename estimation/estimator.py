@@ -363,7 +363,9 @@ def _create_sample(
     elif fmt == ImageFormat.TIFF:
         return sample.tiffsave_buffer(compression="none")
     elif fmt == ImageFormat.BMP:
-        return sample.write_to_buffer(".bmp")
+        from optimizers.bmp import encode_bmp_24
+
+        return encode_bmp_24(sample)
     else:
         return sample.pngsave_buffer(compression=0)
 
