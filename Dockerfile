@@ -18,8 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcgif-dev \
     # libimagequant (for PNG palette quantization)
     libimagequant-dev \
-    # Highway (required by libjxl)
-    libhwy-dev \
     # Brotli (required by libjxl)
     libbrotli-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -27,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Build libjxl with jpegli
 RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /libjxl \
     && cd /libjxl \
-    && git submodule update --init --depth 1 third_party/skcms third_party/libjpeg-turbo \
+    && git submodule update --init --depth 1 third_party/highway third_party/skcms third_party/libjpeg-turbo \
     && mkdir build && cd build \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
              -DCMAKE_BUILD_TYPE=Release \
