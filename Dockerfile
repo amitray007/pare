@@ -20,13 +20,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libimagequant-dev \
     # Brotli (required by libjxl)
     libbrotli-dev \
+    # Highway SIMD (required by libjxl, available in Bookworm apt)
+    libhwy-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install libjxl + jpegli from pre-built Bookworm debs (includes libjpeg.so.62)
 ARG LIBJXL_VERSION=0.11.1
 RUN curl -L https://github.com/libjxl/libjxl/releases/download/v${LIBJXL_VERSION}/jxl-debs-amd64-debian-bookworm-v${LIBJXL_VERSION}.tar.gz \
     | tar xz \
-    && dpkg -i --force-depends libjxl_*.deb libjxl-dev_*.deb libhwy_*.deb libhwy-dev_*.deb \
+    && dpkg -i --force-depends libjxl_*.deb libjxl-dev_*.deb \
     && rm -f *.deb \
     && ldconfig
 
@@ -68,7 +70,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libheif1 libaom3 libde265-0 libx265-199 \
     libtiff6 libcgif0 libimagequant0 \
     # Compression libraries
-    libbrotli1 \
+    libbrotli1 libhwy1 \
     # OpenMP (parallel processing in libvips)
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
