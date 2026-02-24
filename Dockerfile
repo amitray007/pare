@@ -58,32 +58,38 @@ RUN curl -L https://github.com/libvips/libvips/releases/download/v${VIPS_VERSION
     && ninja install \
     && ldconfig
 
+# Collect all runtime shared libraries that libvips needs
+RUN mkdir -p /runtime-libs \
+    && for lib in \
+        libglib-2.0.so* libgobject-2.0.so* libgio-2.0.so* \
+        libexpat.so* libpng16.so* libwebp.so* libwebpmux.so* libwebpdemux.so* \
+        libheif.so* libaom.so* libde265.so* libx265.so* \
+        libtiff.so* libcgif.so* libimagequant.so* \
+        libbrotlienc.so* libbrotlidec.so* libbrotlicommon.so* \
+        libffi.so* libpcre2-8.so* libz.so* libjbig.so* \
+        libdeflate.so* liblerc.so* libstdc++.so* libzstd.so* \
+        liblzma.so* libsharpyuv.so* libdav1d.so* libnuma.so*; do \
+        find /usr/lib /lib -name "$lib" -exec cp -aL {} /runtime-libs/ \; 2>/dev/null || true; \
+    done
+
 # ---- Stage 1: Production image ----
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 LABEL org.opencontainers.image.source="https://github.com/amitray007/pare"
 LABEL org.opencontainers.image.description="Serverless image compression API"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# Copy libvips and all codec libraries
+# Copy libvips, libjxl, jpegli and all codec libraries built from source
 COPY --from=libvips-builder /usr/local/lib/ /usr/local/lib/
 COPY --from=libvips-builder /usr/local/include/ /usr/local/include/
+
+# Copy runtime shared libraries (codec deps from builder's system packages)
+COPY --from=libvips-builder /runtime-libs/ /usr/lib/x86_64-linux-gnu/
 RUN ldconfig
 
 # gifsicle is kept for animated GIF inter-frame optimization
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gifsicle \
-    libglib2.0-0 \
-    libexpat1 \
-    libpng16-16 \
-    libwebp7 \
-    libheif1 \
-    libaom3 \
-    libde265-0 \
-    libx265-199 \
-    libtiff6 \
-    libcgif0 \
-    libimagequant0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
