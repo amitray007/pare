@@ -42,17 +42,13 @@ RUN curl -L https://github.com/libvips/libvips/releases/download/v${VIPS_VERSION
     && ninja install \
     && ldconfig
 
-# Auto-discover all runtime shared libraries that libvips needs via ldd
-# (3 passes to resolve transitive dependencies)
-RUN mkdir -p /runtime-libs \
-    && for pass in 1 2 3; do \
-         { ldd /usr/local/lib/libvips.so.42 2>/dev/null; \
-           find /runtime-libs -type f -name '*.so*' -exec ldd {} + 2>/dev/null; } \
-         | awk '/=>/ && $3 ~ /^\// {print $3}' | sort -u | while read lib; do \
-           bn=$(basename "$lib"); \
-           [ -f "/runtime-libs/$bn" ] || cp -aL "$lib" /runtime-libs/ 2>/dev/null || true; \
-         done; \
-       done
+# Collect libjxl/jpegli/highway .so files (not available via apt in production)
+RUN mkdir -p /jxl-libs \
+    && cp -aL /usr/lib/x86_64-linux-gnu/libjxl.so* /jxl-libs/ \
+    && cp -aL /usr/lib/x86_64-linux-gnu/libjxl_cms.so* /jxl-libs/ \
+    && cp -aL /usr/lib/x86_64-linux-gnu/libjxl_threads.so* /jxl-libs/ \
+    && cp -aL /usr/lib/x86_64-linux-gnu/libjpeg.so* /jxl-libs/ \
+    && cp -aL /usr/lib/x86_64-linux-gnu/libhwy.so* /jxl-libs/
 
 # ---- Stage 1: Production image ----
 FROM python:3.12-slim-bookworm
@@ -61,22 +57,37 @@ LABEL org.opencontainers.image.source="https://github.com/amitray007/pare"
 LABEL org.opencontainers.image.description="Serverless image compression API"
 LABEL org.opencontainers.image.licenses="MIT"
 
+# Install runtime dependencies via apt (reliable, handles transitive deps)
+# Both builder and production are Bookworm so library versions match exactly.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gifsicle \
+    # GLib (core libvips dependency)
+    libglib2.0-0 \
+    # Image format codecs
+    libexpat1 libpng16-16 zlib1g \
+    libwebp7 libwebpmux3 libwebpdemux2 \
+    libheif1 libaom3 libde265-0 libx265-199 \
+    libtiff6 libcgif0 libimagequant0 \
+    # Compression libraries
+    libbrotli1 \
+    # OpenMP (parallel processing in libvips)
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy libvips built from source
 COPY --from=libvips-builder /usr/local/lib/ /usr/local/lib/
 COPY --from=libvips-builder /usr/local/include/ /usr/local/include/
 
-# Copy runtime shared libraries (codec deps from builder)
-COPY --from=libvips-builder /runtime-libs/ /usr/lib/x86_64-linux-gnu/
+# Copy libjxl + jpegli runtime libs (from pre-built debs, not in Bookworm apt)
+COPY --from=libvips-builder /jxl-libs/ /usr/lib/x86_64-linux-gnu/
 RUN ldconfig
-
-# gifsicle is kept for animated GIF inter-frame optimization
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gifsicle \
-    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Build-time verification: ensure pyvips can load libvips with all codecs
+RUN python -c "import pyvips; print(f'libvips {pyvips.version(0)}.{pyvips.version(1)}.{pyvips.version(2)} loaded OK')"
 
 # Copy application
 COPY . /app
