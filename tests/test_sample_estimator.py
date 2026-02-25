@@ -91,16 +91,27 @@ async def test_large_png_extrapolation():
 async def test_extrapolation_bpp_consistency():
     """BPP should be roughly consistent: estimate for a large image should
     be proportional to the small-image result scaled by pixel count."""
-    # Both sizes must be > EXACT_PIXEL_THRESHOLD (150K) to use sample path
-    small_data = _make_image("JPEG", 500, 500, quality=95)  # 250K pixels
-    large_data = _make_image("JPEG", 1500, 1500, quality=95)  # 2.25M pixels
+    # Both images must be > 512KB to use sample path (not exact mode).
+    # Use random pixel data so JPEG files are large enough.
+    small_raw = os.urandom(1000 * 1000 * 3)
+    small_img = Image.frombytes("RGB", (1000, 1000), small_raw)
+    small_buf = io.BytesIO()
+    small_img.save(small_buf, format="JPEG", quality=95)
+    small_data = small_buf.getvalue()
+
+    large_raw = os.urandom(1500 * 1500 * 3)
+    large_img = Image.frombytes("RGB", (1500, 1500), large_raw)
+    large_buf = io.BytesIO()
+    large_img.save(large_buf, format="JPEG", quality=95)
+    large_data = large_buf.getvalue()
+
     config = OptimizationConfig(quality=60)
 
     small_result = await estimate(small_data, config)
     large_result = await estimate(large_data, config)
 
     # Both use the same sample-based path, so BPP should be similar
-    small_bpp = small_result.estimated_optimized_size * 8 / (500 * 500)
+    small_bpp = small_result.estimated_optimized_size * 8 / (1000 * 1000)
     large_bpp = large_result.estimated_optimized_size * 8 / (1500 * 1500)
     assert abs(small_bpp - large_bpp) / max(small_bpp, large_bpp) < 0.25
 
@@ -314,3 +325,163 @@ async def test_large_tiff_estimation():
     assert result.original_format == "tiff"
     assert result.estimated_reduction_percent > 0
     assert result.estimated_optimized_size < result.original_size
+
+
+# --- max_reduction cap ---
+
+
+@pytest.mark.asyncio
+async def test_max_reduction_caps_jpeg_estimate():
+    """Estimate respects max_reduction cap (matches optimizer behaviour)."""
+    raw = os.urandom(1000 * 1000 * 3)
+    img = Image.frombytes("RGB", (1000, 1000), raw)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    data = buf.getvalue()
+
+    # Without cap: aggressive compression should estimate high reduction
+    uncapped = await estimate(data, OptimizationConfig(quality=40))
+    assert uncapped.estimated_reduction_percent > 25, (
+        f"Uncapped estimate should be >25%, got {uncapped.estimated_reduction_percent}%"
+    )
+
+    # With max_reduction=25: estimate must not exceed the cap
+    capped = await estimate(data, OptimizationConfig(quality=40, max_reduction=25.0))
+    assert capped.estimated_reduction_percent <= 25.0, (
+        f"Capped estimate should be <=25%, got {capped.estimated_reduction_percent}%"
+    )
+
+
+@pytest.mark.asyncio
+async def test_max_reduction_caps_webp_estimate():
+    """WebP estimate respects max_reduction cap."""
+    raw = os.urandom(800 * 600 * 3)
+    img = Image.frombytes("RGB", (800, 600), raw)
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=95)
+    data = buf.getvalue()
+
+    capped = await estimate(data, OptimizationConfig(quality=40, max_reduction=20.0))
+    assert capped.estimated_reduction_percent <= 20.0, (
+        f"WebP capped estimate should be <=20%, got {capped.estimated_reduction_percent}%"
+    )
+
+
+@pytest.mark.asyncio
+async def test_max_reduction_no_effect_when_under():
+    """max_reduction has no effect when natural reduction is already under the cap."""
+    data = _make_image("JPEG", 500, 500, quality=50)  # already low quality
+    # quality=40 from quality=50 won't give huge reduction; set generous cap
+    result = await estimate(data, OptimizationConfig(quality=40, max_reduction=90.0))
+    assert result.estimated_reduction_percent <= 90.0
+    assert result.estimated_reduction_percent >= 0
+
+
+@pytest.mark.asyncio
+async def test_max_reduction_ignored_for_unsupported_formats():
+    """BMP optimizer doesn't implement max_reduction, so the estimator
+    should NOT cap the estimate — it would be inaccurate."""
+    img = Image.new("RGB", (800, 600), color=(100, 150, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="BMP")
+    data = buf.getvalue()
+
+    # BMP -> PNG conversion gives huge reduction; max_reduction is ignored
+    result = await estimate(data, OptimizationConfig(quality=60, max_reduction=15.0))
+    # BMP should still report high reduction despite max_reduction being set
+    assert result.estimated_reduction_percent > 50, (
+        f"BMP should ignore max_reduction, got {result.estimated_reduction_percent}%"
+    )
+
+
+# --- PNG low-BPP exact mode fallback ---
+
+
+@pytest.mark.asyncio
+async def test_large_png_low_bpp_uses_exact_mode():
+    """Large PNG with low original BPP (flat content) should use exact mode
+    and produce a meaningful non-zero estimate, not the inflated-sample 0%."""
+    from PIL import ImageDraw
+
+    # Create a large flat-color screenshot (very low BPP after PNG compression)
+    img = Image.new("RGB", (2000, 1500))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, 2000, 60], fill=(50, 50, 60))
+    draw.rectangle([0, 60, 300, 1500], fill=(240, 240, 240))
+    draw.rectangle([300, 60, 2000, 1500], fill=(255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", compress_level=9)
+    data = buf.getvalue()
+
+    original_bpp = len(data) * 8 / (2000 * 1500)
+    assert original_bpp < 2.0, f"Test setup: expected low BPP, got {original_bpp:.2f}"
+
+    result = await estimate(data, OptimizationConfig(quality=60, png_lossy=True))
+    assert result.original_format == "png"
+    assert result.estimated_reduction_percent > 0, (
+        f"Low-BPP PNG should estimate >0% reduction, got {result.estimated_reduction_percent}%"
+    )
+    # Exact mode should report high confidence
+    assert result.confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_large_png_high_bpp_still_uses_sample_mode():
+    """Large PNG with normal BPP (photo-like content) should still use
+    the sample-based path, not the exact-mode fallback."""
+    # Random pixel data -> high BPP after PNG compression
+    raw = os.urandom(800 * 600 * 3)
+    img = Image.frombytes("RGB", (800, 600), raw)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", compress_level=6)
+    data = buf.getvalue()
+
+    original_bpp = len(data) * 8 / (800 * 600)
+    assert original_bpp >= 2.0, f"Test setup: expected high BPP, got {original_bpp:.2f}"
+
+    result = await estimate(data, OptimizationConfig(quality=60, png_lossy=True))
+    assert result.original_format == "png"
+    assert result.estimated_reduction_percent >= 0
+
+
+# --- GIF exact mode ---
+
+
+@pytest.mark.asyncio
+async def test_gif_large_uses_exact_mode():
+    """Large GIF should use exact mode (not the generic 300px fallback)
+    and produce a meaningful estimate instead of 0%."""
+    # Create a 512x512 GIF (262K pixels, well above EXACT_PIXEL_THRESHOLD)
+    img = Image.new("P", (512, 512), color=42)
+    buf = io.BytesIO()
+    img.save(buf, format="GIF")
+    data = buf.getvalue()
+
+    result = await estimate(data, OptimizationConfig(quality=40))
+    assert result.original_format == "gif"
+    assert result.confidence == "high"
+    # Should report exact optimizer result, not an inflated/zero sample estimate
+    assert result.estimated_optimized_size <= result.original_size
+
+
+# --- JPEG small-file exact mode ---
+
+
+@pytest.mark.asyncio
+async def test_jpeg_small_file_uses_exact_mode():
+    """JPEG files under 512KB should use exact mode for accuracy."""
+    # Create a large-pixel but low-quality (small file) JPEG
+    raw = os.urandom(800 * 600 * 3)
+    img = Image.frombytes("RGB", (800, 600), raw)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=40)
+    data = buf.getvalue()
+
+    assert len(data) < 512_000, f"Test setup: expected <512KB, got {len(data)}"
+
+    result = await estimate(data, OptimizationConfig(quality=40))
+    assert result.original_format == "jpeg"
+    # Exact mode captures jpegtran lossless gains (~18%) that sample mode misses
+    assert result.estimated_reduction_percent > 5, (
+        f"Small JPEG should show jpegtran gains, got {result.estimated_reduction_percent}%"
+    )

@@ -21,6 +21,11 @@ SAMPLE_MAX_WIDTH = 300
 JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
 LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
+EXACT_FILE_SIZE_THRESHOLD = 512_000  # 512KB — files below this compress quickly enough for exact mode
+
+# Only these formats' optimizers implement max_reduction (binary search for quality).
+# Other formats ignore max_reduction, so the estimator must not cap them either.
+_MAX_REDUCTION_FORMATS = {ImageFormat.JPEG, ImageFormat.WEBP}
 
 
 async def estimate(
@@ -59,6 +64,35 @@ async def estimate(
 
     # Small images: compress fully for exact result
     if original_pixels <= EXACT_PIXEL_THRESHOLD:
+        return await _estimate_exact(
+            data, fmt, config, file_size, width, height, color_type, bit_depth
+        )
+
+    # PNG with low original BPP: LANCZOS downsampling introduces anti-aliasing
+    # noise at color boundaries, inflating sample BPP for flat-color content
+    # (screenshots, graphics, solid backgrounds).  Use exact mode instead —
+    # the file is small in bytes even though it has many pixels.
+    if fmt in (ImageFormat.PNG, ImageFormat.APNG):
+        original_bpp = file_size * 8 / original_pixels
+        if original_bpp < 2.0:
+            return await _estimate_exact(
+                data, fmt, config, file_size, width, height, color_type, bit_depth
+            )
+
+    # GIF: files are always small and gifsicle is fast — use exact mode.
+    # (Animated GIFs are already handled above.)
+    # The 300px generic-fallback sample is too small for gifsicle to work
+    # effectively, producing 0% estimates on images that actually compress 15-35%.
+    if fmt == ImageFormat.GIF:
+        return await _estimate_exact(
+            data, fmt, config, file_size, width, height, color_type, bit_depth
+        )
+
+    # JPEG: for smaller files, use exact mode to avoid LANCZOS smoothing
+    # artifacts that inflate sample BPP on already-compressed sources (e.g.
+    # q=60 source at q=40 target) and to capture jpegtran lossless gains
+    # that sample-based estimation misses entirely.
+    if fmt == ImageFormat.JPEG and file_size <= EXACT_FILE_SIZE_THRESHOLD:
         return await _estimate_exact(
             data, fmt, config, file_size, width, height, color_type, bit_depth
         )
@@ -204,6 +238,9 @@ async def _estimate_by_sample(
     reduction = round((file_size - estimated_size) / file_size * 100, 1)
     reduction = max(0.0, reduction)
 
+    # No max_reduction cap here — this generic fallback path is only reached by
+    # GIF/BMP/TIFF, whose optimizers do not implement max_reduction.
+
     return EstimateResponse(
         original_size=file_size,
         original_format=fmt.value,
@@ -237,6 +274,28 @@ async def _bpp_to_estimate(
     output_bpp, method = await asyncio.to_thread(bpp_fn, img, sample_width, sample_height, config)
     estimated_size = min(int(output_bpp * original_pixels / 8), file_size)
     reduction = max(0.0, round((file_size - estimated_size) / file_size * 100, 1))
+
+    # Honour max_reduction cap only for formats whose optimizers enforce it.
+    if (
+        fmt in _MAX_REDUCTION_FORMATS
+        and config.max_reduction is not None
+        and reduction > config.max_reduction
+    ):
+        reduction = round(config.max_reduction, 1)
+        estimated_size = int(file_size * (1 - reduction / 100))
+
+    # PNG lossless on photo content (high BPP): the sample resize smooths pixel
+    # data, making oxipng achieve much better compression than on the full image.
+    # In practice, lossless PNG barely compresses photos (< 5%).
+    png_lossless = not (config.png_lossy and config.quality < 70)
+    if (
+        fmt in (ImageFormat.PNG, ImageFormat.APNG)
+        and png_lossless
+        and (file_size * 8 / original_pixels) > 10.0
+        and reduction > 5.0
+    ):
+        reduction = 5.0
+        estimated_size = int(file_size * (1 - reduction / 100))
 
     return EstimateResponse(
         original_size=file_size,
