@@ -45,5 +45,8 @@ reports/
 # Test corpus (downloaded Unsplash images, ~1.9GB)
 tests/corpus/
 
+# Benchmark dashboard data
+.benchmark-data/
+
 # Custom Ignores
 nul
