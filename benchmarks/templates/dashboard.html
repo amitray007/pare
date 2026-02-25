@@ -3,1367 +3,1002 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pare — Benchmark Dashboard</title>
+<title>Pare Benchmarks</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-/* ============================================================
-   DESIGN TOKENS
-   ============================================================ */
 :root {
-  --bg: #faf9f6;
-  --bg-sidebar: #f3f1ec;
+  --bg: #f9fafb;
   --surface: #ffffff;
-  --surface-hover: #fdfcfa;
-  --border: #e5e2dc;
-  --border-light: #eceae4;
-  --text: #1a1a2e;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-  --accent: #1a1a2e;
-  --accent-light: #374151;
-  --red: #dc2626;
-  --red-light: #fef2f2;
-  --green: #15803d;
-  --green-light: #f0fdf4;
-  --amber: #b45309;
-  --amber-light: #fffbeb;
-  --blue: #1d4ed8;
-  --blue-light: #eff6ff;
-  --high-bar: #1d4ed8;
-  --med-bar: #7c3aed;
-  --low-bar: #059669;
-  --font-display: 'Instrument Serif', Georgia, serif;
-  --font-body: 'Source Sans 3', -apple-system, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
-  --radius: 6px;
-  --radius-lg: 10px;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.06), 0 2px 4px -2px rgba(0,0,0,0.04);
-  --transition: 200ms ease;
+  --border: #e5e7eb;
+  --border-light: #f3f4f6;
+  --text: #111827;
+  --secondary: #6b7280;
+  --muted: #9ca3af;
+  --faint: #d1d5db;
+  --green: #10b981;
+  --green-bg: #ecfdf5;
+  --green-border: #a7f3d0;
+  --amber: #f59e0b;
+  --amber-bg: #fffbeb;
+  --amber-border: #fde68a;
+  --red: #ef4444;
+  --red-bg: #fef2f2;
+  --red-border: #fecaca;
+  --blue: #3b82f6;
+  --blue-bg: #eff6ff;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono', 'SF Mono', 'Menlo', monospace;
+  --radius: 10px;
+  --radius-sm: 6px;
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: var(--font-body);
+  font-family: var(--sans);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.6;
-  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ============================================================
-   LAYOUT
-   ============================================================ */
-.app {
-  display: grid;
-  grid-template-columns: 272px 1fr;
-  min-height: 100vh;
+/* ── LAYOUT ────────────────────────────────── */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
 }
 
-/* ============================================================
-   SIDEBAR
-   ============================================================ */
-.sidebar {
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+.main-row { flex: 1; display: flex; overflow: hidden; }
+
+.content-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.history-col {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  position: sticky;
-  top: 0;
   overflow: hidden;
 }
 
-.sidebar-header {
-  padding: 28px 24px 20px;
-}
+/* ── TOPBAR ────────────────────────────────── */
+.tb-left { display: flex; align-items: baseline; gap: 8px; }
+.tb-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.tb-sub { font-size: 13px; color: var(--muted); font-weight: 400; }
 
-.logo {
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-}
-
-.logo-text {
-  font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 400;
-  color: var(--text);
-  letter-spacing: -0.5px;
-  line-height: 1;
-}
-
-.logo-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--red);
-  border-radius: 50%;
-  display: inline-block;
-  margin-left: 1px;
-  margin-bottom: 2px;
-}
-
-.logo-sub {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-muted);
-  margin-top: 4px;
-  letter-spacing: 0.02em;
-}
-
-/* Divider */
-.sidebar-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 0 24px;
-}
-
-/* Run controls */
-.run-controls {
-  padding: 20px 24px;
-}
+.tb-center { display: flex; align-items: center; gap: 8px; margin-left: auto; position: relative; }
 
 .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 11px 18px;
-  border: none;
-  border-radius: var(--radius);
-  font-family: var(--font-body);
+  font-family: var(--sans);
+  font-size: 13px;
   font-weight: 600;
-  font-size: 13.5px;
+  padding: 7px 18px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition);
-  width: 100%;
-  letter-spacing: 0.01em;
+  transition: all 100ms ease;
+  border: none;
 }
+.btn-primary { background: var(--text); color: #fff; }
+.btn-primary:hover { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-ghost { background: transparent; color: var(--secondary); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg); color: var(--text); }
 
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
+/* Config dropdown */
+.config-wrap { position: relative; }
+.config-drop {
+  display: none; position: absolute; top: calc(100% + 8px); right: 0;
+  width: 300px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; z-index: 50;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
 }
-.btn-primary:hover { background: var(--accent-light); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-.btn-primary:active { transform: translateY(0); }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+.config-drop.open { display: block; }
 
-.btn-secondary {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-.btn-secondary:hover { background: var(--surface-hover); border-color: var(--text-muted); }
+.cfg-group { margin-bottom: 14px; }
+.cfg-group:last-child { margin-bottom: 0; }
+.cfg-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
 
-.btn-sm {
-  padding: 7px 14px;
-  font-size: 12px;
-}
-
-.config-toggle {
-  margin-top: 10px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--border);
-}
-.config-toggle:hover { color: var(--text); border-color: var(--text-muted); }
-
-/* Config drawer */
-.config-drawer {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 350ms cubic-bezier(0.4, 0, 0.2, 1), padding 350ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-.config-drawer.open {
-  max-height: 500px;
-  padding: 16px 24px 20px;
-}
-
-.config-section {
-  margin-bottom: 16px;
-}
-
-.config-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-
-.chip-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
+.chip-grid { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition);
-  user-select: none;
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface); color: var(--secondary); font-family: var(--mono);
+  font-size: 12px; font-weight: 500; cursor: pointer; transition: all 100ms;
 }
-.chip:hover { border-color: var(--text-muted); color: var(--text); }
-.chip.active { border-color: var(--accent); color: var(--accent); background: #f0f0f8; }
-.chip.unavailable { opacity: 0.3; cursor: not-allowed; }
+.chip:hover { border-color: var(--secondary); }
+.chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+.chip.unavailable { opacity: 0.25; cursor: not-allowed; }
 
-.pill-group {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--surface);
+.preset-btns { display: flex; gap: 4px; }
+.preset-btn {
+  flex: 1; padding: 6px 0; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface); color: var(--secondary); font-family: var(--sans);
+  font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: all 100ms;
+}
+.preset-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+.cfg-select {
+  width: 100%; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-family: var(--sans); font-size: 13px;
 }
 
-.pill {
-  flex: 1;
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  border: none;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition);
-  text-align: center;
+.cfg-run-btn {
+  width: 100%; margin-top: 10px; padding: 8px 0; background: var(--text); border: none;
+  border-radius: var(--radius-sm); color: #fff; font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer;
 }
-.pill:last-child { border-right: none; }
-.pill:hover { color: var(--text); background: var(--bg); }
-.pill.active { background: var(--accent); color: #fff; }
+.cfg-run-btn:hover { opacity: 0.85; }
 
-.select-small {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 7px 10px;
-  width: 100%;
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
+/* ── TAB BAR ───────────────────────────────── */
+.tab-bar {
+  flex-shrink: 0; display: flex; align-items: stretch;
+  height: 40px; padding: 0 20px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.select-small:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.tab {
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  padding: 0 16px; background: transparent; border: none;
+  border-bottom: 2px solid transparent; color: var(--muted);
+  cursor: pointer; transition: all 100ms;
+}
+.tab:hover { color: var(--secondary); }
+.tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
 
-/* ============================================================
-   HISTORY
-   ============================================================ */
-.history-section {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 0 12px;
+/* ── CONTENT ───────────────────────────────── */
+.content-body { flex: 1; overflow-y: auto; background: var(--bg); }
+.content-scroll { padding: 20px 24px 40px; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── PROGRESS ──────────────────────────────── */
+.progress { height: 2px; background: var(--border-light); display: none; }
+.progress.visible { display: block; }
+.progress-fill { height: 100%; background: var(--blue); transition: width 300ms ease; width: 0%; }
+
+/* ── SECTION HEADERS ───────────────────────── */
+.sec-title {
+  font-size: 13px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: 12px;
 }
 
-.history-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  padding: 0 24px 12px;
-}
-
-.history-list { list-style: none; }
-
-.history-item {
-  padding: 12px 24px;
-  cursor: pointer;
-  transition: background var(--transition);
-  border-left: 2px solid transparent;
-}
-.history-item:hover { background: rgba(0,0,0,0.02); }
-.history-item.active { background: var(--surface); border-left-color: var(--red); }
-
-.history-date {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 3px;
-}
-
-.history-meta {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.health-dots {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.health-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.health-dot.pass { background: var(--green); }
-.health-dot.warn { background: var(--amber); }
-.health-dot.fail { background: var(--red); }
-
-.history-actions {
-  margin-top: 6px;
-}
-
-.btn-delete {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 2px 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.btn-delete:hover { color: var(--red); }
-
-.history-empty {
-  padding: 24px;
-  font-size: 13px;
-  color: var(--text-muted);
-  text-align: center;
-  font-style: italic;
-}
-
-/* ============================================================
-   MAIN
-   ============================================================ */
-.main {
-  padding: 36px 48px 48px;
-  overflow-y: auto;
-  height: 100vh;
-  max-width: 1100px;
-}
-
-/* Progress */
-.progress-section {
-  display: none;
-  margin-bottom: 32px;
-}
-.progress-section.visible { display: block; }
-
-.progress-bar-outer {
-  width: 100%;
-  height: 3px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.progress-bar-inner {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
-  transition: width 300ms ease;
-  width: 0%;
-}
-
-.progress-text {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--text-muted);
-}
-
-/* Welcome */
+/* ── WELCOME ───────────────────────────────── */
 .welcome {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 40vh; text-align: center;
+}
+.welcome-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.welcome-desc { font-size: 14px; color: var(--muted); max-width: 360px; line-height: 1.6; }
+
+/* ── SUMMARY STRIP ─────────────────────────── */
+.summary-strip {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 55vh;
-  text-align: center;
-}
-
-.welcome h2 {
-  font-family: var(--font-display);
-  font-size: 32px;
-  font-weight: 400;
-  margin-bottom: 12px;
-  color: var(--text);
-}
-
-.welcome p {
-  color: var(--text-secondary);
-  font-size: 15px;
-  max-width: 420px;
-  line-height: 1.7;
-}
-
-/* ============================================================
-   SECTION TITLES
-   ============================================================ */
-.section-title {
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 400;
-  color: var(--text);
-  margin-bottom: 18px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--text);
-  letter-spacing: -0.3px;
-}
-
-/* ============================================================
-   HEALTH GRID
-   ============================================================ */
-.health-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
   gap: 12px;
-  margin-bottom: 40px;
+  margin-bottom: 20px;
 }
-
-.health-card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 16px 14px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-light);
-  border-top: 3px solid var(--border);
-  transition: all var(--transition);
-  position: relative;
-  overflow: hidden;
-}
-.health-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.health-card.pass { border-top-color: var(--green); }
-.health-card.warn { border-top-color: var(--amber); }
-.health-card.fail { border-top-color: var(--red); }
-.health-card.pending { opacity: 0.35; }
-
-.health-card-fmt {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 12px;
-  margin-bottom: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text);
-}
-
-.micro-bars {
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-  height: 32px;
-}
-
-.micro-bar {
+.summary-card {
   flex: 1;
-  border-radius: 2px 2px 0 0;
-  min-height: 2px;
-  transition: height 500ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-.micro-bar.high { background: var(--high-bar); }
-.micro-bar.med { background: var(--med-bar); }
-.micro-bar.low { background: var(--low-bar); }
-
-.health-card-detail {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 8px;
-  letter-spacing: 0.02em;
-}
-
-/* Fill animation */
-.health-card.filling::after {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  width: 100%;
-  background: linear-gradient(90deg, rgba(26,26,46,0.03), transparent);
-  animation: fillWipe 500ms ease forwards;
-}
-@keyframes fillWipe {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
-}
-
-/* ============================================================
-   PRESET COMPARISON
-   ============================================================ */
-.preset-section {
-  margin-bottom: 40px;
-}
-
-.preset-chart {
   background: var(--surface);
-  border-radius: var(--radius-lg);
-  padding: 28px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  min-width: 0;
+}
+.summary-card.running {
+  border-color: var(--blue);
+  background: var(--blue-bg);
+}
+.sc-label {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px;
+}
+.sc-value {
+  font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--text);
+}
+.sc-value.good { color: var(--green); }
+.sc-value.warn { color: var(--amber); }
+.sc-value.bad { color: var(--red); }
+
+/* ── FORMAT CARDS (Overview) ───────────────── */
+.fmt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.fmt-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  transition: box-shadow 150ms ease;
+}
+.fmt-card:hover { box-shadow: 0 1px 6px rgba(0,0,0,0.04); }
+.fmt-card.health-pass { border-left: 3px solid var(--green); }
+.fmt-card.health-warn { border-left: 3px solid var(--amber); }
+.fmt-card.health-fail { border-left: 3px solid var(--red); }
+
+.fc-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.fc-name {
+  font-family: var(--mono); font-size: 15px; font-weight: 700;
+  text-transform: uppercase; color: var(--text);
+}
+.fc-badge {
+  font-size: 12px; font-weight: 600; padding: 3px 10px;
+  border-radius: 10px;
+}
+.fc-badge.pass { color: var(--green); background: var(--green-bg); }
+.fc-badge.warn { color: var(--amber); background: var(--amber-bg); }
+.fc-badge.fail { color: var(--red); background: var(--red-bg); }
+
+.fc-big-num {
+  font-family: var(--mono); font-size: 28px; font-weight: 700;
+  color: var(--text); line-height: 1;
+}
+.fc-big-label {
+  font-size: 13px; color: var(--muted); margin-top: 2px; margin-bottom: 14px;
 }
 
-.preset-row {
-  margin-bottom: 28px;
-  padding-bottom: 24px;
+/* Preset mini bars inside cards */
+.fc-presets { display: flex; flex-direction: column; gap: 7px; }
+.fc-preset-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.fc-preset-label {
+  width: 56px; font-size: 12px; font-weight: 600; color: var(--muted);
+  font-family: var(--mono); flex-shrink: 0;
+}
+.fc-preset-bar-wrap {
+  flex: 1; height: 10px; background: var(--border-light);
+  border-radius: 5px; overflow: hidden;
+}
+.fc-preset-bar {
+  height: 100%; border-radius: 5px; transition: width 400ms ease;
+  min-width: 4px;
+}
+.fc-preset-bar.high { background: #3b82f6; }
+.fc-preset-bar.medium { background: #8b5cf6; }
+.fc-preset-bar.low { background: #f59e0b; }
+.fc-preset-pct {
+  width: 50px; text-align: right; font-family: var(--mono);
+  font-size: 13px; font-weight: 600; color: var(--text); flex-shrink: 0;
+}
+
+.fc-footer {
+  display: flex; justify-content: space-between;
+  margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-light);
+  font-size: 13px; color: var(--muted);
+}
+.fc-foot-val { font-family: var(--mono); font-weight: 600; color: var(--text); }
+
+/* ── TABLES ────────────────────────────────── */
+.dt { width: 100%; border-collapse: collapse; font-size: 14px; }
+.dt th {
+  font-family: var(--sans); font-weight: 600; font-size: 11px;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em;
+  text-align: right; padding: 0 12px 10px 0; border-bottom: 1px solid var(--border);
+}
+.dt th:first-child { text-align: left; }
+.dt td {
+  font-family: var(--mono); text-align: right;
+  padding: 9px 12px 9px 0; color: var(--text); font-size: 14px;
   border-bottom: 1px solid var(--border-light);
 }
-.preset-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.dt td:first-child { text-align: left; font-family: var(--sans); font-weight: 600; }
+.dt tbody tr:last-child td { border-bottom: none; }
+.dt tbody tr:hover td { background: rgba(0,0,0,0.015); }
 
-.preset-row-header {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 12px;
-  margin-bottom: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text);
+.c-pass { color: var(--green); font-weight: 600; }
+.c-warn { color: var(--amber); font-weight: 600; }
+.c-fail { color: var(--red); font-weight: 600; }
+
+.dpill {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 12px; font-weight: 600; font-family: var(--sans);
 }
+.dpill.pass { color: var(--green); background: var(--green-bg); }
+.dpill.warn { color: var(--amber); background: var(--amber-bg); }
+.dpill.fail { color: var(--red); background: var(--red-bg); }
+.dpill.neutral { color: var(--muted); background: var(--border-light); }
 
-.preset-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* ── GRIDS (Estimation/Methods/Speed) ──────── */
+.grid-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 16px;
 }
-
-.bar-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.bar-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  width: 50px;
-  color: var(--text-muted);
-  text-align: right;
-  flex-shrink: 0;
-  letter-spacing: 0.02em;
-}
-
-.bar-track {
-  flex: 1;
-  height: 20px;
-  background: var(--bg);
-  border-radius: 3px;
-  overflow: visible;
-  position: relative;
-  border: 1px solid var(--border-light);
-}
-
-.bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-.bar-fill.high { background: var(--high-bar); opacity: 0.85; }
-.bar-fill.med { background: var(--med-bar); opacity: 0.80; }
-.bar-fill.low { background: var(--low-bar); opacity: 0.80; }
-
-.bar-est-line {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: var(--red);
-  border-radius: 1px;
-}
-
-.bar-value {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  width: 70px;
-  flex-shrink: 0;
-  text-align: left;
-  color: var(--text);
-}
-
-/* ============================================================
-   BOTTOM TABLES
-   ============================================================ */
-.bottom-grid {
+.grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 40px;
-}
-@media (max-width: 960px) {
-  .bottom-grid { grid-template-columns: 1fr; }
+  gap: 16px 32px;
+  align-items: start;
 }
 
-.data-card {
+/* ── PANEL (card wrapper for tab content) ──── */
+.panel {
   background: var(--surface);
-  border-radius: var(--radius-lg);
-  padding: 24px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.panel-title {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  text-transform: uppercase; letter-spacing: 0.03em;
+  margin-bottom: 14px;
 }
 
-.data-card h3 {
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 400;
+/* ── ESTIMATION ROWS ──────────────────────── */
+.eg-head {
+  font-size: 13px; font-weight: 700; color: var(--secondary);
+  margin-top: 18px; margin-bottom: 4px;
+  padding: 6px 6px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.eg-head:first-child { margin-top: 0; }
+
+/* Column header row inside estimation panels */
+.e-col-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 6px 8px;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.e-col-header .e-name { color: var(--muted); }
+.e-col-header .e-val-col { color: var(--muted); }
+
+.e-row {
+  display: flex; align-items: center; gap: 6px;
+  min-height: 34px; font-size: 14px; padding: 4px 6px;
+}
+.e-row:hover { background: var(--border-light); border-radius: 4px; }
+.e-name {
+  flex: 1; min-width: 0; color: var(--text); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 14px;
+}
+.e-val-col {
+  width: 84px; text-align: right; flex-shrink: 0;
+  font-family: var(--mono); font-size: 14px; font-weight: 500;
   color: var(--text);
-  margin-bottom: 16px;
-  letter-spacing: -0.2px;
+}
+.e-val-col.est-col { color: var(--secondary); }
+.e-val-col.act-col { color: var(--text); font-weight: 600; }
+.e-val-col.delta-col { font-weight: 700; }
+.e-val-col.delta-col.good { color: var(--green); }
+.e-val-col.delta-col.ok { color: var(--amber); }
+.e-val-col.delta-col.bad { color: var(--red); }
+.e-val-col.error-text { color: var(--muted); font-style: italic; font-family: var(--sans); }
+
+/* ── METHOD ROWS ──────────────────────────── */
+.mg-head {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  text-transform: uppercase; margin-top: 18px; margin-bottom: 6px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--border-light);
+}
+.mg-head:first-child { margin-top: 0; }
+
+.m-row {
+  display: flex; align-items: center; gap: 8px;
+  height: 32px; font-size: 14px; padding: 0 6px;
+}
+.m-row:hover { background: var(--border-light); border-radius: 4px; }
+.m-preset { width: 40px; color: var(--muted); flex-shrink: 0; font-weight: 600; font-size: 12px; }
+.m-method {
+  flex: 1; min-width: 0; font-family: var(--mono); font-weight: 500; color: var(--text);
+  font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.m-stat {
+  font-family: var(--mono); font-size: 13px; color: var(--muted); flex-shrink: 0;
 }
 
-table.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+/* ── HISTORY ───────────────────────────────── */
+.hist-header {
+  padding: 14px 16px; font-size: 12px; font-weight: 700;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.05em; border-bottom: 1px solid var(--border);
 }
+.hist-body { flex: 1; overflow-y: auto; }
 
-table.data-table th {
-  text-align: right;
-  font-weight: 500;
-  color: var(--text-muted);
-  padding: 8px 10px;
-  border-bottom: 2px solid var(--text);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.hist-item {
+  padding: 10px 16px; cursor: pointer;
+  border-bottom: 1px solid var(--border-light); transition: background 80ms;
 }
-table.data-table th:first-child { text-align: left; }
+.hist-item:hover { background: var(--bg); }
+.hist-item.active { background: var(--blue-bg); border-left: 2px solid var(--blue); padding-left: 14px; }
 
-table.data-table td {
-  text-align: right;
-  padding: 10px;
-  border-bottom: 1px solid var(--border-light);
-  color: var(--text);
-}
-table.data-table td:first-child { text-align: left; font-weight: 500; }
+.hist-date { font-size: 13px; font-weight: 600; color: var(--text); }
+.hist-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.hist-dots { display: flex; gap: 4px; margin-top: 5px; }
+.hist-dot { width: 7px; height: 7px; border-radius: 50%; }
+.hist-dot.pass { background: var(--green); }
+.hist-dot.warn { background: var(--amber); }
+.hist-dot.fail { background: var(--red); }
+.hist-delete { font-family: var(--sans); font-size: 11px; color: var(--faint); background: none; border: none; cursor: pointer; margin-top: 3px; }
+.hist-delete:hover { color: var(--red); }
+.hist-empty { padding: 20px 16px; color: var(--muted); font-size: 13px; }
 
-table.data-table tbody tr:hover td { background: var(--bg); }
-
-.val-pass { color: var(--green); font-weight: 600; }
-.val-warn { color: var(--amber); font-weight: 600; }
-.val-fail { color: var(--red); font-weight: 600; }
-
-/* ============================================================
-   RUN BANNER
-   ============================================================ */
-.run-banner {
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  padding: 20px 28px;
-  margin-bottom: 32px;
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border-light);
-}
-
-.run-banner-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.run-banner-label {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.run-banner-value {
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 22px;
-  color: var(--text);
-  letter-spacing: -0.5px;
-}
-
-.run-banner-sep {
-  width: 1px;
-  height: 36px;
-  background: var(--border);
-}
-
-/* ============================================================
-   SCROLLBAR
-   ============================================================ */
+/* ── SCROLLBAR ─────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-
-/* ============================================================
-   STAGGERED LOAD ANIMATION
-   ============================================================ */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.health-card { animation: fadeUp 400ms ease both; }
-.health-card:nth-child(1) { animation-delay: 0ms; }
-.health-card:nth-child(2) { animation-delay: 50ms; }
-.health-card:nth-child(3) { animation-delay: 100ms; }
-.health-card:nth-child(4) { animation-delay: 150ms; }
-.health-card:nth-child(5) { animation-delay: 200ms; }
-.health-card:nth-child(6) { animation-delay: 250ms; }
-.health-card:nth-child(7) { animation-delay: 300ms; }
-.health-card:nth-child(8) { animation-delay: 350ms; }
-.health-card:nth-child(9) { animation-delay: 400ms; }
-
-/* Preset legend */
-.preset-legend {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-secondary);
-}
-.preset-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.preset-legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
+::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 </style>
 </head>
 <body>
 
 <div class="app">
-  <!-- SIDEBAR -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="logo">
-        <span class="logo-text">Pare</span>
-        <span class="logo-dot"></span>
-      </div>
-      <div class="logo-sub">Benchmark Dashboard</div>
+  <div class="topbar">
+    <div class="tb-left">
+      <span class="tb-title">Pare</span>
+      <span class="tb-sub">Benchmarks</span>
     </div>
-
-    <div class="sidebar-divider"></div>
-
-    <div class="run-controls">
-      <button class="btn btn-primary" id="btn-run-all" onclick="runAll()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        Run All Defaults
-      </button>
-      <button class="btn config-toggle" id="btn-config" onclick="toggleConfig()">Configure Run</button>
-    </div>
-
-    <div class="config-drawer" id="config-drawer">
-      <div class="config-section">
-        <div class="config-label">Formats</div>
-        <div class="chip-group" id="format-chips"></div>
-      </div>
-      <div class="config-section">
-        <div class="config-label">Presets</div>
-        <div class="pill-group">
-          <button class="pill active" data-preset="HIGH" onclick="togglePreset(this)">HIGH</button>
-          <button class="pill active" data-preset="MEDIUM" onclick="togglePreset(this)">MED</button>
-          <button class="pill active" data-preset="LOW" onclick="togglePreset(this)">LOW</button>
-        </div>
-      </div>
-      <div class="config-section">
-        <div class="config-label">Images per format</div>
-        <select class="select-small" id="images-per-format">
-          <option value="1">1 image</option>
-          <option value="3" selected>3 images</option>
-          <option value="5">5 images</option>
-        </select>
-      </div>
-      <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="runConfigured()">
-        Run with Config
-      </button>
-    </div>
-
-    <div class="sidebar-divider"></div>
-
-    <div class="history-section">
-      <div class="history-title">History</div>
-      <ul class="history-list" id="history-list">
-        <li class="history-empty">No runs yet</li>
-      </ul>
-    </div>
-  </aside>
-
-  <!-- MAIN -->
-  <main class="main" id="main-area">
-    <div class="progress-section" id="progress-section">
-      <div class="progress-bar-outer">
-        <div class="progress-bar-inner" id="progress-bar"></div>
-      </div>
-      <div class="progress-text" id="progress-text">Preparing...</div>
-    </div>
-
-    <div class="welcome" id="welcome-state">
-      <h2>Benchmark Dashboard</h2>
-      <p>Run benchmarks against your image corpus to see how presets perform across formats, and how accurate your estimations are.</p>
-    </div>
-
-    <div id="results-area" style="display:none">
-      <div class="run-banner" id="run-banner"></div>
-
-      <div class="section-title">Format Health</div>
-      <div class="health-grid" id="health-grid"></div>
-
-      <div class="section-title">Preset Comparison</div>
-      <div class="preset-legend">
-        <div class="preset-legend-item"><div class="preset-legend-swatch" style="background:var(--high-bar)"></div>HIGH (q=40)</div>
-        <div class="preset-legend-item"><div class="preset-legend-swatch" style="background:var(--med-bar)"></div>MEDIUM (q=60)</div>
-        <div class="preset-legend-item"><div class="preset-legend-swatch" style="background:var(--low-bar)"></div>LOW (q=80)</div>
-        <div class="preset-legend-item"><div class="preset-legend-swatch" style="background:var(--red);width:2px;height:14px;border-radius:1px"></div>Estimation</div>
-      </div>
-      <div class="preset-section">
-        <div class="preset-chart" id="preset-chart"></div>
-      </div>
-
-      <div class="bottom-grid">
-        <div class="data-card">
-          <h3>Estimation Accuracy</h3>
-          <table class="data-table" id="estimation-table">
-            <thead>
-              <tr><th>Format</th><th>Cases</th><th>Avg Err</th><th>Max Err</th><th>Avg Est%</th><th>Avg Act%</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div class="data-card">
-          <h3>Worst Outliers</h3>
-          <table class="data-table" id="outliers-table">
-            <thead>
-              <tr><th>Name</th><th>Preset</th><th>Est%</th><th>Act%</th><th>Error</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+    <div class="tb-center">
+      <button class="btn btn-primary" id="btn-run" onclick="runAll()">Run benchmark</button>
+      <div class="config-wrap">
+        <button class="btn btn-ghost" id="btn-config" onclick="toggleConfig()">Config</button>
+        <div class="config-drop" id="config-drop">
+          <div class="cfg-group">
+            <div class="cfg-label">Formats</div>
+            <div class="chip-grid" id="format-chips"></div>
+          </div>
+          <div class="cfg-group">
+            <div class="cfg-label">Presets</div>
+            <div class="preset-btns">
+              <button class="preset-btn active" data-preset="HIGH" onclick="togglePreset(this)">HIGH</button>
+              <button class="preset-btn active" data-preset="MEDIUM" onclick="togglePreset(this)">MED</button>
+              <button class="preset-btn active" data-preset="LOW" onclick="togglePreset(this)">LOW</button>
+            </div>
+          </div>
+          <div class="cfg-group">
+            <div class="cfg-label">Images per format</div>
+            <select class="cfg-select" id="images-per-format">
+              <option value="1">1</option>
+              <option value="3" selected>3</option>
+              <option value="5">5</option>
+            </select>
+          </div>
+          <button class="cfg-run-btn" onclick="runConfigured()">Run with config</button>
         </div>
       </div>
     </div>
-  </main>
+  </div>
+
+  <div class="main-row">
+    <div class="content-col">
+      <div class="tab-bar">
+        <button class="tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+        <button class="tab" data-tab="estimation" onclick="switchTab('estimation')">Estimation</button>
+        <button class="tab" data-tab="methods" onclick="switchTab('methods')">Methods</button>
+        <button class="tab" data-tab="speed" onclick="switchTab('speed')">Speed</button>
+      </div>
+      <div class="progress" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="content-body">
+        <div class="content-scroll">
+          <div class="tab-pane active" id="pane-overview"><div id="overview-out">
+            <div class="welcome"><div class="welcome-title">No benchmark data yet</div><div class="welcome-desc">Click "Run benchmark" to test how your presets perform across formats.</div></div>
+          </div></div>
+          <div class="tab-pane" id="pane-estimation"><div id="estimation-out"><div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div></div></div>
+          <div class="tab-pane" id="pane-methods"><div id="methods-out"><div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div></div></div>
+          <div class="tab-pane" id="pane-speed"><div id="speed-out"><div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="history-col">
+      <div class="hist-header">Runs</div>
+      <div class="hist-body" id="history-list"><div class="hist-empty">No runs yet.</div></div>
+    </aside>
+  </div>
 </div>
 
 <script>
-/* ============================================================
-   STATE
-   ============================================================ */
-let corpusFormats = {};
-let currentResults = [];
-let isRunning = false;
+let corpusFormats = {}, currentResults = [], isRunning = false, activeTab = 'overview',
+    healthStatus = {}, runMeta = null, progressDone = 0, progressTotal = 0;
 
-/* ============================================================
-   INIT
-   ============================================================ */
-async function init() {
-  await loadCorpus();
-  await loadHistory();
-}
+async function init() { await loadCorpus(); await loadHistory(); }
 
 async function loadCorpus() {
   try {
-    const resp = await fetch('/api/corpus');
-    const data = await resp.json();
-    corpusFormats = data.formats;
+    const r = await fetch('/api/corpus');
+    const d = await r.json();
+    corpusFormats = d.formats;
     renderFormatChips();
-  } catch (e) {
-    console.error('Failed to load corpus:', e);
-  }
+  } catch(e) { console.error('Corpus load failed:', e); }
 }
 
 function renderFormatChips() {
-  const container = document.getElementById('format-chips');
-  const allFormats = ['jpeg','png','webp','gif','bmp','tiff','avif','heic','jxl','svg','svgz'];
-  container.innerHTML = allFormats.map(fmt => {
-    const available = corpusFormats[fmt] && corpusFormats[fmt].total > 0;
-    const count = available ? corpusFormats[fmt].total : 0;
-    return `<button class="chip ${available ? 'active' : 'unavailable'}"
-                    data-format="${fmt}"
-                    ${available ? `onclick="toggleChip(this)"` : ''}
-                    title="${count} images">
-              ${fmt.toUpperCase()}
-            </button>`;
+  const c = document.getElementById('format-chips');
+  const all = ['jpeg','png','webp','gif','bmp','tiff','avif','heic','jxl','svg','svgz'];
+  c.innerHTML = all.map(f => {
+    const ok = corpusFormats[f] && corpusFormats[f].total > 0;
+    return `<button class="chip ${ok?'active':'unavailable'}" data-format="${f}" ${ok?'onclick="toggleChip(this)"':''} title="${ok?corpusFormats[f].total+' images':'unavailable'}">${f}</button>`;
   }).join('');
 }
 
-/* ============================================================
-   CONFIG PANEL
-   ============================================================ */
-function toggleConfig() {
-  document.getElementById('config-drawer').classList.toggle('open');
+function switchTab(id) {
+  activeTab = id;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + id));
 }
 
-function toggleChip(el) {
-  el.classList.toggle('active');
-}
+function toggleConfig() { document.getElementById('config-drop').classList.toggle('open'); }
+function toggleChip(el) { el.classList.toggle('active'); }
+function togglePreset(el) { el.classList.toggle('active'); }
+function getSelectedFormats() { return [...document.querySelectorAll('#format-chips .chip.active')].map(c => c.dataset.format); }
+function getSelectedPresets() { return [...document.querySelectorAll('.preset-btn.active')].map(p => p.dataset.preset); }
 
-function togglePreset(el) {
-  el.classList.toggle('active');
-}
-
-function getSelectedFormats() {
-  return [...document.querySelectorAll('#format-chips .chip.active')].map(c => c.dataset.format);
-}
-
-function getSelectedPresets() {
-  return [...document.querySelectorAll('.pill.active')].map(p => p.dataset.preset);
-}
-
-/* ============================================================
-   RUN BENCHMARK
-   ============================================================ */
 async function runAll() {
-  await startRun({
-    formats: [],
-    presets: ['HIGH', 'MEDIUM', 'LOW'],
-    images_per_format: 3,
-  });
+  await startRun({ formats: [], presets: ['HIGH','MEDIUM','LOW'], images_per_format: 3 });
 }
 
 async function runConfigured() {
+  document.getElementById('config-drop').classList.remove('open');
   await startRun({
     formats: getSelectedFormats(),
     presets: getSelectedPresets(),
-    images_per_format: parseInt(document.getElementById('images-per-format').value),
+    images_per_format: parseInt(document.getElementById('images-per-format').value)
   });
 }
 
 async function startRun(config) {
   if (isRunning) return;
-  isRunning = true;
-
-  document.getElementById('btn-run-all').disabled = true;
-  document.getElementById('welcome-state').style.display = 'none';
-  document.getElementById('results-area').style.display = 'block';
-
-  const progressSection = document.getElementById('progress-section');
-  progressSection.classList.add('visible');
-  setProgress(0, 'Starting benchmark...');
-
-  currentResults = [];
-  document.getElementById('health-grid').innerHTML = '';
-  document.getElementById('preset-chart').innerHTML = '';
-  document.getElementById('estimation-table').querySelector('tbody').innerHTML = '';
-  document.getElementById('outliers-table').querySelector('tbody').innerHTML = '';
-  document.getElementById('run-banner').innerHTML = '';
+  isRunning = true; runMeta = null; healthStatus = {}; currentResults = [];
+  progressDone = 0; progressTotal = 0;
+  document.getElementById('btn-run').disabled = true;
+  showProgress(0);
+  renderAllTabs();
 
   try {
     const resp = await fetch('/api/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
     });
     const run = await resp.json();
-
     if (!resp.ok) {
-      setProgress(0, `Error: ${run.detail || 'Failed to start'}`);
-      isRunning = false;
-      document.getElementById('btn-run-all').disabled = false;
+      hideProgress(); isRunning = false;
+      document.getElementById('btn-run').disabled = false;
       return;
     }
+    progressTotal = run.total_tasks;
 
-    setupPendingCards(run.formats);
-
-    const evtSource = new EventSource(`/api/run/${run.run_id}/stream`);
-
-    evtSource.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-
+    const es = new EventSource(`/api/run/${run.run_id}/stream`);
+    es.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
       if (msg.type === 'start') {
-        setProgress(0, `Running 0/${msg.total} cases...`);
-      }
-      else if (msg.type === 'result') {
+        progressTotal = msg.total;
+        showProgress(0);
+      } else if (msg.type === 'result') {
         currentResults.push(msg.result);
-        setProgress(msg.progress, `Running ${msg.done}/${msg.total} cases...`);
-        updateHealthCard(msg.result.format);
-        renderPresetChart();
-        renderEstimationTable();
-        renderOutliersTable();
-      }
-      else if (msg.type === 'complete') {
-        setProgress(100, `Completed in ${msg.duration_s}s`);
-        setTimeout(() => progressSection.classList.remove('visible'), 2000);
-
-        for (const [fmt, status] of Object.entries(msg.health)) {
-          const card = document.querySelector(`.health-card[data-format="${fmt}"]`);
-          if (card) {
-            card.className = `health-card ${status} filling`;
-          }
-        }
-
-        renderRunBanner(msg);
-        evtSource.close();
+        progressDone = msg.done;
+        showProgress(msg.progress);
+        renderAllTabs();
+      } else if (msg.type === 'complete') {
+        healthStatus = msg.health || {};
+        runMeta = {
+          duration_s: msg.duration_s,
+          health: msg.health,
+          total: currentResults.length,
+          errors: currentResults.filter(r => r.opt_error).length
+        };
         isRunning = false;
-        document.getElementById('btn-run-all').disabled = false;
+        document.getElementById('btn-run').disabled = false;
+        showProgress(100);
+        setTimeout(hideProgress, 1500);
+        renderAllTabs();
         loadHistory();
+        es.close();
       }
     };
-
-    evtSource.onerror = () => {
-      evtSource.close();
-      isRunning = false;
-      document.getElementById('btn-run-all').disabled = false;
-      setProgress(0, 'Connection lost');
+    es.onerror = () => {
+      es.close(); isRunning = false;
+      document.getElementById('btn-run').disabled = false;
+      hideProgress();
     };
-  } catch (e) {
-    setProgress(0, `Error: ${e.message}`);
+  } catch(e) {
     isRunning = false;
-    document.getElementById('btn-run-all').disabled = false;
+    document.getElementById('btn-run').disabled = false;
+    hideProgress();
   }
 }
 
-function setProgress(pct, text) {
-  document.getElementById('progress-bar').style.width = pct + '%';
-  document.getElementById('progress-text').textContent = text;
+function showProgress(pct) {
+  document.getElementById('progress-track').classList.add('visible');
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+function hideProgress() {
+  document.getElementById('progress-track').classList.remove('visible');
+}
+function renderAllTabs() {
+  renderOverview();
+  renderEstimation();
+  renderMethods();
+  renderSpeed();
 }
 
-/* ============================================================
-   HEALTH GRID
-   ============================================================ */
-function setupPendingCards(formats) {
-  const grid = document.getElementById('health-grid');
-  grid.innerHTML = formats.map(fmt =>
-    `<div class="health-card pending" data-format="${fmt}">
-       <div class="health-card-fmt">${fmt}</div>
-       <div class="micro-bars">
-         <div class="micro-bar high" style="height:2px"></div>
-         <div class="micro-bar med" style="height:2px"></div>
-         <div class="micro-bar low" style="height:2px"></div>
-       </div>
-       <div class="health-card-detail">&mdash;</div>
-     </div>`
-  ).join('');
+/* ── Helpers ───────────────────────────────── */
+function groupByFormat(r) {
+  const m = {};
+  for (const x of r) { m[x.format] = m[x.format] || []; m[x.format].push(x); }
+  return m;
 }
 
-function updateHealthCard(fmt) {
-  const card = document.querySelector(`.health-card[data-format="${fmt}"]`);
-  if (!card) return;
+function errCls(p) { return p <= 5 ? 'good' : p <= 15 ? 'ok' : 'bad'; }
+function errColor(p) { return p <= 5 ? 'c-pass' : p <= 15 ? 'c-warn' : 'c-fail'; }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function trunc(s, n) { return s.length > n ? s.slice(0, n-1) + '\u2026' : s; }
 
-  card.classList.remove('pending');
-
-  const fmtResults = currentResults.filter(r => r.format === fmt);
-  const byPreset = {};
-  for (const r of fmtResults) {
-    if (!r.opt_error) {
-      byPreset[r.preset] = byPreset[r.preset] || [];
-      byPreset[r.preset].push(r.reduction_pct);
-    }
-  }
-
-  const avgByPreset = {};
-  for (const [p, vals] of Object.entries(byPreset)) {
-    avgByPreset[p] = vals.reduce((a, b) => a + b, 0) / vals.length;
-  }
-
-  const maxVal = Math.max(...Object.values(avgByPreset), 1);
-  const bars = card.querySelectorAll('.micro-bar');
-
-  const presetOrder = ['HIGH', 'MEDIUM', 'LOW'];
-  presetOrder.forEach((p, i) => {
-    if (bars[i] && avgByPreset[p] !== undefined) {
-      const h = Math.max(3, (avgByPreset[p] / Math.max(maxVal, 1)) * 32);
-      bars[i].style.height = h + 'px';
-    }
-  });
-
-  const detail = presetOrder
-    .filter(p => avgByPreset[p] !== undefined)
-    .map(p => `${p[0]}:${avgByPreset[p].toFixed(0)}%`)
-    .join('  ');
-  card.querySelector('.health-card-detail').textContent = detail || '\u2014';
+function diffPill(a) {
+  const h = a.HIGH, m = a.MEDIUM, l = a.LOW;
+  if (h == null || m == null || l == null) return '<span class="dpill neutral">\u2014</span>';
+  if (h > m && m > l) return (h-l) > 5 ? '<span class="dpill pass">\u2713 yes</span>' : '<span class="dpill warn">narrow</span>';
+  return '<span class="dpill fail">\u2717 no</span>';
+}
+function estPill(e) {
+  return e < 10 ? '<span class="dpill pass">accurate</span>' : e < 15 ? '<span class="dpill warn">ok</span>' : '<span class="dpill fail">poor</span>';
 }
 
-/* ============================================================
-   PRESET COMPARISON CHART
-   ============================================================ */
-function renderPresetChart() {
-  const container = document.getElementById('preset-chart');
-  const byFmt = groupByFormat(currentResults);
-  const maxReduction = Math.max(
-    ...currentResults.filter(r => !r.opt_error).map(r => r.reduction_pct),
-    1
-  );
-
-  let html = '';
-  for (const [fmt, results] of Object.entries(byFmt).sort()) {
-    const byPreset = {};
-    for (const r of results) {
-      if (!r.opt_error) {
-        byPreset[r.preset] = byPreset[r.preset] || [];
-        byPreset[r.preset].push(r);
-      }
-    }
-
-    html += `<div class="preset-row">
-      <div class="preset-row-header">${fmt.toUpperCase()}</div>
-      <div class="preset-bars">`;
-
-    for (const preset of ['HIGH', 'MEDIUM', 'LOW']) {
-      const presetResults = byPreset[preset] || [];
-      const avgReduction = presetResults.length
-        ? presetResults.reduce((s, r) => s + r.reduction_pct, 0) / presetResults.length
-        : 0;
-      const avgEst = presetResults.length
-        ? presetResults.reduce((s, r) => s + r.est_reduction_pct, 0) / presetResults.length
-        : 0;
-      const barPct = (avgReduction / Math.max(maxReduction, 1)) * 82;
-      const estPct = (avgEst / Math.max(maxReduction, 1)) * 82;
-      const cls = preset === 'HIGH' ? 'high' : preset === 'MEDIUM' ? 'med' : 'low';
-      const errVal = Math.abs(avgEst - avgReduction);
-      const valCls = errClass(errVal);
-
-      html += `<div class="bar-row">
-        <div class="bar-label">${preset}</div>
-        <div class="bar-track">
-          <div class="bar-fill ${cls}" style="width:${barPct}%"></div>
-          ${avgEst > 0 ? `<div class="bar-est-line" style="left:${estPct}%" title="Est: ${avgEst.toFixed(1)}%"></div>` : ''}
-        </div>
-        <div class="bar-value">${avgReduction.toFixed(1)}%${avgEst > 0 ? ` <span class="${valCls}" style="font-size:10px">\u0394${errVal.toFixed(1)}</span>` : ''}</div>
-      </div>`;
-    }
-
-    html += `</div></div>`;
-  }
-
-  container.innerHTML = html || '<div style="color:var(--text-muted);font-size:13px;padding:20px">Waiting for results...</div>';
-}
-
-/* ============================================================
-   ESTIMATION TABLE
-   ============================================================ */
-function renderEstimationTable() {
-  const tbody = document.querySelector('#estimation-table tbody');
-  const byFmt = groupByFormat(currentResults);
-  let html = '';
-
-  for (const [fmt, results] of Object.entries(byFmt).sort()) {
-    const valid = results.filter(r => !r.opt_error && !r.est_error);
-    if (!valid.length) continue;
-
-    const avgErr = valid.reduce((s, r) => s + r.est_error_pct, 0) / valid.length;
-    const maxErr = Math.max(...valid.map(r => r.est_error_pct));
-    const avgEst = valid.reduce((s, r) => s + r.est_reduction_pct, 0) / valid.length;
-    const avgAct = valid.reduce((s, r) => s + r.reduction_pct, 0) / valid.length;
-
-    html += `<tr>
-      <td>${fmt.toUpperCase()}</td>
-      <td>${valid.length}</td>
-      <td class="${errClass(avgErr)}">${avgErr.toFixed(1)}%</td>
-      <td class="${errClass(maxErr)}">${maxErr.toFixed(1)}%</td>
-      <td>${avgEst.toFixed(1)}%</td>
-      <td>${avgAct.toFixed(1)}%</td>
-    </tr>`;
-  }
-
-  tbody.innerHTML = html;
-}
-
-/* ============================================================
-   OUTLIERS TABLE
-   ============================================================ */
-function renderOutliersTable() {
-  const tbody = document.querySelector('#outliers-table tbody');
-  const valid = currentResults.filter(r => !r.opt_error && !r.est_error);
-  const sorted = [...valid].sort((a, b) => b.est_error_pct - a.est_error_pct).slice(0, 5);
-
-  tbody.innerHTML = sorted.map(r =>
-    `<tr>
-       <td title="${esc(r.name)}">${esc(truncate(r.name, 24))}</td>
-       <td>${r.preset}</td>
-       <td>${r.est_reduction_pct.toFixed(1)}%</td>
-       <td>${r.reduction_pct.toFixed(1)}%</td>
-       <td class="${errClass(r.est_error_pct)}">${r.est_error_pct.toFixed(1)}%</td>
-     </tr>`
-  ).join('');
-}
-
-/* ============================================================
-   RUN BANNER
-   ============================================================ */
-function renderRunBanner(completeMsg) {
-  const banner = document.getElementById('run-banner');
-  const total = currentResults.length;
-  const errors = currentResults.filter(r => r.opt_error).length;
-  const valid = currentResults.filter(r => !r.opt_error);
-  const avgReduction = valid.length
-    ? (valid.reduce((s, r) => s + r.reduction_pct, 0) / valid.length).toFixed(1)
-    : '0';
-  const health = completeMsg.health || {};
-  const passCount = Object.values(health).filter(h => h === 'pass').length;
-  const totalFmts = Object.keys(health).length;
-
-  banner.innerHTML = `
-    <div class="run-banner-stat">
-      <div class="run-banner-label">Duration</div>
-      <div class="run-banner-value">${completeMsg.duration_s}s</div>
-    </div>
-    <div class="run-banner-sep"></div>
-    <div class="run-banner-stat">
-      <div class="run-banner-label">Cases</div>
-      <div class="run-banner-value">${total}</div>
-    </div>
-    <div class="run-banner-sep"></div>
-    <div class="run-banner-stat">
-      <div class="run-banner-label">Errors</div>
-      <div class="run-banner-value" style="color:${errors ? 'var(--red)' : 'var(--green)'}">${errors}</div>
-    </div>
-    <div class="run-banner-sep"></div>
-    <div class="run-banner-stat">
-      <div class="run-banner-label">Avg Reduction</div>
-      <div class="run-banner-value">${avgReduction}%</div>
-    </div>
-    <div class="run-banner-sep"></div>
-    <div class="run-banner-stat">
-      <div class="run-banner-label">Health</div>
-      <div class="run-banner-value" style="color:${passCount === totalFmts ? 'var(--green)' : 'var(--amber)'}">${passCount}/${totalFmts}</div>
-    </div>
-  `;
-}
-
-/* ============================================================
-   HISTORY
-   ============================================================ */
-async function loadHistory() {
-  try {
-    const resp = await fetch('/api/runs');
-    const data = await resp.json();
-    renderHistory(data.runs);
-  } catch (e) {
-    console.error('Failed to load history:', e);
-  }
-}
-
-function renderHistory(runs) {
-  const list = document.getElementById('history-list');
-  if (!runs.length) {
-    list.innerHTML = '<li class="history-empty">No runs yet</li>';
+/* ── OVERVIEW ──────────────────────────────── */
+function renderOverview() {
+  const el = document.getElementById('overview-out');
+  if (!currentResults.length && !isRunning) {
+    el.innerHTML = '<div class="welcome"><div class="welcome-title">No benchmark data yet</div><div class="welcome-desc">Click "Run benchmark" to test how your presets perform across formats.</div></div>';
     return;
   }
 
-  list.innerHTML = runs.map(run => {
+  const byFmt = groupByFormat(currentResults);
+  const fmts = Object.entries(byFmt).sort();
+  let h = '';
+
+  // Summary strip
+  if (isRunning) {
+    h += `<div class="summary-strip">
+      <div class="summary-card running">
+        <div class="sc-label">Progress</div>
+        <div class="sc-value">${progressDone}<span style="font-size:16px;color:var(--muted)">/${progressTotal}</span></div>
+      </div>
+    </div>`;
+  } else if (runMeta) {
+    const hObj = runMeta.health || {};
+    const total = Object.keys(hObj).length;
+    const passing = Object.values(hObj).filter(v => v === 'pass').length;
+    const warnings = Object.values(hObj).filter(v => v === 'warn').length;
+    const failing = Object.values(hObj).filter(v => v === 'fail').length;
+
+    const allResults = currentResults.filter(r => !r.opt_error);
+    const avgReduction = allResults.length ? allResults.reduce((s,r) => s + r.reduction_pct, 0) / allResults.length : 0;
+    const validEst = currentResults.filter(r => !r.opt_error && !r.est_error);
+    const avgEstErr = validEst.length ? validEst.reduce((s,r) => s + r.est_error_pct, 0) / validEst.length : 0;
+
+    h += `<div class="summary-strip">
+      <div class="summary-card"><div class="sc-label">Formats passing</div><div class="sc-value ${passing===total?'good':failing>0?'bad':'warn'}">${passing}/${total}</div></div>
+      <div class="summary-card"><div class="sc-label">Avg reduction</div><div class="sc-value">${avgReduction.toFixed(1)}%</div></div>
+      <div class="summary-card"><div class="sc-label">Avg est. error</div><div class="sc-value ${avgEstErr<10?'good':avgEstErr<15?'warn':'bad'}">${avgEstErr.toFixed(1)}%</div></div>
+      <div class="summary-card"><div class="sc-label">Duration</div><div class="sc-value">${runMeta.duration_s}s</div></div>
+    </div>`;
+  }
+
+  // Build card data for each format
+  const cardData = fmts.map(([fmt, results]) => {
+    const valid = results.filter(r => !r.opt_error);
+    const avg = valid.length ? valid.reduce((s,r) => s + r.reduction_pct, 0) / valid.length : 0;
+    const st = healthStatus[fmt] || '';
+
+    const bp = {};
+    for (const r of results) {
+      if (!r.opt_error) { bp[r.preset] = bp[r.preset] || []; bp[r.preset].push(r.reduction_pct); }
+    }
+    const presetAvg = {};
+    for (const [p, v] of Object.entries(bp)) { presetAvg[p] = v.reduce((x,y) => x+y, 0) / v.length; }
+
+    const validEst = results.filter(r => !r.opt_error && !r.est_error);
+    const estErr = validEst.length ? validEst.reduce((s,r) => s + r.est_error_pct, 0) / validEst.length : null;
+
+    const diffOk = presetAvg.HIGH != null && presetAvg.MEDIUM != null && presetAvg.LOW != null
+      && presetAvg.HIGH > presetAvg.MEDIUM && presetAvg.MEDIUM > presetAvg.LOW;
+
+    return { fmt, results, valid, avg, st, presetAvg, estErr, diffOk };
+  });
+
+  // Split into passing and non-passing
+  const passing = cardData.filter(c => c.st === 'pass');
+  const attention = cardData.filter(c => c.st !== 'pass');
+
+  function renderCardGroup(cards) {
+    let out = '<div class="fmt-grid">';
+    for (const c of cards) {
+      // Scale bars within this card's own max for clear differentiation
+      const localMax = Math.max(...Object.values(c.presetAvg), 1);
+
+      out += `<div class="fmt-card health-${c.st}">
+        <div class="fc-header">
+          <span class="fc-name">${c.fmt}</span>
+          ${c.st ? `<span class="fc-badge ${c.st}">${c.st}</span>` : ''}
+        </div>
+        <div class="fc-big-num">${c.avg.toFixed(1)}%</div>
+        <div class="fc-big-label">avg reduction across ${c.valid.length} cases</div>
+        <div class="fc-presets">`;
+
+      for (const preset of ['HIGH', 'MEDIUM', 'LOW']) {
+        const pAvg = c.presetAvg[preset];
+        if (pAvg == null) continue;
+        const barW = Math.max((pAvg / localMax) * 100, 3);
+        const tierCls = preset === 'HIGH' ? 'high' : preset === 'MEDIUM' ? 'medium' : 'low';
+        out += `<div class="fc-preset-row">
+          <span class="fc-preset-label">${preset}</span>
+          <span class="fc-preset-bar-wrap"><span class="fc-preset-bar ${tierCls}" style="width:${barW}%"></span></span>
+          <span class="fc-preset-pct">${pAvg.toFixed(1)}%</span>
+        </div>`;
+      }
+
+      out += `</div>
+        <div class="fc-footer">
+          <span>Est. error: <span class="fc-foot-val">${c.estErr != null ? c.estErr.toFixed(1) + '%' : '\u2014'}</span></span>
+          <span>Diff: ${c.diffOk ? '<span class="fc-foot-val" style="color:var(--green)">\u2713</span>' : '<span class="fc-foot-val" style="color:var(--red)">\u2717</span>'}</span>
+        </div>
+      </div>`;
+    }
+    out += '</div>';
+    return out;
+  }
+
+  // Render passing formats
+  if (passing.length) {
+    h += `<div class="sec-title" style="color:var(--green)">Passing (${passing.length})</div>`;
+    h += renderCardGroup(passing);
+  }
+
+  // Render attention-needed formats
+  if (attention.length) {
+    h += `<div class="sec-title" style="margin-top:24px;color:var(--amber)">Needs attention (${attention.length})</div>`;
+    h += renderCardGroup(attention);
+  }
+
+  el.innerHTML = h;
+}
+
+/* ── ESTIMATION ────────────────────────────── */
+function renderEstimation() {
+  const el = document.getElementById('estimation-out');
+  if (!currentResults.length) {
+    el.innerHTML = '<div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div>';
+    return;
+  }
+
+  const byFmt = groupByFormat(currentResults);
+  let h = '';
+
+  // Per-format panels with column headers
+  h += '<div class="grid-cols">';
+  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+    h += `<div class="panel"><div class="panel-title">${fmt}</div>`;
+
+    // Column headers
+    h += `<div class="e-col-header">
+      <span class="e-name">Image</span>
+      <span class="e-val-col">Estimated</span>
+      <span class="e-val-col">Actual</span>
+      <span class="e-val-col">Delta</span>
+    </div>`;
+
+    const bp = {};
+    for (const r of results) { bp[r.preset] = bp[r.preset] || []; bp[r.preset].push(r); }
+
+    for (const preset of ['HIGH', 'MEDIUM', 'LOW']) {
+      if (!bp[preset]) continue;
+      h += `<div class="eg-head">${preset}</div>`;
+      for (const r of bp[preset]) {
+        if (r.opt_error) {
+          h += `<div class="e-row"><span class="e-name">${esc(trunc(r.name, 28))}</span><span class="e-val-col error-text" style="width:240px">error</span></div>`;
+          continue;
+        }
+        const d = r.est_reduction_pct - r.reduction_pct;
+        const sign = d >= 0 ? '+' : '';
+        h += `<div class="e-row">
+          <span class="e-name">${esc(trunc(r.name, 28))}</span>
+          <span class="e-val-col est-col">${r.est_reduction_pct.toFixed(1)}%</span>
+          <span class="e-val-col act-col">${r.reduction_pct.toFixed(1)}%</span>
+          <span class="e-val-col delta-col ${errCls(r.est_error_pct)}">${sign}${d.toFixed(1)}%</span>
+        </div>`;
+      }
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // Worst outliers
+  const valid = currentResults.filter(r => !r.opt_error && !r.est_error);
+  if (valid.length) {
+    const sorted = [...valid].sort((a, b) => b.est_error_pct - a.est_error_pct).slice(0, 8);
+    h += '<div class="panel" style="margin-top:16px"><div class="panel-title">Worst outliers</div>';
+    h += '<table class="dt"><thead><tr><th>Image</th><th>Format</th><th>Preset</th><th>Est.</th><th>Actual</th><th>Error</th></tr></thead><tbody>';
+    for (const r of sorted) {
+      h += `<tr>
+        <td>${esc(trunc(r.name, 20))}</td>
+        <td>${r.format}</td>
+        <td>${r.preset}</td>
+        <td>${r.est_reduction_pct.toFixed(1)}%</td>
+        <td>${r.reduction_pct.toFixed(1)}%</td>
+        <td class="${errColor(r.est_error_pct)}">${r.est_error_pct.toFixed(1)}%</td>
+      </tr>`;
+    }
+    h += '</tbody></table></div>';
+  }
+
+  el.innerHTML = h;
+}
+
+/* ── METHODS ───────────────────────────────── */
+function renderMethods() {
+  const el = document.getElementById('methods-out');
+  if (!currentResults.length) {
+    el.innerHTML = '<div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div>';
+    return;
+  }
+
+  const byFmt = groupByFormat(currentResults);
+  let h = '<div class="grid-cols">';
+  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+    h += `<div class="panel"><div class="panel-title">${fmt}</div>`;
+    const bp = {};
+    for (const r of results) { bp[r.preset] = bp[r.preset] || []; bp[r.preset].push(r); }
+
+    for (const preset of ['HIGH', 'MEDIUM', 'LOW']) {
+      if (!bp[preset]) continue;
+      const bm = {};
+      for (const r of bp[preset]) {
+        const m = r.opt_error ? 'error' : (r.method || 'none');
+        bm[m] = bm[m] || [];
+        bm[m].push(r);
+      }
+      for (const [method, mrs] of Object.entries(bm)) {
+        const v = mrs.filter(r => !r.opt_error);
+        const avg = v.length ? v.reduce((s,r) => s + r.reduction_pct, 0) / v.length : 0;
+        h += `<div class="m-row">
+          <span class="m-preset">${preset.slice(0,3)}</span>
+          <span class="m-method">${esc(method)}</span>
+          <span class="m-stat">${mrs.length}x</span>
+          <span class="m-stat">${v.length ? avg.toFixed(1) + '%' : ''}</span>
+        </div>`;
+      }
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+/* ── SPEED ─────────────────────────────────── */
+function renderSpeed() {
+  const el = document.getElementById('speed-out');
+  if (!currentResults.length) {
+    el.innerHTML = '<div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div>';
+    return;
+  }
+
+  const byFmt = groupByFormat(currentResults);
+  let h = '<div class="grid-2">';
+
+  // Timing table
+  h += '<div class="panel"><div class="panel-title">Timing by format</div>';
+  h += '<table class="dt"><thead><tr><th></th><th>Opt avg</th><th>Est avg</th><th>Speedup</th></tr></thead><tbody>';
+  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+    const v = results.filter(r => !r.opt_error);
+    if (!v.length) continue;
+    const ao = v.reduce((s,r) => s + r.opt_time_ms, 0) / v.length;
+    const ae = v.reduce((s,r) => s + r.est_time_ms, 0) / v.length;
+    const sp = ae > 0 ? ao / ae : 0;
+    h += `<tr><td>${fmt.toUpperCase()}</td><td>${ao.toFixed(0)}ms</td><td>${ae.toFixed(0)}ms</td><td>${sp > 0 ? sp.toFixed(1) + '\u00D7' : '\u2014'}</td></tr>`;
+  }
+  h += '</tbody></table></div>';
+
+  // Size tier table
+  h += '<div class="panel"><div class="panel-title">By size tier</div>';
+  h += '<table class="dt"><thead><tr><th></th><th></th><th>Small</th><th>Medium</th><th>Large</th></tr></thead><tbody>';
+  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+    const v = results.filter(r => !r.opt_error);
+    if (!v.length) continue;
+    const t = {};
+    for (const r of v) {
+      const c = r.category || 'medium';
+      t[c] = t[c] || { opt: [], est: [] };
+      t[c].opt.push(r.opt_time_ms);
+      t[c].est.push(r.est_time_ms);
+    }
+    const avg = (a) => a.length ? (a.reduce((x,y) => x + y, 0) / a.length).toFixed(0) + 'ms' : '\u2014';
+    h += `<tr><td>${fmt.toUpperCase()}</td><td style="color:var(--muted);font-family:var(--sans);font-size:12px">opt</td><td>${avg(t.small?.opt||[])}</td><td>${avg(t.medium?.opt||[])}</td><td>${avg(t.large?.opt||[])}</td></tr>`;
+    h += `<tr><td></td><td style="color:var(--muted);font-family:var(--sans);font-size:12px">est</td><td>${avg(t.small?.est||[])}</td><td>${avg(t.medium?.est||[])}</td><td>${avg(t.large?.est||[])}</td></tr>`;
+  }
+  h += '</tbody></table></div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+/* ── HISTORY ───────────────────────────────── */
+async function loadHistory() {
+  try {
+    const r = await fetch('/api/runs');
+    const d = await r.json();
+    renderHistory(d.runs);
+  } catch(e) { console.error('History load failed:', e); }
+}
+
+function renderHistory(runs) {
+  const el = document.getElementById('history-list');
+  if (!runs.length) { el.innerHTML = '<div class="hist-empty">No runs yet.</div>'; return; }
+  el.innerHTML = runs.map(run => {
     const date = run.timestamp ? new Date(run.timestamp) : null;
-    const dateStr = date ? date.toLocaleString() : 'Unknown';
+    const ds = date
+      ? date.toLocaleDateString(undefined, { month:'short', day:'numeric' }) + ' ' +
+        date.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' })
+      : '?';
     const health = run.health || {};
     const fmts = run.formats_tested || Object.keys(health);
-    const dots = fmts.map(f =>
-      `<div class="health-dot ${health[f] || 'warn'}" title="${f.toUpperCase()}: ${health[f] || '?'}"></div>`
-    ).join('');
-
-    return `<li class="history-item" data-run-id="${run.id}" onclick="loadRun('${run.id}')">
-      <div class="history-date">${dateStr}</div>
-      <div class="history-meta">${run.git_commit || '?'} &middot; ${run.duration_s || '?'}s &middot; ${run.result_count || 0} cases</div>
-      <div class="health-dots">${dots}</div>
-      <div class="history-actions">
-        <button class="btn-delete" onclick="event.stopPropagation(); deleteRun('${run.id}')">delete</button>
-      </div>
-    </li>`;
+    const dots = fmts.map(f => `<div class="hist-dot ${health[f]||'warn'}" title="${f}: ${health[f]||'?'}"></div>`).join('');
+    return `<div class="hist-item" data-run-id="${run.id}" onclick="loadRun('${run.id}')">
+      <div class="hist-date">${ds}</div>
+      <div class="hist-meta">${run.git_commit||'?'} \u00B7 ${run.duration_s||'?'}s \u00B7 ${run.result_count||0} cases</div>
+      <div class="hist-dots">${dots}</div>
+      <div><button class="hist-delete" onclick="event.stopPropagation();deleteRun('${run.id}')">delete</button></div>
+    </div>`;
   }).join('');
 }
 
 async function loadRun(runId) {
   if (isRunning) return;
-
-  document.querySelectorAll('.history-item').forEach(el => {
+  document.querySelectorAll('.hist-item').forEach(el => {
     el.classList.toggle('active', el.dataset.runId === runId);
   });
-
   try {
-    const resp = await fetch(`/api/runs/${runId}`);
-    const data = await resp.json();
-
-    currentResults = data.results || [];
-    document.getElementById('welcome-state').style.display = 'none';
-    document.getElementById('results-area').style.display = 'block';
-
-    const formats = data.formats_tested || [...new Set(currentResults.map(r => r.format))];
-    setupPendingCards(formats);
-
-    for (const fmt of formats) updateHealthCard(fmt);
-
-    const health = data.health || {};
-    for (const [fmt, status] of Object.entries(health)) {
-      const card = document.querySelector(`.health-card[data-format="${fmt}"]`);
-      if (card) card.className = `health-card ${status}`;
-    }
-
-    renderPresetChart();
-    renderEstimationTable();
-    renderOutliersTable();
-    renderRunBanner({
-      duration_s: data.duration_s,
-      health: data.health,
-    });
-  } catch (e) {
-    console.error('Failed to load run:', e);
-  }
+    const r = await fetch(`/api/runs/${runId}`);
+    const d = await r.json();
+    currentResults = d.results || [];
+    healthStatus = d.health || {};
+    runMeta = {
+      git_commit: d.git_commit,
+      duration_s: d.duration_s,
+      health: d.health,
+      total: currentResults.length,
+      errors: currentResults.filter(r => r.opt_error).length
+    };
+    renderAllTabs();
+  } catch(e) { console.error('Run load failed:', e); }
 }
 
 async function deleteRun(runId) {
-  if (!confirm('Delete this benchmark run?')) return;
+  if (!confirm('Delete this run?')) return;
   try {
     await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
     await loadHistory();
-  } catch (e) {
-    console.error('Failed to delete run:', e);
-  }
+  } catch(e) { console.error(e); }
 }
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
-function groupByFormat(results) {
-  const byFmt = {};
-  for (const r of results) {
-    byFmt[r.format] = byFmt[r.format] || [];
-    byFmt[r.format].push(r);
-  }
-  return byFmt;
-}
-
-function errClass(pct) {
-  if (pct <= 5) return 'val-pass';
-  if (pct <= 15) return 'val-warn';
-  return 'val-fail';
-}
-
-function esc(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function truncate(str, max) {
-  return str.length > max ? str.slice(0, max - 1) + '\u2026' : str;
-}
-
-/* ============================================================
-   BOOT
-   ============================================================ */
 init();
+
+// Close config dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const d = document.getElementById('config-drop');
+  const b = document.getElementById('btn-config');
+  if (d.classList.contains('open') && !d.contains(e.target) && e.target !== b) {
+    d.classList.remove('open');
+  }
+});
 </script>
 </body>
 </html>
