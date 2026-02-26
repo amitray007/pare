@@ -1,14 +1,20 @@
-"""Convert the Unsplash JPEG corpus into multiple formats.
+"""Convert the Unsplash corpus into additional formats.
 
 Usage:
     python scripts/convert_corpus_formats.py
 
-Converts each JPEG in tests/corpus/ into PNG, WebP, BMP, TIFF, GIF,
-and optionally AVIF, HEIC, and JXL (if libraries are available).
-Skips SVG/SVGZ/APNG as they don't apply to photographic content.
+Converts source images in tests/corpus/ into formats not available
+from the CDN.  The download script already provides:
+  - JPEG (fm=jpg)  — from Unsplash CDN
+  - AVIF (fm=avif) — from Unsplash CDN
+  - PNG  (fm=png)  — from Unsplash CDN
 
-The original JPEGs are kept. New files are placed alongside with
-the same name but different extension.
+This script converts those sources into:
+  - WebP, BMP, TIFF, GIF  — from JPEG source
+  - HEIC                    — from PNG source (lossless, avoids JPEG artifacts)
+  - JXL                     — from PNG source (lossless, avoids JPEG artifacts)
+
+Skips SVG/SVGZ/APNG as they don't apply to photographic content.
 """
 
 import sys
@@ -23,19 +29,18 @@ from PIL import Image
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "tests" / "corpus"
 
-# Formats to convert to, with Pillow save kwargs
-# Each entry: (extension, pillow_format, save_kwargs, requires_module)
-CONVERSIONS = [
-    ("png", "PNG", {}, None),
-    ("webp", "WebP", {"quality": 90}, None),
-    ("bmp", "BMP", {}, None),
-    ("tiff", "TIFF", {}, None),
-    ("gif", "GIF", {}, None),
+# Formats converted from JPEG source (lossy-to-lossy or lossy-to-lossless is fine)
+# Each entry: (extension, pillow_format, save_kwargs)
+JPEG_CONVERSIONS = [
+    ("webp", "WebP", {"quality": 90}),
+    ("bmp", "BMP", {}),
+    ("tiff", "TIFF", {}),
+    ("gif", "GIF", {}),
 ]
 
-# Optional formats that need extra libraries
-OPTIONAL_CONVERSIONS = [
-    ("avif", "AVIF", {"quality": 80}, "pillow_avif"),
+# Formats converted from PNG source (lossless source avoids double-compression artifacts)
+# Each entry: (extension, pillow_format, save_kwargs, requires_module)
+PNG_CONVERSIONS = [
     ("heic", "HEIF", {"quality": 80}, "pillow_heif"),
     ("jxl", "JXL", {"quality": 80}, "jxlpy"),
 ]
@@ -44,11 +49,9 @@ OPTIONAL_CONVERSIONS = [
 def check_optional_formats():
     """Check which optional format libraries are available."""
     available = []
-    for ext, fmt, kwargs, module in OPTIONAL_CONVERSIONS:
+    for ext, fmt, kwargs, module in PNG_CONVERSIONS:
         try:
-            if module == "pillow_avif":
-                import pillow_avif  # noqa: F401
-            elif module == "pillow_heif":
+            if module == "pillow_heif":
                 import pillow_heif
 
                 pillow_heif.register_heif_opener()
@@ -65,7 +68,7 @@ def check_optional_formats():
 
 
 def convert_image(src: Path, ext: str, fmt: str, save_kwargs: dict) -> Path | None:
-    """Convert a JPEG to another format. Returns output path or None on failure."""
+    """Convert an image to another format. Returns output path or None on failure."""
     dest = src.with_suffix(f".{ext}")
     if dest.exists():
         return dest
@@ -79,6 +82,10 @@ def convert_image(src: Path, ext: str, fmt: str, save_kwargs: dict) -> Path | No
             img = img.convert("RGB").quantize(colors=256)
         elif fmt == "BMP":
             img = img.convert("RGB")
+        elif fmt in ("HEIF", "JXL", "WebP"):
+            # Ensure RGB mode for lossy formats
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert("RGB")
 
         img.save(str(dest), format=fmt, **save_kwargs)
         return dest
@@ -90,23 +97,31 @@ def convert_image(src: Path, ext: str, fmt: str, save_kwargs: dict) -> Path | No
 def main():
     print("Checking available format libraries...")
     optional = check_optional_formats()
-    all_conversions = CONVERSIONS + optional
-    print(f"\nWill convert to: {', '.join(ext.upper() for ext, *_ in all_conversions)}")
 
-    # Find all JPEGs in corpus
+    print(f"\nFrom JPEG: {', '.join(ext.upper() for ext, *_ in JPEG_CONVERSIONS)}")
+    if optional:
+        print(f"From PNG:  {', '.join(ext.upper() for ext, *_ in optional)}")
+
+    # Find all JPEGs in corpus (source for WebP/BMP/TIFF/GIF)
     jpegs = sorted(CORPUS_DIR.rglob("*.jpg"))
     if not jpegs:
         print(f"\nNo JPEGs found in {CORPUS_DIR}. Run download_unsplash_corpus.py first.")
         sys.exit(1)
 
-    print(f"\nFound {len(jpegs)} JPEG source files")
-    print(
-        f"Converting to {len(all_conversions)} formats = ~{len(jpegs) * len(all_conversions)} new files\n"
-    )
+    # Find all PNGs in corpus (source for HEIC/JXL — lossless avoids double compression)
+    pngs = sorted(CORPUS_DIR.rglob("*.png"))
 
-    stats = {ext: {"created": 0, "skipped": 0, "failed": 0} for ext, *_ in all_conversions}
+    print(f"\nFound {len(jpegs)} JPEG source files")
+    print(f"Found {len(pngs)} PNG source files")
+
+    total_formats = len(JPEG_CONVERSIONS) + len(optional)
+    print(f"Converting to {total_formats} formats\n")
+
+    all_exts = [ext for ext, *_ in JPEG_CONVERSIONS] + [ext for ext, *_ in optional]
+    stats = {ext: {"created": 0, "skipped": 0, "failed": 0} for ext in all_exts}
     current_category = None
 
+    # Convert from JPEG sources (WebP, BMP, TIFF, GIF)
     for jpeg in jpegs:
         category = jpeg.parent.name
         if category != current_category:
@@ -116,7 +131,7 @@ def main():
             print(f"{'='*50}")
 
         print(f"  {jpeg.stem}:")
-        for ext, fmt, kwargs, _ in all_conversions:
+        for ext, fmt, kwargs in JPEG_CONVERSIONS:
             dest = jpeg.with_suffix(f".{ext}")
             if dest.exists():
                 stats[ext]["skipped"] += 1
@@ -131,15 +146,52 @@ def main():
                 else:
                     stats[ext]["failed"] += 1
 
+    # Convert from PNG sources (HEIC, JXL — lossless source for best quality)
+    if optional and pngs:
+        current_category = None
+        print(f"\n\n{'='*60}")
+        print("  Converting from PNG source (lossless) -> HEIC, JXL")
+        print(f"{'='*60}")
+
+        for png in pngs:
+            category = png.parent.name
+            if category != current_category:
+                current_category = category
+                print(f"\n{'='*50}")
+                print(f"  {category}")
+                print(f"{'='*50}")
+
+            print(f"  {png.stem}:")
+            for ext, fmt, kwargs, _ in optional:
+                dest = png.with_suffix(f".{ext}")
+                if dest.exists():
+                    stats[ext]["skipped"] += 1
+                    size_kb = dest.stat().st_size / 1024
+                    print(f"    {ext:5s}: exists ({size_kb:.0f} KB)")
+                else:
+                    result = convert_image(png, ext, fmt, kwargs)
+                    if result:
+                        stats[ext]["created"] += 1
+                        size_kb = result.stat().st_size / 1024
+                        print(f"    {ext:5s}: created ({size_kb:.0f} KB)")
+                    else:
+                        stats[ext]["failed"] += 1
+    elif optional and not pngs:
+        print("\n  WARNING: No PNG files found. Run download script with --formats png first.")
+        print("  HEIC/JXL conversion skipped (needs lossless PNG source).")
+
     # Summary
     print(f"\n{'='*60}")
     print("Conversion Summary:")
     print(f"{'='*60}")
-    print(f"  {'Format':<8} {'Created':>8} {'Skipped':>8} {'Failed':>8}")
-    print(f"  {'-'*36}")
-    for ext, *_ in all_conversions:
+    print(f"  {'Format':<8} {'Source':<8} {'Created':>8} {'Skipped':>8} {'Failed':>8}")
+    print(f"  {'-'*44}")
+    for ext, *_ in JPEG_CONVERSIONS:
         s = stats[ext]
-        print(f"  {ext.upper():<8} {s['created']:>8} {s['skipped']:>8} {s['failed']:>8}")
+        print(f"  {ext.upper():<8} {'JPEG':<8} {s['created']:>8} {s['skipped']:>8} {s['failed']:>8}")
+    for ext, *_ in optional:
+        s = stats[ext]
+        print(f"  {ext.upper():<8} {'PNG':<8} {s['created']:>8} {s['skipped']:>8} {s['failed']:>8}")
 
     # Show total corpus size
     total_bytes = sum(

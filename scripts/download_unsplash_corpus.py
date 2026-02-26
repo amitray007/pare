@@ -4,8 +4,21 @@ Usage:
     python scripts/download_unsplash_corpus.py
 
 Requires UNSPLASH_ACCESS_KEY env var or pass --key.
-Downloads ~40-50 real-world images across categories and sizes
+Downloads real-world images across categories and sizes
 into tests/corpus/ for compression and estimation testing.
+
+Downloads each image in multiple formats via the Unsplash/Imgix CDN:
+  - JPEG (fm=jpg, q=90)  — primary lossy format
+  - AVIF (fm=avif, q=80) — modern lossy, CDN-native encoding
+  - PNG  (fm=png)         — lossless from original source
+
+This gives us CDN-native AVIF and PNG files encoded from the original
+source rather than re-transcoded from downloaded JPEGs.  HEIC is not
+supported by the CDN, so it is converted from the PNG source by the
+convert_corpus_formats.py script.
+
+Additionally downloads native AVIF test images from the link-u/avif-sample-images
+repository for diverse AVIF encoding profiles (8/10/12-bit, YUV420/422/444, alpha).
 """
 
 import argparse
@@ -52,6 +65,32 @@ SIZES = [
     ("large", 2400),
 ]
 
+# Formats to download from the Unsplash/Imgix CDN.
+# Each entry: (extension, CDN fm= param, extra URL params)
+CDN_FORMATS = [
+    ("jpg", "jpg", "q=90"),
+    ("avif", "avif", "q=80"),
+    ("png", "png", ""),
+]
+
+# Native AVIF test images from link-u/avif-sample-images (CC-BY-SA 4.0).
+# Curated selection covering diverse encoding profiles.
+_LINKU_BASE = "https://raw.githubusercontent.com/link-u/avif-sample-images/master"
+LINKU_AVIF_SAMPLES = [
+    # Hato (pigeon, 3082x2048) — large photo
+    ("hato_8bit_yuv420", f"{_LINKU_BASE}/hato.profile0.8bpc.yuv420.avif"),
+    ("hato_10bit_yuv422", f"{_LINKU_BASE}/hato.profile2.10bpc.yuv422.avif"),
+    ("hato_12bit_yuv422", f"{_LINKU_BASE}/hato.profile2.12bpc.yuv422.avif"),
+    # Fox parade (1204x800) — medium photo
+    ("fox_8bit_yuv420", f"{_LINKU_BASE}/fox.profile0.8bpc.yuv420.avif"),
+    ("fox_10bit_yuv444", f"{_LINKU_BASE}/fox.profile1.10bpc.yuv444.avif"),
+    ("fox_12bit_yuv422", f"{_LINKU_BASE}/fox.profile2.12bpc.yuv422.avif"),
+    # Kimono (722x1024) — small portrait
+    ("kimono_standard", f"{_LINKU_BASE}/kimono.avif"),
+    # Fox — 12-bit YUV420 (different chroma subsampling from yuv422/yuv444 above)
+    ("fox_12bit_yuv420", f"{_LINKU_BASE}/fox.profile2.12bpc.yuv420.avif"),
+]
+
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "tests" / "corpus"
 MANIFEST_FILE = CORPUS_DIR / "manifest.json"
 
@@ -68,9 +107,9 @@ def fetch_json(url: str, access_key: str) -> dict | list:
         return json.loads(resp.read())
 
 
-def download_file(url: str, dest: Path) -> bool:
+def download_file(url: str, dest: Path, force: bool = False) -> bool:
     """Download a file, return True on success."""
-    if dest.exists():
+    if dest.exists() and not force:
         return True
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -95,13 +134,49 @@ def search_photos(query: str, count: int, access_key: str, page: int = 1) -> lis
     return data.get("results", [])
 
 
-def build_download_url(photo: dict, width: int) -> str:
+def build_download_url(photo: dict, width: int, fmt: str = "jpg", extra: str = "q=90") -> str:
     """Build a sized download URL from an Unsplash photo object."""
     raw = photo["urls"]["raw"]
-    # raw URL is like: https://images.unsplash.com/photo-xxx?ixid=...&ixlib=...
-    # We append width and quality params
     sep = "&" if "?" in raw else "?"
-    return f"{raw}{sep}w={width}&q=90&fm=jpg&fit=crop"
+    params = f"w={width}&fm={fmt}&fit=crop"
+    if extra:
+        params += f"&{extra}"
+    return f"{raw}{sep}{params}"
+
+
+def download_linku_avif_samples(dry_run: bool = False, force: bool = False) -> tuple[int, int, int]:
+    """Download native AVIF samples from link-u/avif-sample-images."""
+    dest_dir = CORPUS_DIR / "avif_native"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    downloaded, skipped, failed = 0, 0, 0
+
+    print(f"\n{'='*60}")
+    print("Native AVIF samples (link-u/avif-sample-images)")
+    print(f"{'='*60}")
+
+    for name, url in LINKU_AVIF_SAMPLES:
+        dest = dest_dir / f"{name}.avif"
+
+        if dry_run:
+            print(f"  Would download: {name} -> {dest.relative_to(CORPUS_DIR)}")
+            continue
+
+        if dest.exists() and not force:
+            size_kb = dest.stat().st_size / 1024
+            print(f"  {name}: exists ({size_kb:.0f} KB)")
+            skipped += 1
+        else:
+            ok = download_file(url, dest, force=force)
+            if ok:
+                size_kb = dest.stat().st_size / 1024
+                print(f"  {name}: downloaded ({size_kb:.0f} KB)")
+                downloaded += 1
+            else:
+                failed += 1
+            time.sleep(0.3)
+
+    return downloaded, skipped, failed
 
 
 def main():
@@ -121,6 +196,21 @@ def main():
         default=None,
         help="Only download specific sizes (default: all)",
     )
+    parser.add_argument(
+        "--formats",
+        nargs="+",
+        choices=["jpg", "avif", "png"],
+        default=None,
+        help="Only download specific CDN formats (default: all)",
+    )
+    parser.add_argument(
+        "--skip-linku", action="store_true", help="Skip downloading link-u AVIF samples"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download files even if they exist (replaces old converted versions with CDN-native)",
+    )
     args = parser.parse_args()
 
     if not args.key:
@@ -129,6 +219,11 @@ def main():
 
     access_key = args.key
     sizes = [(label, w) for label, w in SIZES if args.sizes is None or label in args.sizes]
+    cdn_formats = [
+        (ext, fm, extra)
+        for ext, fm, extra in CDN_FORMATS
+        if args.formats is None or ext in args.formats
+    ]
 
     CORPUS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -181,38 +276,53 @@ def main():
                 else:
                     effective_width = target_width
 
-                filename = f"{photo_id}_{size_label}.jpg"
-                dest = CORPUS_DIR / category / filename
-                url = build_download_url(photo, effective_width)
+                for ext, fm, extra in cdn_formats:
+                    filename = f"{photo_id}_{size_label}.{ext}"
+                    dest = CORPUS_DIR / category / filename
+                    url = build_download_url(photo, effective_width, fmt=fm, extra=extra)
 
-                if args.dry_run:
-                    print(
-                        f"    Would download: {size_label} ({effective_width}px) -> {dest.relative_to(CORPUS_DIR)}"
-                    )
-                    continue
+                    if args.dry_run:
+                        print(
+                            f"    Would download: {size_label} {ext.upper()} ({effective_width}px)"
+                            f" -> {dest.relative_to(CORPUS_DIR)}"
+                        )
+                        continue
 
-                if dest.exists():
-                    size_kb = dest.stat().st_size / 1024
-                    print(f"    {size_label} ({effective_width}px): exists ({size_kb:.0f} KB)")
-                    total_skipped += 1
-                else:
-                    ok = download_file(url, dest)
-                    if ok:
+                    if dest.exists() and not args.force:
                         size_kb = dest.stat().st_size / 1024
                         print(
-                            f"    {size_label} ({effective_width}px): downloaded ({size_kb:.0f} KB)"
+                            f"    {size_label} {ext.upper()} ({effective_width}px):"
+                            f" exists ({size_kb:.0f} KB)"
                         )
-                        total_downloaded += 1
+                        total_skipped += 1
                     else:
-                        total_failed += 1
-                    # Be nice to the API
-                    time.sleep(0.5)
+                        ok = download_file(url, dest, force=args.force)
+                        if ok:
+                            size_kb = dest.stat().st_size / 1024
+                            action = "replaced" if args.force and dest.exists() else "downloaded"
+                            print(
+                                f"    {size_label} {ext.upper()} ({effective_width}px):"
+                                f" {action} ({size_kb:.0f} KB)"
+                            )
+                            total_downloaded += 1
+                        else:
+                            total_failed += 1
+                        # Be nice to the API
+                        time.sleep(0.5)
 
-                if dest.exists():
-                    manifest[manifest_key]["files"][size_label] = {
-                        "path": str(dest.relative_to(CORPUS_DIR)),
-                        "size_bytes": dest.stat().st_size,
-                    }
+                    file_key = f"{size_label}_{ext}" if ext != "jpg" else size_label
+                    if dest.exists():
+                        manifest[manifest_key]["files"][file_key] = {
+                            "path": str(dest.relative_to(CORPUS_DIR)),
+                            "size_bytes": dest.stat().st_size,
+                        }
+
+    # Download native AVIF samples from link-u
+    if not args.skip_linku:
+        d, s, f = download_linku_avif_samples(dry_run=args.dry_run, force=args.force)
+        total_downloaded += d
+        total_skipped += s
+        total_failed += f
 
     # Save manifest
     if not args.dry_run:
@@ -226,6 +336,7 @@ def main():
     print(f"  Skipped (exists): {total_skipped}")
     print(f"  Failed: {total_failed}")
     print(f"  Total categories: {len(CATEGORIES)}")
+    print(f"  CDN formats: {', '.join(ext.upper() for ext, *_ in cdn_formats)}")
     print(f"  Corpus directory: {CORPUS_DIR}")
     print(f"{'='*60}")
 
