@@ -662,7 +662,7 @@ function renderOverview() {
   }
 
   const byFmt = groupByFormat(currentResults);
-  const fmts = Object.entries(byFmt).sort();
+  const fmts = Object.entries(byFmt).sort((a, b) => a[0].localeCompare(b[0]));
   let h = '';
 
   // Summary strip
@@ -715,7 +715,7 @@ function renderOverview() {
     return { fmt, results, valid, avg, st, presetAvg, estErr, diffOk };
   });
 
-  // Split into passing and non-passing
+  // Split into passing and non-passing (alphabetical order preserved from fmts)
   const passing = cardData.filter(c => c.st === 'pass');
   const attention = cardData.filter(c => c.st !== 'pass');
 
@@ -785,7 +785,7 @@ function renderEstimation() {
 
   // Per-format panels with column headers
   h += '<div class="grid-cols">';
-  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+  for (const [fmt, results] of Object.entries(byFmt).sort((a, b) => a[0].localeCompare(b[0]))) {
     h += `<div class="panel"><div class="panel-title">${fmt}</div>`;
 
     // Column headers
@@ -853,7 +853,7 @@ function renderMethods() {
 
   const byFmt = groupByFormat(currentResults);
   let h = '<div class="grid-cols">';
-  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+  for (const [fmt, results] of Object.entries(byFmt).sort((a, b) => a[0].localeCompare(b[0]))) {
     h += `<div class="panel"><div class="panel-title">${fmt}</div>`;
     const bp = {};
     for (const r of results) { bp[r.preset] = bp[r.preset] || []; bp[r.preset].push(r); }
@@ -897,7 +897,7 @@ function renderSpeed() {
   // Timing table
   h += '<div class="panel"><div class="panel-title">Timing by format</div>';
   h += '<table class="dt"><thead><tr><th></th><th>Opt avg</th><th>Est avg</th><th>Speedup</th></tr></thead><tbody>';
-  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+  for (const [fmt, results] of Object.entries(byFmt).sort((a, b) => a[0].localeCompare(b[0]))) {
     const v = results.filter(r => !r.opt_error);
     if (!v.length) continue;
     const ao = v.reduce((s,r) => s + r.opt_time_ms, 0) / v.length;
@@ -910,7 +910,7 @@ function renderSpeed() {
   // Size tier table
   h += '<div class="panel"><div class="panel-title">By size tier</div>';
   h += '<table class="dt"><thead><tr><th></th><th></th><th>Small</th><th>Medium</th><th>Large</th></tr></thead><tbody>';
-  for (const [fmt, results] of Object.entries(byFmt).sort()) {
+  for (const [fmt, results] of Object.entries(byFmt).sort((a, b) => a[0].localeCompare(b[0]))) {
     const v = results.filter(r => !r.opt_error);
     if (!v.length) continue;
     const t = {};
