@@ -72,7 +72,6 @@ HIGH = QualityPreset(
         png_lossy=True,
         strip_metadata=True,
         progressive_jpeg=True,
-        max_reduction=70.0,
     ),
 )
 
@@ -82,19 +81,17 @@ MEDIUM = QualityPreset(
         quality=60,
         png_lossy=True,
         strip_metadata=True,
-        progressive_jpeg=False,
-        max_reduction=50.0,
+        progressive_jpeg=True,
     ),
 )
 
 LOW = QualityPreset(
     name="LOW",
     config=OptimizationConfig(
-        quality=80,
+        quality=75,
         png_lossy=False,
-        strip_metadata=False,
-        progressive_jpeg=False,
-        max_reduction=25.0,
+        strip_metadata=True,
+        progressive_jpeg=True,
     ),
 )
 

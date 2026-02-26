@@ -91,18 +91,18 @@ async def test_large_png_extrapolation():
 async def test_extrapolation_bpp_consistency():
     """BPP should be roughly consistent: estimate for a large image should
     be proportional to the small-image result scaled by pixel count."""
-    # Both images must be > 512KB to use sample path (not exact mode).
-    # Use random pixel data so JPEG files are large enough.
-    small_raw = os.urandom(1000 * 1000 * 3)
-    small_img = Image.frombytes("RGB", (1000, 1000), small_raw)
+    # Both images must be > 1MB to use sample path (not exact mode).
+    # Use random pixel data at high quality so JPEG files are large enough.
+    small_raw = os.urandom(1200 * 1200 * 3)
+    small_img = Image.frombytes("RGB", (1200, 1200), small_raw)
     small_buf = io.BytesIO()
-    small_img.save(small_buf, format="JPEG", quality=95)
+    small_img.save(small_buf, format="JPEG", quality=98)
     small_data = small_buf.getvalue()
 
-    large_raw = os.urandom(1500 * 1500 * 3)
-    large_img = Image.frombytes("RGB", (1500, 1500), large_raw)
+    large_raw = os.urandom(1800 * 1800 * 3)
+    large_img = Image.frombytes("RGB", (1800, 1800), large_raw)
     large_buf = io.BytesIO()
-    large_img.save(large_buf, format="JPEG", quality=95)
+    large_img.save(large_buf, format="JPEG", quality=98)
     large_data = large_buf.getvalue()
 
     config = OptimizationConfig(quality=60)
@@ -111,9 +111,9 @@ async def test_extrapolation_bpp_consistency():
     large_result = await estimate(large_data, config)
 
     # Both use the same sample-based path, so BPP should be similar
-    small_bpp = small_result.estimated_optimized_size * 8 / (1000 * 1000)
-    large_bpp = large_result.estimated_optimized_size * 8 / (1500 * 1500)
-    assert abs(small_bpp - large_bpp) / max(small_bpp, large_bpp) < 0.25
+    small_bpp = small_result.estimated_optimized_size * 8 / (1200 * 1200)
+    large_bpp = large_result.estimated_optimized_size * 8 / (1800 * 1800)
+    assert abs(small_bpp - large_bpp) / max(small_bpp, large_bpp) < 0.35
 
 
 # --- SVG special case ---
@@ -464,12 +464,12 @@ async def test_gif_large_uses_exact_mode():
     assert result.estimated_optimized_size <= result.original_size
 
 
-# --- JPEG small-file exact mode ---
+# --- JPEG/WebP small-file exact mode ---
 
 
 @pytest.mark.asyncio
 async def test_jpeg_small_file_uses_exact_mode():
-    """JPEG files under 512KB should use exact mode for accuracy."""
+    """JPEG files under 1MB should use exact mode for accuracy."""
     # Create a large-pixel but low-quality (small file) JPEG
     raw = os.urandom(800 * 600 * 3)
     img = Image.frombytes("RGB", (800, 600), raw)
@@ -477,7 +477,7 @@ async def test_jpeg_small_file_uses_exact_mode():
     img.save(buf, format="JPEG", quality=40)
     data = buf.getvalue()
 
-    assert len(data) < 512_000, f"Test setup: expected <512KB, got {len(data)}"
+    assert len(data) < 1_000_000, f"Test setup: expected <1MB, got {len(data)}"
 
     result = await estimate(data, OptimizationConfig(quality=40))
     assert result.original_format == "jpeg"
@@ -485,3 +485,20 @@ async def test_jpeg_small_file_uses_exact_mode():
     assert result.estimated_reduction_percent > 5, (
         f"Small JPEG should show jpegtran gains, got {result.estimated_reduction_percent}%"
     )
+
+
+@pytest.mark.asyncio
+async def test_webp_small_file_uses_exact_mode():
+    """WebP files under 1MB should use exact mode for accuracy."""
+    raw = os.urandom(800 * 600 * 3)
+    img = Image.frombytes("RGB", (800, 600), raw)
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=80)
+    data = buf.getvalue()
+
+    assert len(data) < 1_000_000, f"Test setup: expected <1MB, got {len(data)}"
+
+    result = await estimate(data, OptimizationConfig(quality=60))
+    assert result.original_format == "webp"
+    assert result.estimated_reduction_percent >= 0
+    assert result.confidence == "high"

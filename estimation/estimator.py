@@ -21,7 +21,7 @@ SAMPLE_MAX_WIDTH = 300
 JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
 LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
-EXACT_FILE_SIZE_THRESHOLD = 512_000  # 512KB — files below this compress quickly enough for exact mode
+EXACT_FILE_SIZE_THRESHOLD = 1_000_000  # 1MB — files below this compress quickly enough for exact mode
 
 # Only these formats' optimizers implement max_reduction (binary search for quality).
 # Other formats ignore max_reduction, so the estimator must not cap them either.
@@ -88,11 +88,11 @@ async def estimate(
             data, fmt, config, file_size, width, height, color_type, bit_depth
         )
 
-    # JPEG: for smaller files, use exact mode to avoid LANCZOS smoothing
+    # JPEG/WebP: for smaller files, use exact mode to avoid LANCZOS smoothing
     # artifacts that inflate sample BPP on already-compressed sources (e.g.
     # q=60 source at q=40 target) and to capture jpegtran lossless gains
     # that sample-based estimation misses entirely.
-    if fmt == ImageFormat.JPEG and file_size <= EXACT_FILE_SIZE_THRESHOLD:
+    if fmt in (ImageFormat.JPEG, ImageFormat.WEBP) and file_size <= EXACT_FILE_SIZE_THRESHOLD:
         return await _estimate_exact(
             data, fmt, config, file_size, width, height, color_type, bit_depth
         )
