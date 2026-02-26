@@ -135,7 +135,7 @@ def main():
     )
     parser.add_argument(
         "--category",
-        help="Filter by size category (tiny, small-l, medium-l, large-l, square, vector)",
+        help="Filter by size category (small, medium, large, vector)",
     )
     parser.add_argument("--preset", help="Run only this preset (high, medium, low)")
     parser.add_argument(
