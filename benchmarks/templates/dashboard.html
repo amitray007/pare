@@ -627,7 +627,8 @@ body {
 <script>
 let corpusFormats = {}, currentResults = [], isRunning = false, activeTab = 'overview',
     healthStatus = {}, runMeta = null, progressDone = 0, progressTotal = 0,
-    historyRuns = [], compareDataA = null, compareDataB = null;
+    historyRuns = [], compareDataA = null, compareDataB = null,
+    compareSelA = '', compareSelB = '';
 
 async function init() { await Promise.all([loadCorpus(), loadHistory()]); }
 
@@ -1119,13 +1120,15 @@ function populateCompareDropdowns() {
   const selB = document.getElementById('cmp-run-b');
   if (!selA || !selB) return;
 
-  const prevA = selA.value, prevB = selB.value;
-
-  // Resolve what each dropdown should have selected
-  const valA = (prevA && historyRuns.some(r => r.id === prevA)) ? prevA
+  // Resolve from globals, fall back to latest two runs
+  const valA = (compareSelA && historyRuns.some(r => r.id === compareSelA)) ? compareSelA
     : historyRuns.length >= 1 ? historyRuns[0].id : '';
-  const valB = (prevB && historyRuns.some(r => r.id === prevB)) ? prevB
+  const valB = (compareSelB && historyRuns.some(r => r.id === compareSelB)) ? compareSelB
     : historyRuns.length >= 2 ? historyRuns[1].id : '';
+
+  // Persist back to globals
+  compareSelA = valA;
+  compareSelB = valB;
 
   function buildOpts(disabledId) {
     const empty = '<option value="">Select a run\u2026</option>';
@@ -1151,6 +1154,9 @@ async function loadCompareData() {
   const selB = document.getElementById('cmp-run-b');
   if (!selA || !selB) return;
   const idA = selA.value, idB = selB.value;
+  // Save to globals before async work destroys the DOM
+  compareSelA = idA;
+  compareSelB = idB;
   if (!idA || !idB || idA === idB) {
     compareDataA = null; compareDataB = null;
     renderCompare();
