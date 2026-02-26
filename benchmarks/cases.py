@@ -1,7 +1,10 @@
 """Benchmark case definitions.
 
-Defines all image variants to test across sizes, content types, formats,
-and quality levels. Each case is deterministic (seeded RNG).
+Every raster format gets the same 3 core sizes (small/medium/large) for
+consistent coverage of both exact and sample estimation paths.  Lossy photo
+formats additionally vary source quality (95/75/50).
+
+SVG/SVGZ have 3 fixed complexity variants.
 
 Also supports loading real-world image files from a corpus directory
 via load_corpus_cases().
@@ -10,31 +13,17 @@ via load_corpus_cases().
 from dataclasses import dataclass
 from pathlib import Path
 
-from benchmarks.constants import (
-    JPEG_LARGE_QUALITIES,
-    JPEG_QUALITIES,
-    JPEG_SCREENSHOT_QUALITY,
-    JPEG_TINY_QUALITIES,
-    LARGE_ALLOWED_CONTENT,
-    SIZES,
-    WEBP_LARGE_QUALITIES,
-    WEBP_QUALITIES,
-    sizes_excluding,
-    sizes_matching,
-)
+from benchmarks.constants import CORE_SIZES, LOSSY_QUALITIES
 from benchmarks.generators import (
     encode_image,
     gradient,
     graphic_like,
-    palette_png,
     photo_like,
     screenshot_like,
-    solid,
     svg_bloated,
     svg_complex,
     svg_simple,
     svgz_from_svg,
-    transparent_png,
 )
 
 
@@ -43,29 +32,9 @@ class BenchmarkCase:
     name: str
     data: bytes
     fmt: str
-    category: str  # size: tiny, small-l, small-p, medium-l, medium-p, square, large-l, large-p
+    category: str  # size: small, medium, large, vector
     content: str  # content type: photo, screenshot, graphic, etc.
-    quality: int = 0  # source quality for JPEG/WebP
-
-
-# ---------------------------------------------------------------------------
-# Content generators
-# ---------------------------------------------------------------------------
-
-PNG_GENERATORS = [
-    ("photo", photo_like),
-    ("screenshot", screenshot_like),
-    ("graphic", graphic_like),
-    ("gradient", gradient),
-    ("solid", solid),
-    ("transparent", transparent_png),
-]
-
-SVG_GENERATORS = [
-    ("simple", svg_simple),
-    ("complex", svg_complex),
-    ("bloated", svg_bloated),
-]
+    quality: int = 0  # source quality for lossy formats
 
 
 # ---------------------------------------------------------------------------
@@ -79,21 +48,89 @@ def build_all_cases() -> list[BenchmarkCase]:
     cases.extend(_png_cases())
     cases.extend(_jpeg_cases())
     cases.extend(_webp_cases())
-    cases.extend(_gif_cases())
-    cases.extend(_svg_cases())
-    cases.extend(_other_cases())
-    cases.extend(_avif_heic_cases())
+    cases.extend(_avif_cases())
+    cases.extend(_heic_cases())
     cases.extend(_jxl_cases())
+    cases.extend(_gif_cases())
+    cases.extend(_bmp_cases())
+    cases.extend(_tiff_cases())
+    cases.extend(_svg_cases())
     return cases
+
+
+def _lossy_photo_cases(fmt: str, encode_fmt: str, display: str) -> list[BenchmarkCase]:
+    """Generate cases for a lossy photo format across all sizes and qualities."""
+    cases = []
+    for sname, w, h in CORE_SIZES:
+        for q in LOSSY_QUALITIES:
+            img = photo_like(w, h)
+            data = encode_image(img, encode_fmt, quality=q)
+            cases.append(
+                BenchmarkCase(
+                    name=f"{display} {sname} q={q} {w}x{h}",
+                    data=data,
+                    fmt=fmt,
+                    category=sname,
+                    content="photo",
+                    quality=q,
+                )
+            )
+    return cases
+
+
+def _jpeg_cases() -> list[BenchmarkCase]:
+    return _lossy_photo_cases("jpeg", "jpeg", "JPEG")
+
+
+def _webp_cases() -> list[BenchmarkCase]:
+    return _lossy_photo_cases("webp", "webp", "WebP")
+
+
+def _avif_cases() -> list[BenchmarkCase]:
+    """AVIF cases. Skipped if pillow-avif-plugin not available."""
+    try:
+        import pillow_avif  # noqa: F401
+
+        return _lossy_photo_cases("avif", "avif", "AVIF")
+    except ImportError:
+        return []
+
+
+def _heic_cases() -> list[BenchmarkCase]:
+    """HEIC cases. Skipped if pillow-heif not available."""
+    try:
+        import pillow_heif  # noqa: F401
+
+        return _lossy_photo_cases("heic", "heif", "HEIC")
+    except ImportError:
+        return []
+
+
+def _jxl_cases() -> list[BenchmarkCase]:
+    """JXL cases. Skipped if jxlpy/pillow-jxl not available."""
+    try:
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            import jxlpy  # noqa: F401
+
+        return _lossy_photo_cases("jxl", "jxl", "JXL")
+    except ImportError:
+        return []
+
+
+# Content generators for PNG (3 BPP profiles: high, low, medium)
+_PNG_CONTENT = [
+    ("photo", photo_like),
+    ("screenshot", screenshot_like),
+    ("graphic", graphic_like),
+]
 
 
 def _png_cases() -> list[BenchmarkCase]:
     cases = []
-    for sname, w, h in SIZES:
-        is_large = sname.startswith("large")
-        for cname, gen in PNG_GENERATORS:
-            if is_large and cname not in LARGE_ALLOWED_CONTENT:
-                continue
+    for sname, w, h in CORE_SIZES:
+        for cname, gen in _PNG_CONTENT:
             img = gen(w, h)
             data = encode_image(img, "png")
             cases.append(
@@ -105,87 +142,19 @@ def _png_cases() -> list[BenchmarkCase]:
                     content=cname,
                 )
             )
-    # Palette PNG — small and medium landscape only
-    for sname, w, h in sizes_matching("small-l", "medium-l"):
-        img = palette_png(w, h)
-        data = encode_image(img, "png")
-        cases.append(
-            BenchmarkCase(
-                name=f"PNG {sname} palette {w}x{h}",
-                data=data,
-                fmt="png",
-                category=sname,
-                content="palette",
-            )
-        )
     return cases
 
 
-def _jpeg_cases() -> list[BenchmarkCase]:
-    cases = []
-    for sname, w, h in SIZES:
-        is_large = sname.startswith("large")
-        is_tiny = sname == "tiny"
-        for q in JPEG_QUALITIES:
-            if is_large and q not in JPEG_LARGE_QUALITIES:
-                continue
-            if is_tiny and q not in JPEG_TINY_QUALITIES:
-                continue
-            img = photo_like(w, h)
-            data = encode_image(img, "jpeg", quality=q)
-            cases.append(
-                BenchmarkCase(
-                    name=f"JPEG {sname} q={q} {w}x{h}",
-                    data=data,
-                    fmt="jpeg",
-                    category=sname,
-                    content="photo",
-                    quality=q,
-                )
-            )
-    # Screenshot as JPEG — medium and large landscape
-    for sname, w, h in sizes_matching("medium-l", "large-l"):
-        img = screenshot_like(w, h)
-        data = encode_image(img, "jpeg", quality=JPEG_SCREENSHOT_QUALITY)
-        cases.append(
-            BenchmarkCase(
-                name=f"JPEG {sname} screenshot q={JPEG_SCREENSHOT_QUALITY} {w}x{h}",
-                data=data,
-                fmt="jpeg",
-                category=sname,
-                content="screenshot",
-                quality=JPEG_SCREENSHOT_QUALITY,
-            )
-        )
-    return cases
-
-
-def _webp_cases() -> list[BenchmarkCase]:
-    cases = []
-    for sname, w, h in sizes_excluding("tiny", "small-p", "medium-p", "large-p"):
-        is_large = sname.startswith("large")
-        for q in WEBP_QUALITIES:
-            if is_large and q not in WEBP_LARGE_QUALITIES:
-                continue
-            img = photo_like(w, h)
-            data = encode_image(img, "webp", quality=q)
-            cases.append(
-                BenchmarkCase(
-                    name=f"WebP {sname} q={q} {w}x{h}",
-                    data=data,
-                    fmt="webp",
-                    category=sname,
-                    content="photo",
-                    quality=q,
-                )
-            )
-    return cases
+_GIF_CONTENT = [
+    ("graphic", graphic_like),
+    ("gradient", gradient),
+]
 
 
 def _gif_cases() -> list[BenchmarkCase]:
     cases = []
-    for sname, w, h in sizes_excluding("large", "small-p", "medium-p"):
-        for cname, gen in [("graphic", graphic_like), ("gradient", gradient)]:
+    for sname, w, h in CORE_SIZES:
+        for cname, gen in _GIF_CONTENT:
             img = gen(w, h)
             data = encode_image(img, "gif")
             cases.append(
@@ -200,9 +169,54 @@ def _gif_cases() -> list[BenchmarkCase]:
     return cases
 
 
+_BMP_CONTENT = [
+    ("screenshot", screenshot_like),
+    ("photo", photo_like),
+]
+
+
+def _bmp_cases() -> list[BenchmarkCase]:
+    cases = []
+    for sname, w, h in CORE_SIZES:
+        for cname, gen in _BMP_CONTENT:
+            img = gen(w, h)
+            data = encode_image(img, "bmp")
+            cases.append(
+                BenchmarkCase(
+                    name=f"BMP {sname} {cname} {w}x{h}",
+                    data=data,
+                    fmt="bmp",
+                    category=sname,
+                    content=cname,
+                )
+            )
+    return cases
+
+
+_TIFF_COMPRESSIONS = [None, "tiff_lzw"]
+
+
+def _tiff_cases() -> list[BenchmarkCase]:
+    cases = []
+    for sname, w, h in CORE_SIZES:
+        for compression in _TIFF_COMPRESSIONS:
+            comp_label = compression or "raw"
+            img = photo_like(w, h)
+            cases.append(
+                BenchmarkCase(
+                    name=f"TIFF {sname} {comp_label} {w}x{h}",
+                    data=encode_image(img, "tiff", compression=compression),
+                    fmt="tiff",
+                    category=sname,
+                    content="photo",
+                )
+            )
+    return cases
+
+
 def _svg_cases() -> list[BenchmarkCase]:
     cases = []
-    for cname, gen in SVG_GENERATORS:
+    for cname, gen in [("simple", svg_simple), ("complex", svg_complex), ("bloated", svg_bloated)]:
         data = gen()
         cases.append(
             BenchmarkCase(
@@ -213,7 +227,7 @@ def _svg_cases() -> list[BenchmarkCase]:
                 content=cname,
             )
         )
-    for cname, gen in SVG_GENERATORS:
+    for cname, gen in [("simple", svg_simple), ("complex", svg_complex), ("bloated", svg_bloated)]:
         svgz = svgz_from_svg(gen())
         cases.append(
             BenchmarkCase(
@@ -224,119 +238,6 @@ def _svg_cases() -> list[BenchmarkCase]:
                 content=cname,
             )
         )
-    return cases
-
-
-TIFF_COMPRESSIONS = [None, "tiff_lzw"]  # None = raw/uncompressed
-
-
-def _other_cases() -> list[BenchmarkCase]:
-    """BMP and TIFF benchmark cases."""
-    sname, w, h = sizes_matching("small-l")[0]
-    cases = []
-
-    # BMP cases — RGB and RGBA (graphic_like produces RGBA)
-    img = screenshot_like(w, h)
-    cases.append(
-        BenchmarkCase(
-            name=f"BMP screenshot {w}x{h}",
-            data=encode_image(img, "bmp"),
-            fmt="bmp",
-            category=sname,
-            content="screenshot",
-        )
-    )
-    img = photo_like(w, h)
-    cases.append(
-        BenchmarkCase(
-            name=f"BMP photo {w}x{h}",
-            data=encode_image(img, "bmp"),
-            fmt="bmp",
-            category=sname,
-            content="photo",
-        )
-    )
-    img = graphic_like(w, h)
-    cases.append(
-        BenchmarkCase(
-            name=f"BMP graphic RGBA {w}x{h}",
-            data=encode_image(img, "bmp"),
-            fmt="bmp",
-            category=sname,
-            content="graphic",
-        )
-    )
-
-    # TIFF cases — each content type × source compression level
-    tiff_content = [
-        ("photo", photo_like),
-        ("screenshot", screenshot_like),
-        ("graphic", graphic_like),
-    ]
-    for compression in TIFF_COMPRESSIONS:
-        comp_label = compression or "raw"
-        for cname, gen in tiff_content:
-            img = gen(w, h)
-            cases.append(
-                BenchmarkCase(
-                    name=f"TIFF {cname} {comp_label} {w}x{h}",
-                    data=encode_image(img, "tiff", compression=compression),
-                    fmt="tiff",
-                    category=sname,
-                    content=cname,
-                )
-            )
-
-    return cases
-
-
-AVIF_QUALITIES = [95, 75, 50]
-HEIC_QUALITIES = [95, 75, 50]
-
-
-def _avif_heic_cases() -> list[BenchmarkCase]:
-    """AVIF and HEIC benchmark cases. Skipped if dependencies not available."""
-    sname, w, h = sizes_matching("small-l")[0]
-    cases = []
-
-    # AVIF cases — require pillow-avif-plugin
-    try:
-        import pillow_avif  # noqa: F401
-
-        for q in AVIF_QUALITIES:
-            img = photo_like(w, h)
-            cases.append(
-                BenchmarkCase(
-                    name=f"AVIF photo q={q} {w}x{h}",
-                    data=encode_image(img, "avif", quality=q),
-                    fmt="avif",
-                    category=sname,
-                    content="photo",
-                    quality=q,
-                )
-            )
-    except ImportError:
-        pass
-
-    # HEIC cases — require pillow-heif
-    try:
-        import pillow_heif  # noqa: F401
-
-        for q in HEIC_QUALITIES:
-            img = photo_like(w, h)
-            cases.append(
-                BenchmarkCase(
-                    name=f"HEIC photo q={q} {w}x{h}",
-                    data=encode_image(img, "heif", quality=q),
-                    fmt="heic",
-                    category=sname,
-                    content="photo",
-                    quality=q,
-                )
-            )
-    except ImportError:
-        pass
-
     return cases
 
 
@@ -429,37 +330,5 @@ def load_corpus_cases(corpus_dir: str | Path) -> list[BenchmarkCase]:
                 content=content,
             )
         )
-
-    return cases
-
-
-JXL_QUALITIES = [95, 75, 50]
-
-
-def _jxl_cases() -> list[BenchmarkCase]:
-    """JPEG XL benchmark cases. Skipped if jxlpy not available."""
-    sname, w, h = sizes_matching("small-l")[0]
-    cases = []
-
-    try:
-        try:
-            import pillow_jxl  # noqa: F401
-        except ImportError:
-            import jxlpy  # noqa: F401
-
-        for q in JXL_QUALITIES:
-            img = photo_like(w, h)
-            cases.append(
-                BenchmarkCase(
-                    name=f"JXL photo q={q} {w}x{h}",
-                    data=encode_image(img, "jxl", quality=q),
-                    fmt="jxl",
-                    category=sname,
-                    content="photo",
-                    quality=q,
-                )
-            )
-    except ImportError:
-        pass
 
     return cases
