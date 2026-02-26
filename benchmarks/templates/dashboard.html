@@ -19,9 +19,6 @@
   --green: #10b981;
   --green-bg: #ecfdf5;
   --green-border: #a7f3d0;
-  --amber: #f59e0b;
-  --amber-bg: #fffbeb;
-  --amber-border: #fde68a;
   --red: #ef4444;
   --red-bg: #fef2f2;
   --red-border: #fecaca;
@@ -207,7 +204,7 @@ body {
   font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--text);
 }
 .sc-value.good { color: var(--green); }
-.sc-value.warn { color: var(--amber); }
+.sc-value.warn { color: var(--red); }
 .sc-value.bad { color: var(--red); }
 
 /* ── FORMAT CARDS (Overview) ───────────────── */
@@ -225,7 +222,7 @@ body {
 }
 .fmt-card:hover { box-shadow: 0 1px 6px rgba(0,0,0,0.04); }
 .fmt-card.health-pass { border-left: 3px solid var(--green); }
-.fmt-card.health-warn { border-left: 3px solid var(--amber); }
+.fmt-card.health-warn { border-left: 3px solid var(--red); }
 .fmt-card.health-fail { border-left: 3px solid var(--red); }
 
 .fc-header {
@@ -241,7 +238,7 @@ body {
   border-radius: 10px;
 }
 .fc-badge.pass { color: var(--green); background: var(--green-bg); }
-.fc-badge.warn { color: var(--amber); background: var(--amber-bg); }
+.fc-badge.warn { color: var(--red); background: var(--red-bg); }
 .fc-badge.fail { color: var(--red); background: var(--red-bg); }
 
 .fc-big-num {
@@ -302,7 +299,7 @@ body {
 .dt tbody tr:hover td { background: rgba(0,0,0,0.015); }
 
 .c-pass { color: var(--green); font-weight: 600; }
-.c-warn { color: var(--amber); font-weight: 600; }
+.c-warn { color: var(--muted); font-weight: 600; }
 .c-fail { color: var(--red); font-weight: 600; }
 
 .dpill {
@@ -311,7 +308,7 @@ body {
   font-size: 12px; font-weight: 600; font-family: var(--sans);
 }
 .dpill.pass { color: var(--green); background: var(--green-bg); }
-.dpill.warn { color: var(--amber); background: var(--amber-bg); }
+.dpill.warn { color: var(--muted); background: var(--border-light); }
 .dpill.fail { color: var(--red); background: var(--red-bg); }
 .dpill.neutral { color: var(--muted); background: var(--border-light); }
 
@@ -381,7 +378,7 @@ body {
 .e-val-col.act-col { color: var(--text); font-weight: 600; }
 .e-val-col.delta-col { font-weight: 700; }
 .e-val-col.delta-col.good { color: var(--green); }
-.e-val-col.delta-col.ok { color: var(--amber); }
+.e-val-col.delta-col.ok { color: var(--muted); }
 .e-val-col.delta-col.bad { color: var(--red); }
 .e-val-col.error-text { color: var(--muted); font-style: italic; font-family: var(--sans); }
 
@@ -427,11 +424,129 @@ body {
 .hist-dots { display: flex; gap: 4px; margin-top: 5px; }
 .hist-dot { width: 7px; height: 7px; border-radius: 50%; }
 .hist-dot.pass { background: var(--green); }
-.hist-dot.warn { background: var(--amber); }
+.hist-dot.warn { background: var(--red); }
 .hist-dot.fail { background: var(--red); }
 .hist-delete { font-family: var(--sans); font-size: 11px; color: var(--faint); background: none; border: none; cursor: pointer; margin-top: 3px; }
 .hist-delete:hover { color: var(--red); }
 .hist-empty { padding: 20px 16px; color: var(--muted); font-size: 13px; }
+
+/* ── COMPARE TAB ──────────────────────────── */
+.compare-selector {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px; padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.compare-selector label {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0;
+}
+.compare-selector select {
+  flex: 1; min-width: 0; padding: 6px 10px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+}
+.compare-vs {
+  font-size: 11px; font-weight: 700; color: var(--faint);
+  text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0;
+}
+
+.health-banner {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-bottom: 20px; padding: 14px 16px;
+  border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface);
+}
+.health-banner-title {
+  width: 100%; font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
+}
+.ht {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 600; font-family: var(--mono);
+  background: var(--surface); border: 1px solid var(--border);
+}
+.ht-improved { border-left: 3px solid var(--green); }
+.ht-regressed { border-left: 3px solid var(--red); }
+.ht-fmt { color: var(--text); font-weight: 700; }
+.ht-arrow { color: var(--muted); font-size: 11px; }
+
+.delta-strip { display: flex; gap: 12px; margin-bottom: 20px; }
+.delta-card {
+  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.delta-val {
+  font-family: var(--mono); font-size: 22px; font-weight: 700; line-height: 1.2;
+}
+.delta-val.improved { color: var(--green); }
+.delta-val.regressed { color: var(--red); }
+.delta-val.neutral { color: var(--muted); }
+.delta-sub { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+
+/* Compare format grid */
+.cmp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.cmp-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+}
+.cmp-card.improved { border-left: 3px solid var(--green); }
+.cmp-card.regressed { border-left: 3px solid var(--red); }
+.cmp-card.unchanged { border-left: 3px solid var(--faint); }
+
+.cmp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.cmp-fmt {
+  font-family: var(--mono); font-size: 15px; font-weight: 700;
+  text-transform: uppercase; color: var(--text);
+}
+.cmp-health-change {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+}
+
+/* Metrics: 3 columns, compact */
+.cmp-metrics {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;
+  margin-bottom: 14px;
+}
+.cmp-metric-label {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 3px;
+}
+.cmp-metric-delta {
+  font-family: var(--mono); font-size: 17px; font-weight: 700; line-height: 1.2;
+}
+.cmp-metric-sub {
+  font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 3px;
+}
+
+/* Preset breakdown */
+.cmp-presets {
+  padding-top: 12px; border-top: 1px solid var(--border-light);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.cmp-preset-row {
+  display: grid; grid-template-columns: 52px 1fr 14px 1fr 56px;
+  align-items: center; gap: 0; padding: 3px 0;
+}
+.cmp-preset-label {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  font-family: var(--mono);
+}
+.cmp-preset-cell {
+  font-family: var(--mono); font-size: 12px; color: var(--secondary); text-align: right;
+}
+.cmp-preset-cell.current { color: var(--text); font-weight: 600; }
+.cmp-preset-arrow { text-align: center; color: var(--faint); font-size: 10px; }
+.cmp-preset-delta { font-family: var(--mono); font-size: 12px; font-weight: 700; text-align: right; }
 
 /* ── SCROLLBAR ─────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
@@ -486,6 +601,7 @@ body {
         <button class="tab" data-tab="estimation" onclick="switchTab('estimation')">Estimation</button>
         <button class="tab" data-tab="methods" onclick="switchTab('methods')">Methods</button>
         <button class="tab" data-tab="speed" onclick="switchTab('speed')">Speed</button>
+        <button class="tab" data-tab="compare" onclick="switchTab('compare')">Compare</button>
       </div>
       <div class="progress" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
       <div class="content-body">
@@ -496,6 +612,7 @@ body {
           <div class="tab-pane" id="pane-estimation"><div id="estimation-out"><div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div></div></div>
           <div class="tab-pane" id="pane-methods"><div id="methods-out"><div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div></div></div>
           <div class="tab-pane" id="pane-speed"><div id="speed-out"><div class="welcome"><div class="welcome-desc">Run a benchmark first.</div></div></div></div>
+          <div class="tab-pane" id="pane-compare"><div id="compare-out"><div class="welcome"><div class="welcome-title">Compare runs</div><div class="welcome-desc">Run at least 2 benchmarks to compare results.</div></div></div></div>
         </div>
       </div>
     </div>
@@ -509,9 +626,10 @@ body {
 
 <script>
 let corpusFormats = {}, currentResults = [], isRunning = false, activeTab = 'overview',
-    healthStatus = {}, runMeta = null, progressDone = 0, progressTotal = 0;
+    healthStatus = {}, runMeta = null, progressDone = 0, progressTotal = 0,
+    historyRuns = [], compareDataA = null, compareDataB = null;
 
-async function init() { await loadCorpus(); await loadHistory(); }
+async function init() { await Promise.all([loadCorpus(), loadHistory()]); }
 
 async function loadCorpus() {
   try {
@@ -589,10 +707,10 @@ async function startRun(config) {
         showProgress(msg.progress);
         renderAllTabs();
       } else if (msg.type === 'complete') {
-        healthStatus = msg.health || {};
+        healthStatus = hlObj(msg.health || {});
         runMeta = {
           duration_s: msg.duration_s,
-          health: msg.health,
+          health: hlObj(msg.health || {}),
           total: currentResults.length,
           errors: currentResults.filter(r => r.opt_error).length
         };
@@ -638,19 +756,21 @@ function groupByFormat(r) {
   return m;
 }
 
-function errCls(p) { return p <= 5 ? 'good' : p <= 15 ? 'ok' : 'bad'; }
-function errColor(p) { return p <= 5 ? 'c-pass' : p <= 15 ? 'c-warn' : 'c-fail'; }
+function hl(s) { return s === 'warn' ? 'fail' : (s || 'none'); }
+function hlObj(o) { const n = {}; for (const [k,v] of Object.entries(o)) n[k] = hl(v); return n; }
+function errCls(p) { return p <= 10 ? 'good' : 'bad'; }
+function errColor(p) { return p <= 10 ? 'c-pass' : 'c-fail'; }
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function trunc(s, n) { return s.length > n ? s.slice(0, n-1) + '\u2026' : s; }
 
 function diffPill(a) {
   const h = a.HIGH, m = a.MEDIUM, l = a.LOW;
   if (h == null || m == null || l == null) return '<span class="dpill neutral">\u2014</span>';
-  if (h > m && m > l) return (h-l) > 5 ? '<span class="dpill pass">\u2713 yes</span>' : '<span class="dpill warn">narrow</span>';
+  if (h > m && m > l) return '<span class="dpill pass">\u2713 yes</span>';
   return '<span class="dpill fail">\u2717 no</span>';
 }
 function estPill(e) {
-  return e < 10 ? '<span class="dpill pass">accurate</span>' : e < 15 ? '<span class="dpill warn">ok</span>' : '<span class="dpill fail">poor</span>';
+  return e < 10 ? '<span class="dpill pass">accurate</span>' : '<span class="dpill fail">poor</span>';
 }
 
 /* ── OVERVIEW ──────────────────────────────── */
@@ -674,11 +794,9 @@ function renderOverview() {
       </div>
     </div>`;
   } else if (runMeta) {
-    const hObj = runMeta.health || {};
+    const hObj = hlObj(runMeta.health || {});
     const total = Object.keys(hObj).length;
     const passing = Object.values(hObj).filter(v => v === 'pass').length;
-    const warnings = Object.values(hObj).filter(v => v === 'warn').length;
-    const failing = Object.values(hObj).filter(v => v === 'fail').length;
 
     const allResults = currentResults.filter(r => !r.opt_error);
     const avgReduction = allResults.length ? allResults.reduce((s,r) => s + r.reduction_pct, 0) / allResults.length : 0;
@@ -686,9 +804,9 @@ function renderOverview() {
     const avgEstErr = validEst.length ? validEst.reduce((s,r) => s + r.est_error_pct, 0) / validEst.length : 0;
 
     h += `<div class="summary-strip">
-      <div class="summary-card"><div class="sc-label">Formats passing</div><div class="sc-value ${passing===total?'good':failing>0?'bad':'warn'}">${passing}/${total}</div></div>
+      <div class="summary-card"><div class="sc-label">Formats passing</div><div class="sc-value ${passing===total?'good':'bad'}">${passing}/${total}</div></div>
       <div class="summary-card"><div class="sc-label">Avg reduction</div><div class="sc-value">${avgReduction.toFixed(1)}%</div></div>
-      <div class="summary-card"><div class="sc-label">Avg est. error</div><div class="sc-value ${avgEstErr<10?'good':avgEstErr<15?'warn':'bad'}">${avgEstErr.toFixed(1)}%</div></div>
+      <div class="summary-card"><div class="sc-label">Avg est. error</div><div class="sc-value ${avgEstErr<10?'good':'bad'}">${avgEstErr.toFixed(1)}%</div></div>
       <div class="summary-card"><div class="sc-label">Duration</div><div class="sc-value">${runMeta.duration_s}s</div></div>
     </div>`;
   }
@@ -697,7 +815,7 @@ function renderOverview() {
   const cardData = fmts.map(([fmt, results]) => {
     const valid = results.filter(r => !r.opt_error);
     const avg = valid.length ? valid.reduce((s,r) => s + r.reduction_pct, 0) / valid.length : 0;
-    const st = healthStatus[fmt] || '';
+    const st = hl(healthStatus[fmt] || '');
 
     const bp = {};
     for (const r of results) {
@@ -717,7 +835,7 @@ function renderOverview() {
 
   // Split into passing and non-passing (alphabetical order preserved from fmts)
   const passing = cardData.filter(c => c.st === 'pass');
-  const attention = cardData.filter(c => c.st !== 'pass');
+  const failed = cardData.filter(c => c.st !== 'pass');
 
   function renderCardGroup(cards) {
     let out = '<div class="fmt-grid">';
@@ -763,10 +881,10 @@ function renderOverview() {
     h += renderCardGroup(passing);
   }
 
-  // Render attention-needed formats
-  if (attention.length) {
-    h += `<div class="sec-title" style="margin-top:24px;color:var(--amber)">Needs attention (${attention.length})</div>`;
-    h += renderCardGroup(attention);
+  // Render failed formats
+  if (failed.length) {
+    h += `<div class="sec-title" style="margin-top:24px;color:var(--red)">Failed (${failed.length})</div>`;
+    h += renderCardGroup(failed);
   }
 
   el.innerHTML = h;
@@ -935,7 +1053,13 @@ async function loadHistory() {
   try {
     const r = await fetch('/api/runs');
     const d = await r.json();
-    renderHistory(d.runs);
+    historyRuns = d.runs || [];
+    renderHistory(historyRuns);
+    renderCompare();
+    // Auto-load compare data if 2+ runs and not already loaded
+    if (historyRuns.length >= 2 && !compareDataA) {
+      loadCompareData();
+    }
   } catch(e) { console.error('History load failed:', e); }
 }
 
@@ -950,7 +1074,7 @@ function renderHistory(runs) {
       : '?';
     const health = run.health || {};
     const fmts = run.formats_tested || Object.keys(health);
-    const dots = fmts.map(f => `<div class="hist-dot ${health[f]||'warn'}" title="${f}: ${health[f]||'?'}"></div>`).join('');
+    const dots = fmts.map(f => `<div class="hist-dot ${hl(health[f])}" title="${f}: ${hl(health[f])}"></div>`).join('');
     return `<div class="hist-item" data-run-id="${run.id}" onclick="loadRun('${run.id}')">
       <div class="hist-date">${ds}</div>
       <div class="hist-meta">${run.git_commit||'?'} \u00B7 ${run.duration_s||'?'}s \u00B7 ${run.result_count||0} cases</div>
@@ -969,11 +1093,11 @@ async function loadRun(runId) {
     const r = await fetch(`/api/runs/${runId}`);
     const d = await r.json();
     currentResults = d.results || [];
-    healthStatus = d.health || {};
+    healthStatus = hlObj(d.health || {});
     runMeta = {
       git_commit: d.git_commit,
       duration_s: d.duration_s,
-      health: d.health,
+      health: hlObj(d.health || {}),
       total: currentResults.length,
       errors: currentResults.filter(r => r.opt_error).length
     };
@@ -987,6 +1111,279 @@ async function deleteRun(runId) {
     await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
     await loadHistory();
   } catch(e) { console.error(e); }
+}
+
+/* ── COMPARE ──────────────────────────────── */
+function populateCompareDropdowns() {
+  const selA = document.getElementById('cmp-run-a');
+  const selB = document.getElementById('cmp-run-b');
+  if (!selA || !selB) return;
+
+  const prevA = selA.value, prevB = selB.value;
+
+  // Resolve what each dropdown should have selected
+  const valA = (prevA && historyRuns.some(r => r.id === prevA)) ? prevA
+    : historyRuns.length >= 1 ? historyRuns[0].id : '';
+  const valB = (prevB && historyRuns.some(r => r.id === prevB)) ? prevB
+    : historyRuns.length >= 2 ? historyRuns[1].id : '';
+
+  function buildOpts(disabledId) {
+    const empty = '<option value="">Select a run\u2026</option>';
+    return empty + historyRuns.map(run => {
+      const date = run.timestamp ? new Date(run.timestamp) : null;
+      const label = date
+        ? date.toLocaleDateString(undefined, { month:'short', day:'numeric' }) + ' ' +
+          date.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' })
+        : '?';
+      const dis = run.id === disabledId;
+      return `<option value="${run.id}" ${dis ? 'disabled style="color:var(--faint)"' : ''}>${label} \u00B7 ${run.git_commit || '?'} \u00B7 ${run.result_count || 0} cases${dis ? ' (selected in other)' : ''}</option>`;
+    }).join('');
+  }
+
+  selA.innerHTML = buildOpts(valB);
+  selB.innerHTML = buildOpts(valA);
+  selA.value = valA;
+  selB.value = valB;
+}
+
+async function loadCompareData() {
+  const selA = document.getElementById('cmp-run-a');
+  const selB = document.getElementById('cmp-run-b');
+  if (!selA || !selB) return;
+  const idA = selA.value, idB = selB.value;
+  if (!idA || !idB || idA === idB) {
+    compareDataA = null; compareDataB = null;
+    renderCompare();
+    return;
+  }
+  try {
+    const [rA, rB] = await Promise.all([
+      fetch(`/api/runs/${idA}`).then(r => r.json()),
+      fetch(`/api/runs/${idB}`).then(r => r.json())
+    ]);
+    compareDataA = rA;
+    compareDataB = rB;
+    renderCompare();
+  } catch(e) { console.error('Compare load failed:', e); }
+}
+
+function renderCompare() {
+  const el = document.getElementById('compare-out');
+
+  // Run selector bar (always rendered)
+  let h = `<div class="compare-selector">
+    <label>Run A</label>
+    <select id="cmp-run-a" onchange="loadCompareData()">
+      <option value="">Select a run\u2026</option>
+    </select>
+    <span class="compare-vs">vs</span>
+    <label>Run B</label>
+    <select id="cmp-run-b" onchange="loadCompareData()">
+      <option value="">Select a run\u2026</option>
+    </select>
+  </div>`;
+
+  // If no data loaded yet, show contextual message
+  if (!compareDataA || !compareDataB) {
+    if (historyRuns.length === 0) {
+      h = '<div class="welcome"><div class="welcome-title">No benchmark runs yet</div><div class="welcome-desc">Run at least 2 benchmarks to compare results.</div></div>';
+    } else if (historyRuns.length === 1) {
+      h = '<div class="welcome"><div class="welcome-title">Only 1 run available</div><div class="welcome-desc">Run another benchmark to unlock comparisons.</div></div>';
+    } else {
+      h += '<div class="welcome"><div class="welcome-desc">Select two different runs above to compare.</div></div>';
+    }
+    el.innerHTML = h;
+    populateCompareDropdowns();
+    return;
+  }
+
+  const resultsA = compareDataA.results || [];
+  const resultsB = compareDataB.results || [];
+  const healthA = hlObj(compareDataA.health || {});
+  const healthB = hlObj(compareDataB.health || {});
+
+  // Lookup: key -> result for Run A
+  const keyA = {};
+  for (const r of resultsA) { keyA[`${r.format}|${r.preset}|${r.name}`] = r; }
+
+  // ── Health Regression Banner ──
+  const allFormats = [...new Set([...Object.keys(healthA), ...Object.keys(healthB)])].sort((a, b) => a.localeCompare(b));
+  const healthOrder = { pass: 0, fail: 1, none: 2 };
+  const transitions = [];
+  for (const fmt of allFormats) {
+    const a = healthA[fmt] || 'none';
+    const b = healthB[fmt] || 'none';
+    if (a !== b) transitions.push({ fmt, from: a, to: b });
+  }
+
+  if (transitions.length > 0) {
+    h += `<div class="health-banner"><div class="health-banner-title">Health changes</div>`;
+    for (const t of transitions) {
+      const better = healthOrder[t.to] < healthOrder[t.from];
+      h += `<span class="ht ${better ? 'ht-improved' : 'ht-regressed'}">
+        <span class="ht-fmt">${t.fmt}</span>
+        <span class="fc-badge ${t.from}" style="font-size:11px;padding:2px 6px">${t.from}</span>
+        <span class="ht-arrow">\u2192</span>
+        <span class="fc-badge ${t.to}" style="font-size:11px;padding:2px 6px">${t.to}</span></span>`;
+    }
+    h += '</div>';
+  }
+
+  // ── Delta Summary Strip ──
+  const validA = resultsA.filter(r => !r.opt_error);
+  const validB = resultsB.filter(r => !r.opt_error);
+  const avgRedA = validA.length ? validA.reduce((s,r) => s + r.reduction_pct, 0) / validA.length : 0;
+  const avgRedB = validB.length ? validB.reduce((s,r) => s + r.reduction_pct, 0) / validB.length : 0;
+  const deltaRed = avgRedB - avgRedA;
+
+  const estValidA = resultsA.filter(r => !r.opt_error && !r.est_error);
+  const estValidB = resultsB.filter(r => !r.opt_error && !r.est_error);
+  const avgEstA = estValidA.length ? estValidA.reduce((s,r) => s + r.est_error_pct, 0) / estValidA.length : 0;
+  const avgEstB = estValidB.length ? estValidB.reduce((s,r) => s + r.est_error_pct, 0) / estValidB.length : 0;
+  const deltaEst = avgEstB - avgEstA;
+
+  const durA = compareDataA.duration_s || 0;
+  const durB = compareDataB.duration_s || 0;
+  const deltaDur = durB - durA;
+
+  const passingA = Object.values(healthA).filter(v => v === 'pass').length;
+  const totalA = Object.keys(healthA).length;
+  const passingB = Object.values(healthB).filter(v => v === 'pass').length;
+  const totalB = Object.keys(healthB).length;
+  const deltaPass = passingB - passingA;
+
+  function ds(v) { return v > 0 ? '+' : ''; }
+  function redCls(d) { return d > 0.1 ? 'improved' : d < -0.1 ? 'regressed' : 'neutral'; }
+  function estCls(d) { return d < -0.1 ? 'improved' : d > 0.1 ? 'regressed' : 'neutral'; }
+  function durCls(d) { return d < -0.05 ? 'improved' : d > 0.05 ? 'regressed' : 'neutral'; }
+  function passCls(d) { return d > 0 ? 'improved' : d < 0 ? 'regressed' : 'neutral'; }
+
+  h += `<div class="delta-strip">
+    <div class="delta-card"><div class="sc-label">Avg Reduction</div>
+      <div class="delta-val ${redCls(deltaRed)}">${ds(deltaRed)}${deltaRed.toFixed(1)}%</div>
+      <div class="delta-sub">${avgRedA.toFixed(1)}% \u2192 ${avgRedB.toFixed(1)}%</div></div>
+    <div class="delta-card"><div class="sc-label">Avg Est. Error</div>
+      <div class="delta-val ${estCls(deltaEst)}">${ds(deltaEst)}${deltaEst.toFixed(1)}%</div>
+      <div class="delta-sub">${avgEstA.toFixed(1)}% \u2192 ${avgEstB.toFixed(1)}%</div></div>
+    <div class="delta-card"><div class="sc-label">Duration</div>
+      <div class="delta-val ${durCls(deltaDur)}">${ds(deltaDur)}${deltaDur.toFixed(1)}s</div>
+      <div class="delta-sub">${durA}s \u2192 ${durB}s</div></div>
+    <div class="delta-card"><div class="sc-label">Formats Passing</div>
+      <div class="delta-val ${passCls(deltaPass)}">${ds(deltaPass)}${deltaPass}</div>
+      <div class="delta-sub">${passingA}/${totalA} \u2192 ${passingB}/${totalB}</div></div>
+  </div>`;
+
+  // ── Per-Format Delta Cards ──
+  const byFmtA = groupByFormat(resultsA);
+  const byFmtB = groupByFormat(resultsB);
+  const allFmtKeys = [...new Set([...Object.keys(byFmtA), ...Object.keys(byFmtB)])].sort((a, b) => a.localeCompare(b));
+
+  h += '<div class="cmp-grid">';
+  for (const fmt of allFmtKeys) {
+    const fResA = byFmtA[fmt] || [];
+    const fResB = byFmtB[fmt] || [];
+    const fvA = fResA.filter(r => !r.opt_error);
+    const fvB = fResB.filter(r => !r.opt_error);
+    const fAvgA = fvA.length ? fvA.reduce((s,r) => s + r.reduction_pct, 0) / fvA.length : 0;
+    const fAvgB = fvB.length ? fvB.reduce((s,r) => s + r.reduction_pct, 0) / fvB.length : 0;
+    const fDelta = fAvgB - fAvgA;
+
+    const feA = fResA.filter(r => !r.opt_error && !r.est_error);
+    const feB = fResB.filter(r => !r.opt_error && !r.est_error);
+    const fEstA = feA.length ? feA.reduce((s,r) => s + r.est_error_pct, 0) / feA.length : null;
+    const fEstB = feB.length ? feB.reduce((s,r) => s + r.est_error_pct, 0) / feB.length : null;
+    const fEstDelta = (fEstA != null && fEstB != null) ? fEstB - fEstA : null;
+
+    const ftA = fvA.length ? fvA.reduce((s,r) => s + r.opt_time_ms, 0) / fvA.length : 0;
+    const ftB = fvB.length ? fvB.reduce((s,r) => s + r.opt_time_ms, 0) / fvB.length : 0;
+    const ftDelta = ftB - ftA;
+
+    const cardCls = fDelta > 0.5 ? 'improved' : fDelta < -0.5 ? 'regressed' : 'unchanged';
+
+    const hA = healthA[fmt] || 'none';
+    const hB = healthB[fmt] || 'none';
+    const healthChanged = hA !== hB;
+
+    // Card header
+    h += `<div class="cmp-card ${cardCls}"><div class="cmp-header"><span class="cmp-fmt">${fmt}</span>`;
+    if (healthChanged) {
+      h += `<span class="cmp-health-change"><span class="fc-badge ${hA}" style="font-size:11px;padding:2px 6px">${hA}</span>
+        <span class="ht-arrow">\u2192</span>
+        <span class="fc-badge ${hB}" style="font-size:11px;padding:2px 6px">${hB}</span></span>`;
+    } else if (hB !== 'none') {
+      h += `<span class="fc-badge ${hB}">${hB}</span>`;
+    }
+    h += '</div>';
+
+    // Metrics: 3-column compact blocks
+    h += `<div class="cmp-metrics">
+      <div><div class="cmp-metric-label">Reduction</div>
+        <div class="cmp-metric-delta ${redCls(fDelta)}">${ds(fDelta)}${fDelta.toFixed(1)}%</div>
+        <div class="cmp-metric-sub">${fAvgA.toFixed(1)} \u2192 ${fAvgB.toFixed(1)}</div></div>
+      <div><div class="cmp-metric-label">Est. Error</div>
+        <div class="cmp-metric-delta ${fEstDelta != null ? estCls(fEstDelta) : 'neutral'}">${fEstDelta != null ? ds(fEstDelta) + fEstDelta.toFixed(1) + '%' : '\u2014'}</div>
+        <div class="cmp-metric-sub">${fEstA != null ? fEstA.toFixed(1) : '\u2014'} \u2192 ${fEstB != null ? fEstB.toFixed(1) : '\u2014'}</div></div>
+      <div><div class="cmp-metric-label">Opt Time</div>
+        <div class="cmp-metric-delta ${durCls(ftDelta)}">${ds(ftDelta)}${ftDelta.toFixed(0)}ms</div>
+        <div class="cmp-metric-sub">${ftA.toFixed(0)} \u2192 ${ftB.toFixed(0)}</div></div>
+    </div>`;
+
+    // Per-preset breakdown
+    const pA = {}, pB = {};
+    for (const r of fResA) { if (!r.opt_error) { pA[r.preset] = pA[r.preset] || []; pA[r.preset].push(r.reduction_pct); } }
+    for (const r of fResB) { if (!r.opt_error) { pB[r.preset] = pB[r.preset] || []; pB[r.preset].push(r.reduction_pct); } }
+
+    const hasPresets = ['HIGH','MEDIUM','LOW'].some(p => pA[p] || pB[p]);
+    if (hasPresets) {
+      h += '<div class="cmp-presets">';
+      for (const preset of ['HIGH', 'MEDIUM', 'LOW']) {
+        const avgPA = pA[preset] ? pA[preset].reduce((x,y) => x+y, 0) / pA[preset].length : null;
+        const avgPB = pB[preset] ? pB[preset].reduce((x,y) => x+y, 0) / pB[preset].length : null;
+        if (avgPA == null && avgPB == null) continue;
+        const pDelta = (avgPA != null && avgPB != null) ? avgPB - avgPA : null;
+        h += `<div class="cmp-preset-row">
+          <span class="cmp-preset-label">${preset}</span>
+          <span class="cmp-preset-cell">${avgPA != null ? avgPA.toFixed(1) + '%' : '\u2014'}</span>
+          <span class="cmp-preset-arrow">\u2192</span>
+          <span class="cmp-preset-cell current">${avgPB != null ? avgPB.toFixed(1) + '%' : '\u2014'}</span>
+          <span class="cmp-preset-delta ${pDelta != null ? redCls(pDelta) : 'neutral'}">${pDelta != null ? ds(pDelta) + pDelta.toFixed(1) + '%' : '\u2014'}</span>
+        </div>`;
+      }
+      h += '</div>';
+    }
+
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // ── Biggest Changes Table ──
+  const changes = [];
+  for (const rB of resultsB) {
+    if (rB.opt_error) continue;
+    const key = `${rB.format}|${rB.preset}|${rB.name}`;
+    const rA = keyA[key];
+    if (!rA || rA.opt_error) continue;
+    const delta = rB.reduction_pct - rA.reduction_pct;
+    changes.push({ name: rB.name, format: rB.format, preset: rB.preset,
+      redA: rA.reduction_pct, redB: rB.reduction_pct, delta, absDelta: Math.abs(delta) });
+  }
+
+  if (changes.length) {
+    changes.sort((a, b) => b.absDelta - a.absDelta);
+    const top = changes.slice(0, 10);
+    h += '<div class="panel" style="margin-top:20px"><div class="panel-title">Biggest changes</div>';
+    h += '<table class="dt"><thead><tr><th>Image</th><th>Format</th><th>Preset</th><th>Run A</th><th>Run B</th><th>Delta</th></tr></thead><tbody>';
+    for (const c of top) {
+      const cls = c.delta > 0.1 ? 'c-pass' : c.delta < -0.1 ? 'c-fail' : '';
+      h += `<tr><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.name)}">${esc(c.name)}</td><td>${c.format}</td><td>${c.preset}</td>
+        <td>${c.redA.toFixed(1)}%</td><td>${c.redB.toFixed(1)}%</td>
+        <td class="${cls}">${ds(c.delta)}${c.delta.toFixed(1)}%</td></tr>`;
+    }
+    h += '</tbody></table></div>';
+  }
+
+  el.innerHTML = h;
+  populateCompareDropdowns();
 }
 
 init();
