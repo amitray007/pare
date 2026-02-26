@@ -17,6 +17,27 @@ from optimizers.router import optimize_image
 from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
 
+# Register optional Pillow format plugins so Image.open() can identify all formats.
+# These are imported lazily by the optimizers; the estimator needs them registered
+# before calling Image.open() to decode images for dimension/animation detection.
+try:
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+try:
+    import pillow_avif  # noqa: F401 — auto-registers on import
+except ImportError:
+    pass
+try:
+    import pillow_jxl  # noqa: F401 — auto-registers on import
+except ImportError:
+    try:
+        import jxlpy  # noqa: F401
+    except ImportError:
+        pass
+
 SAMPLE_MAX_WIDTH = 300
 JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
 LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
@@ -26,6 +47,18 @@ EXACT_FILE_SIZE_THRESHOLD = 1_000_000  # 1MB — files below this compress quick
 # Only these formats' optimizers implement max_reduction (binary search for quality).
 # Other formats ignore max_reduction, so the estimator must not cap them either.
 _MAX_REDUCTION_FORMATS = {ImageFormat.JPEG, ImageFormat.WEBP}
+
+# These already-compressed formats benefit from exact mode at small file sizes because
+# BPP extrapolation from decoded-and-resampled pixels is unreliable — the sample loses
+# the original encoding state, producing artificially low BPP that doesn't match
+# re-encoding the full original.
+_EXACT_FILE_SIZE_FORMATS = {
+    ImageFormat.JPEG,
+    ImageFormat.WEBP,
+    ImageFormat.HEIC,
+    ImageFormat.AVIF,
+    ImageFormat.JXL,
+}
 
 
 async def estimate(
@@ -88,11 +121,11 @@ async def estimate(
             data, fmt, config, file_size, width, height, color_type, bit_depth
         )
 
-    # JPEG/WebP: for smaller files, use exact mode to avoid LANCZOS smoothing
-    # artifacts that inflate sample BPP on already-compressed sources (e.g.
-    # q=60 source at q=40 target) and to capture jpegtran lossless gains
-    # that sample-based estimation misses entirely.
-    if fmt in (ImageFormat.JPEG, ImageFormat.WEBP) and file_size <= EXACT_FILE_SIZE_THRESHOLD:
+    # Already-compressed formats (JPEG, WebP, HEIC, AVIF, JXL): for smaller files,
+    # use exact mode to avoid LANCZOS smoothing artifacts that inflate sample BPP
+    # on already-compressed sources and to capture lossless gains (jpegtran, metadata
+    # strip) that sample-based estimation misses entirely.
+    if fmt in _EXACT_FILE_SIZE_FORMATS and file_size <= EXACT_FILE_SIZE_THRESHOLD:
         return await _estimate_exact(
             data, fmt, config, file_size, width, height, color_type, bit_depth
         )
@@ -447,30 +480,68 @@ def _png_sample_bpp(
 ) -> tuple[float, str]:
     """Encode a PNG sample and return output BPP.
 
-    For lossy mode (quality < 70 with png_lossy=True): quantizes to palette
-    first (simulating pngquant), then runs oxipng for maximum compression.
-    For lossless mode: encodes with Pillow then runs oxipng (which tries
-    many more filter combinations than Pillow's compress_level=9).
+    For lossy mode (quality < 70 with png_lossy=True): runs actual pngquant
+    on the sample (matching the optimizer pipeline), then oxipng.  Falls back
+    to Pillow palette quantization if pngquant is not installed.
+    For lossless mode: encodes with Pillow then runs oxipng.
     """
+    import subprocess
+
     import oxipng
 
     sample = img.resize((sample_width, sample_height), Image.LANCZOS)
 
-    # Lossy path: quantize to palette (simulates pngquant)
+    # Lossy path: quantize to palette using actual pngquant (matching the optimizer)
     if config.png_lossy and config.quality < 70:
         max_colors = 64 if config.quality < 50 else 256
-        if sample.mode == "RGBA":
-            sample = sample.quantize(max_colors)
-        elif sample.mode != "P":
-            sample = sample.convert("RGB").quantize(max_colors)
+        speed = 3 if config.quality < 50 else 4
+
+        # Encode sample to PNG for pngquant input
+        if sample.mode not in ("RGB", "RGBA", "L", "P"):
+            sample = sample.convert("RGBA")
+        buf = io.BytesIO()
+        sample.save(buf, format="PNG", compress_level=6)
+        png_data = buf.getvalue()
+
+        # Use actual pngquant for accurate palette quantization
+        try:
+            proc = subprocess.run(
+                [
+                    "pngquant",
+                    str(max_colors),
+                    "--quality",
+                    f"1-{config.quality}",
+                    "--speed",
+                    str(speed),
+                    "-",
+                    "--output",
+                    "-",
+                ],
+                input=png_data,
+                capture_output=True,
+                timeout=10,
+            )
+            if proc.returncode == 0 and proc.stdout:
+                png_data = proc.stdout
+            # exit code 99 = quality threshold not met; keep original png_data
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            # pngquant not available — fall back to Pillow quantize
+            if sample.mode == "RGBA":
+                quantized = sample.quantize(max_colors)
+            elif sample.mode != "P":
+                quantized = sample.convert("RGB").quantize(max_colors)
+            else:
+                quantized = sample
+            buf = io.BytesIO()
+            quantized.save(buf, format="PNG", compress_level=6)
+            png_data = buf.getvalue()
+
         method = "pngquant + oxipng"
     else:
+        buf = io.BytesIO()
+        sample.save(buf, format="PNG", compress_level=6)
+        png_data = buf.getvalue()
         method = "oxipng"
-
-    # Encode with Pillow first, then run oxipng for accurate lossless compression
-    buf = io.BytesIO()
-    sample.save(buf, format="PNG", compress_level=6)
-    png_data = buf.getvalue()
 
     # oxipng matches what the actual optimizer uses
     oxipng_level = 4 if config.quality < 70 else 2
