@@ -15,8 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from benchmarks.cases import load_corpus_cases
-from benchmarks.corpus import load_corpus_cases as load_grouped_corpus
 from benchmarks.constants import PRESETS_BY_NAME
+from benchmarks.corpus import load_corpus_cases as load_grouped_corpus
 from benchmarks.report import export_json, generate_html_report, print_report
 from benchmarks.runner import run_suite
 

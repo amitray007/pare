@@ -341,15 +341,15 @@ async def test_max_reduction_caps_jpeg_estimate():
 
     # Without cap: aggressive compression should estimate high reduction
     uncapped = await estimate(data, OptimizationConfig(quality=40))
-    assert uncapped.estimated_reduction_percent > 25, (
-        f"Uncapped estimate should be >25%, got {uncapped.estimated_reduction_percent}%"
-    )
+    assert (
+        uncapped.estimated_reduction_percent > 25
+    ), f"Uncapped estimate should be >25%, got {uncapped.estimated_reduction_percent}%"
 
     # With max_reduction=25: estimate must not exceed the cap
     capped = await estimate(data, OptimizationConfig(quality=40, max_reduction=25.0))
-    assert capped.estimated_reduction_percent <= 25.0, (
-        f"Capped estimate should be <=25%, got {capped.estimated_reduction_percent}%"
-    )
+    assert (
+        capped.estimated_reduction_percent <= 25.0
+    ), f"Capped estimate should be <=25%, got {capped.estimated_reduction_percent}%"
 
 
 @pytest.mark.asyncio
@@ -362,9 +362,9 @@ async def test_max_reduction_caps_webp_estimate():
     data = buf.getvalue()
 
     capped = await estimate(data, OptimizationConfig(quality=40, max_reduction=20.0))
-    assert capped.estimated_reduction_percent <= 20.0, (
-        f"WebP capped estimate should be <=20%, got {capped.estimated_reduction_percent}%"
-    )
+    assert (
+        capped.estimated_reduction_percent <= 20.0
+    ), f"WebP capped estimate should be <=20%, got {capped.estimated_reduction_percent}%"
 
 
 @pytest.mark.asyncio
@@ -389,9 +389,9 @@ async def test_max_reduction_ignored_for_unsupported_formats():
     # BMP -> PNG conversion gives huge reduction; max_reduction is ignored
     result = await estimate(data, OptimizationConfig(quality=60, max_reduction=15.0))
     # BMP should still report high reduction despite max_reduction being set
-    assert result.estimated_reduction_percent > 50, (
-        f"BMP should ignore max_reduction, got {result.estimated_reduction_percent}%"
-    )
+    assert (
+        result.estimated_reduction_percent > 50
+    ), f"BMP should ignore max_reduction, got {result.estimated_reduction_percent}%"
 
 
 # --- PNG low-BPP exact mode fallback ---
@@ -418,9 +418,9 @@ async def test_large_png_low_bpp_uses_exact_mode():
 
     result = await estimate(data, OptimizationConfig(quality=60, png_lossy=True))
     assert result.original_format == "png"
-    assert result.estimated_reduction_percent > 0, (
-        f"Low-BPP PNG should estimate >0% reduction, got {result.estimated_reduction_percent}%"
-    )
+    assert (
+        result.estimated_reduction_percent > 0
+    ), f"Low-BPP PNG should estimate >0% reduction, got {result.estimated_reduction_percent}%"
     # Exact mode should report high confidence
     assert result.confidence == "high"
 
@@ -482,9 +482,9 @@ async def test_jpeg_small_file_uses_exact_mode():
     result = await estimate(data, OptimizationConfig(quality=40))
     assert result.original_format == "jpeg"
     # Exact mode captures jpegtran lossless gains (~18%) that sample mode misses
-    assert result.estimated_reduction_percent > 5, (
-        f"Small JPEG should show jpegtran gains, got {result.estimated_reduction_percent}%"
-    )
+    assert (
+        result.estimated_reduction_percent > 5
+    ), f"Small JPEG should show jpegtran gains, got {result.estimated_reduction_percent}%"
 
 
 @pytest.mark.asyncio

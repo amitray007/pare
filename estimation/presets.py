@@ -3,9 +3,15 @@
 from schemas import OptimizationConfig
 
 PRESET_CONFIGS = {
-    "high": OptimizationConfig(quality=40, png_lossy=True, strip_metadata=True, progressive_jpeg=True),
-    "medium": OptimizationConfig(quality=60, png_lossy=True, strip_metadata=True, progressive_jpeg=True),
-    "low": OptimizationConfig(quality=75, png_lossy=False, strip_metadata=True, progressive_jpeg=True),
+    "high": OptimizationConfig(
+        quality=40, png_lossy=True, strip_metadata=True, progressive_jpeg=True
+    ),
+    "medium": OptimizationConfig(
+        quality=60, png_lossy=True, strip_metadata=True, progressive_jpeg=True
+    ),
+    "low": OptimizationConfig(
+        quality=75, png_lossy=False, strip_metadata=True, progressive_jpeg=True
+    ),
 }
 
 

@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 from benchmarks.cases import BenchmarkCase
-from benchmarks.constants import CORPUS_GROUPS
 
 # File extension to format mapping
 _EXT_TO_FMT = {

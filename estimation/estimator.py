@@ -42,7 +42,9 @@ SAMPLE_MAX_WIDTH = 300
 JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
 LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
-EXACT_FILE_SIZE_THRESHOLD = 1_000_000  # 1MB — files below this compress quickly enough for exact mode
+EXACT_FILE_SIZE_THRESHOLD = (
+    1_000_000  # 1MB — files below this compress quickly enough for exact mode
+)
 
 # Only these formats' optimizers implement max_reduction (binary search for quality).
 # Other formats ignore max_reduction, so the estimator must not cap them either.

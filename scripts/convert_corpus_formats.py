@@ -101,8 +101,11 @@ def convert_image(src: Path, ext: str, fmt: str, save_kwargs: dict) -> Path | No
 def _fmt_from_ext(ext: str) -> str:
     """Map file extension to format name."""
     return {
-        "bmp": "bmp", "tiff": "tiff", "gif": "gif",
-        "heic": "heic", "jxl": "jxl",
+        "bmp": "bmp",
+        "tiff": "tiff",
+        "gif": "gif",
+        "heic": "heic",
+        "jxl": "jxl",
     }.get(ext, ext)
 
 
@@ -147,13 +150,15 @@ def main():
                     size_kb = dest.stat().st_size / 1024
                     print(f"    {ext:5s}: exists ({size_kb:.0f} KB)")
                     if not dry_run:
-                        new_files.setdefault(group, []).append({
-                            "path": f"{group}/{dest.name}",
-                            "format": _fmt_from_ext(ext),
-                            "source_type": "lossless",
-                            "category": "medium",
-                            "size_bytes": dest.stat().st_size,
-                        })
+                        new_files.setdefault(group, []).append(
+                            {
+                                "path": f"{group}/{dest.name}",
+                                "format": _fmt_from_ext(ext),
+                                "source_type": "lossless",
+                                "category": "medium",
+                                "size_bytes": dest.stat().st_size,
+                            }
+                        )
                 elif dry_run:
                     print(f"    {ext:5s}: would create")
                 else:
@@ -162,13 +167,15 @@ def main():
                         stats[ext]["created"] += 1
                         size_kb = result.stat().st_size / 1024
                         print(f"    {ext:5s}: created ({size_kb:.0f} KB)")
-                        new_files.setdefault(group, []).append({
-                            "path": f"{group}/{result.name}",
-                            "format": _fmt_from_ext(ext),
-                            "source_type": "lossless",
-                            "category": "medium",
-                            "size_bytes": result.stat().st_size,
-                        })
+                        new_files.setdefault(group, []).append(
+                            {
+                                "path": f"{group}/{result.name}",
+                                "format": _fmt_from_ext(ext),
+                                "source_type": "lossless",
+                                "category": "medium",
+                                "size_bytes": result.stat().st_size,
+                            }
+                        )
                     else:
                         stats[ext]["failed"] += 1
 
@@ -183,13 +190,15 @@ def main():
                         size_kb = dest.stat().st_size / 1024
                         print(f"    {ext:5s}: exists ({size_kb:.0f} KB)")
                         if not dry_run:
-                            new_files.setdefault(group, []).append({
-                                "path": f"{group}/{dest.name}",
-                                "format": _fmt_from_ext(ext),
-                                "source_type": "lossless",
-                                "category": "medium",
-                                "size_bytes": dest.stat().st_size,
-                            })
+                            new_files.setdefault(group, []).append(
+                                {
+                                    "path": f"{group}/{dest.name}",
+                                    "format": _fmt_from_ext(ext),
+                                    "source_type": "lossless",
+                                    "category": "medium",
+                                    "size_bytes": dest.stat().st_size,
+                                }
+                            )
                     elif dry_run:
                         print(f"    {ext:5s}: would create")
                     else:
@@ -198,13 +207,15 @@ def main():
                             stats[ext]["created"] += 1
                             size_kb = result.stat().st_size / 1024
                             print(f"    {ext:5s}: created ({size_kb:.0f} KB)")
-                            new_files.setdefault(group, []).append({
-                                "path": f"{group}/{result.name}",
-                                "format": _fmt_from_ext(ext),
-                                "source_type": "lossless",
-                                "category": "medium",
-                                "size_bytes": result.stat().st_size,
-                            })
+                            new_files.setdefault(group, []).append(
+                                {
+                                    "path": f"{group}/{result.name}",
+                                    "format": _fmt_from_ext(ext),
+                                    "source_type": "lossless",
+                                    "category": "medium",
+                                    "size_bytes": result.stat().st_size,
+                                }
+                            )
                         else:
                             stats[ext]["failed"] += 1
 
@@ -213,9 +224,7 @@ def main():
         manifest = json.loads(GROUPS_JSON.read_text(encoding="utf-8"))
         for group_key, files in new_files.items():
             if group_key in manifest.get("groups", {}):
-                existing_paths = {
-                    f["path"] for f in manifest["groups"][group_key].get("files", [])
-                }
+                existing_paths = {f["path"] for f in manifest["groups"][group_key].get("files", [])}
                 for f in files:
                     if f["path"] not in existing_paths:
                         manifest["groups"][group_key].setdefault("files", []).append(f)
@@ -235,9 +244,7 @@ def main():
         )
     for ext, *_ in optional:
         s = stats[ext]
-        print(
-            f"  {ext.upper():<8} {'PNG':<8} {s['created']:>8} {s['skipped']:>8} {s['failed']:>8}"
-        )
+        print(f"  {ext.upper():<8} {'PNG':<8} {s['created']:>8} {s['skipped']:>8} {s['failed']:>8}")
 
     # Show total corpus size
     total_bytes = sum(

@@ -178,13 +178,15 @@ def download_group_photos(
                 size_bytes = dest.stat().st_size
                 print(f"    {ext.upper()}: exists ({size_bytes / 1024:.0f} KB)")
                 skipped += 1
-                file_infos.append({
-                    "path": rel_path,
-                    "format": "jpeg" if ext == "jpg" else ext,
-                    "source_type": "cdn",
-                    "category": _size_category(width),
-                    "size_bytes": size_bytes,
-                })
+                file_infos.append(
+                    {
+                        "path": rel_path,
+                        "format": "jpeg" if ext == "jpg" else ext,
+                        "source_type": "cdn",
+                        "category": _size_category(width),
+                        "size_bytes": size_bytes,
+                    }
+                )
                 continue
 
             if raw_url:
@@ -198,13 +200,15 @@ def download_group_photos(
                 size_bytes = dest.stat().st_size
                 print(f"    {ext.upper()}: downloaded ({size_bytes / 1024:.0f} KB)")
                 downloaded += 1
-                file_infos.append({
-                    "path": rel_path,
-                    "format": "jpeg" if ext == "jpg" else ext,
-                    "source_type": "cdn",
-                    "category": _size_category(width),
-                    "size_bytes": size_bytes,
-                })
+                file_infos.append(
+                    {
+                        "path": rel_path,
+                        "format": "jpeg" if ext == "jpg" else ext,
+                        "source_type": "cdn",
+                        "category": _size_category(width),
+                        "size_bytes": size_bytes,
+                    }
+                )
             else:
                 failed += 1
             time.sleep(0.5)
@@ -241,13 +245,15 @@ def download_external_samples(
                 size_bytes = dest.stat().st_size
                 print(f"    {name}: exists ({size_bytes / 1024:.0f} KB)")
                 skipped += 1
-                file_infos.append({
-                    "path": rel_path,
-                    "format": fmt,
-                    "source_type": "native",
-                    "category": "large",
-                    "size_bytes": size_bytes,
-                })
+                file_infos.append(
+                    {
+                        "path": rel_path,
+                        "format": fmt,
+                        "source_type": "native",
+                        "category": "large",
+                        "size_bytes": size_bytes,
+                    }
+                )
                 continue
 
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -256,13 +262,15 @@ def download_external_samples(
                 size_bytes = dest.stat().st_size
                 print(f"    {name}: downloaded ({size_bytes / 1024:.0f} KB)")
                 downloaded += 1
-                file_infos.append({
-                    "path": rel_path,
-                    "format": fmt,
-                    "source_type": "native",
-                    "category": "large",
-                    "size_bytes": size_bytes,
-                })
+                file_infos.append(
+                    {
+                        "path": rel_path,
+                        "format": fmt,
+                        "source_type": "native",
+                        "category": "large",
+                        "size_bytes": size_bytes,
+                    }
+                )
             else:
                 failed += 1
             time.sleep(0.3)
@@ -340,8 +348,11 @@ def main():
         if group_key not in groups_to_download:
             continue
         d, s, f, files = download_group_photos(
-            group_key, photos, access_key,
-            force=args.force, dry_run=args.dry_run,
+            group_key,
+            photos,
+            access_key,
+            force=args.force,
+            dry_run=args.dry_run,
         )
         total_downloaded += d
         total_skipped += s
@@ -351,7 +362,8 @@ def main():
     # Download external native samples for deep_color
     if "deep_color" in groups_to_download and not args.skip_external:
         d, s, f, files = download_external_samples(
-            force=args.force, dry_run=args.dry_run,
+            force=args.force,
+            dry_run=args.dry_run,
         )
         total_downloaded += d
         total_skipped += s

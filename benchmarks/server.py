@@ -24,7 +24,8 @@ from pydantic import BaseModel
 
 from benchmarks.cases import BenchmarkCase
 from benchmarks.constants import CORPUS_GROUPS, PRESETS_BY_NAME
-from benchmarks.corpus import load_corpus_cases as _load_corpus, scan_corpus_by_group
+from benchmarks.corpus import load_corpus_cases as _load_corpus
+from benchmarks.corpus import scan_corpus_by_group
 from benchmarks.runner import run_single
 
 # ---------------------------------------------------------------------------
