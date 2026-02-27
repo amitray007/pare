@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from benchmarks.cases import load_corpus_cases
+from benchmarks.corpus import load_corpus_cases as load_grouped_corpus
 from benchmarks.constants import PRESETS_BY_NAME
 from benchmarks.report import export_json, generate_html_report, print_report
 from benchmarks.runner import run_suite
@@ -150,6 +151,12 @@ def main():
         "--corpus", help="Path to a corpus directory of real images (e.g. tests/corpus)"
     )
     parser.add_argument(
+        "--group",
+        nargs="+",
+        choices=["high_res", "standard", "compact", "deep_color"],
+        help="Filter corpus by group (only with --corpus)",
+    )
+    parser.add_argument(
         "--compare", action="store_true", help="Compare the last two benchmark runs"
     )
     args = parser.parse_args()
@@ -179,10 +186,21 @@ def main():
     # Load corpus cases if --corpus is provided
     corpus_cases = None
     if args.corpus:
-        corpus_cases = load_corpus_cases(args.corpus)
+        if args.group:
+            corpus_cases = load_grouped_corpus(
+                Path(args.corpus),
+                groups=args.group,
+            )
+        else:
+            corpus_cases = load_grouped_corpus(Path(args.corpus))
+        if not corpus_cases:
+            # Fallback to legacy loader
+            corpus_cases = load_corpus_cases(args.corpus)
         if not corpus_cases:
             parser.error(f"No image files found in corpus directory: {args.corpus}")
         print(f"  Loaded {len(corpus_cases)} images from corpus: {args.corpus}", file=sys.stderr)
+        if args.group:
+            print(f"  Groups: {', '.join(args.group)}", file=sys.stderr)
 
     suite = asyncio.run(
         run_suite(
