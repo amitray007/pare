@@ -10,6 +10,7 @@ Usage:
     python scripts/run_corpus_benchmark.py                  # Full run
     python scripts/run_corpus_benchmark.py --fmt jpeg       # Single format
     python scripts/run_corpus_benchmark.py --preset high    # Single preset
+    python scripts/run_corpus_benchmark.py --group high_res # Single group
     python scripts/run_corpus_benchmark.py --no-open        # Don't open browser
 """
 
@@ -28,7 +29,7 @@ def check_corpus():
     if not CORPUS_DIR.is_dir():
         print(f"Corpus not found at {CORPUS_DIR}")
         print("Download it first:")
-        print("  python scripts/download_unsplash_corpus.py --key YOUR_KEY")
+        print("  python scripts/download_corpus.py --key YOUR_KEY")
         print("  python scripts/convert_corpus_formats.py")
         sys.exit(1)
 
@@ -54,6 +55,12 @@ def main():
         "--fmt", help="Filter by format (jpeg, png, webp, gif, bmp, tiff, avif, heic, jxl)"
     )
     parser.add_argument("--preset", help="Run only this preset (high, medium, low)")
+    parser.add_argument(
+        "--group",
+        nargs="+",
+        choices=["high_res", "standard", "compact", "deep_color"],
+        help="Filter by corpus group",
+    )
     parser.add_argument("--no-open", action="store_true", help="Don't open HTML report in browser")
     parser.add_argument("--json", action="store_true", help="Also print JSON to stdout")
     args = parser.parse_args()
@@ -68,6 +75,8 @@ def main():
         cmd += ["--fmt", args.fmt]
     if args.preset:
         cmd += ["--preset", args.preset]
+    if args.group:
+        cmd += ["--group"] + args.group
     if args.json:
         cmd += ["--json"]
 
