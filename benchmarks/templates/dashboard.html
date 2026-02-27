@@ -126,11 +126,6 @@ body {
 }
 .preset-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
 
-.cfg-select {
-  width: 100%; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); color: var(--text); font-family: var(--sans); font-size: 13px;
-}
-
 .cfg-run-btn {
   width: 100%; margin-top: 10px; padding: 8px 0; background: var(--text); border: none;
   border-radius: var(--radius-sm); color: #fff; font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer;
@@ -597,14 +592,6 @@ body {
             <div class="cfg-label">Corpus Group</div>
             <div class="chip-grid" id="group-chips"></div>
           </div>
-          <div class="cfg-group">
-            <div class="cfg-label">Images per format</div>
-            <select class="cfg-select" id="images-per-format">
-              <option value="1">1</option>
-              <option value="3" selected>3</option>
-              <option value="5">5</option>
-            </select>
-          </div>
           <button class="cfg-run-btn" onclick="runConfigured()">Run with config</button>
         </div>
       </div>
@@ -695,7 +682,7 @@ function renderGroupChips() {
 }
 
 async function runAll() {
-  await startRun({ formats: [], presets: ['HIGH','MEDIUM','LOW'], images_per_format: 3 });
+  await startRun({ formats: [], presets: ['HIGH','MEDIUM','LOW'] });
 }
 
 async function runConfigured() {
@@ -703,7 +690,6 @@ async function runConfigured() {
   await startRun({
     formats: getSelectedFormats(),
     presets: getSelectedPresets(),
-    images_per_format: parseInt(document.getElementById('images-per-format').value),
     groups: getSelectedGroups()
   });
 }

@@ -56,7 +56,6 @@ _active_runs: dict[str, dict] = {}
 class RunConfig(BaseModel):
     formats: list[str] = []
     presets: list[str] = ["HIGH", "MEDIUM", "LOW"]
-    images_per_format: int = 3
     groups: list[str] = []
 
 
@@ -107,23 +106,13 @@ def _get_available_formats() -> dict[str, int]:
 def _select_cases(
     formats: list[str],
     groups: list[str],
-    images_per_format: int,
 ) -> list[BenchmarkCase]:
     """Select cases from corpus filtered by groups and formats."""
-    cases = _load_corpus(
+    return _load_corpus(
         CORPUS_DIR,
         groups=groups if groups else None,
         formats=formats if formats else None,
     )
-    # Limit per format
-    by_fmt: dict[str, list[BenchmarkCase]] = {}
-    for c in cases:
-        by_fmt.setdefault(c.fmt, []).append(c)
-
-    selected = []
-    for fmt, fmt_cases in by_fmt.items():
-        selected.extend(fmt_cases[:images_per_format])
-    return selected
 
 
 def _compute_health(results_by_fmt: dict) -> dict[str, str]:
@@ -249,7 +238,7 @@ async def start_run(config: RunConfig):
 
     run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    cases = _select_cases(formats, config.groups, config.images_per_format)
+    cases = _select_cases(formats, config.groups)
     if not cases:
         raise HTTPException(status_code=400, detail="No cases selected.")
 
