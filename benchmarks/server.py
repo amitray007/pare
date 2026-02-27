@@ -23,7 +23,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from benchmarks.cases import BenchmarkCase
-from benchmarks.constants import PRESETS_BY_NAME
+from benchmarks.constants import CORPUS_GROUPS, PRESETS_BY_NAME
+from benchmarks.corpus import load_corpus_cases as _load_corpus, scan_corpus_by_group
 from benchmarks.runner import run_single
 
 # ---------------------------------------------------------------------------
@@ -35,31 +36,6 @@ CORPUS_DIR = ROOT / "tests" / "corpus"
 DATA_DIR = ROOT / ".benchmark-data"
 RUNS_DIR = DATA_DIR / "runs"
 DASHBOARD_HTML = Path(__file__).resolve().parent / "templates/dashboard.html"
-
-# File extension to format mapping
-_EXT_TO_FMT = {
-    ".jpg": "jpeg",
-    ".jpeg": "jpeg",
-    ".png": "png",
-    ".webp": "webp",
-    ".gif": "gif",
-    ".bmp": "bmp",
-    ".tiff": "tiff",
-    ".tif": "tiff",
-    ".avif": "avif",
-    ".heic": "heic",
-    ".heif": "heic",
-    ".jxl": "jxl",
-    ".svg": "svg",
-    ".svgz": "svgz",
-}
-
-# Size classification thresholds
-_SIZE_THRESHOLDS = [
-    (400, "small"),
-    (1200, "medium"),
-]
-
 
 # ---------------------------------------------------------------------------
 # App
@@ -80,6 +56,7 @@ class RunConfig(BaseModel):
     formats: list[str] = []
     presets: list[str] = ["HIGH", "MEDIUM", "LOW"]
     images_per_format: int = 3
+    groups: list[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -104,124 +81,48 @@ def _git_commit_hash() -> str:
         return "unknown"
 
 
-def _classify_size_tier(data: bytes, fmt: str) -> str:
-    """Classify into small/medium/large based on pixel dimensions."""
-    if fmt in ("svg", "svgz"):
-        return "medium"
-    try:
-        import io
-
-        from PIL import Image
-
-        img = Image.open(io.BytesIO(data))
-        max_dim = max(img.size)
-        for threshold, label in _SIZE_THRESHOLDS:
-            if max_dim <= threshold:
-                return label
-        return "large"
-    except Exception:
-        size = len(data)
-        if size < 50_000:
-            return "small"
-        if size < 500_000:
-            return "medium"
-        return "large"
-
-
-_corpus_cache: dict[str, dict[str, list[Path]]] | None = None
+_corpus_cache: dict | None = None
 
 
 def _scan_corpus() -> dict[str, dict[str, list[Path]]]:
-    """Scan corpus and group files by format and size tier.
-
-    Returns: {format: {size_tier: [paths]}}
-    Results are cached after first scan.
-    """
+    """Scan corpus by group. Returns: {group: {format: [paths]}}"""
     global _corpus_cache
     if _corpus_cache is not None:
         return _corpus_cache
+    _corpus_cache = scan_corpus_by_group(CORPUS_DIR)
+    return _corpus_cache
 
-    if not CORPUS_DIR.is_dir():
-        return {}
 
-    by_fmt: dict[str, dict[str, list[Path]]] = {}
-    for filepath in sorted(CORPUS_DIR.rglob("*")):
-        if not filepath.is_file():
-            continue
-        ext = filepath.suffix.lower()
-        fmt = _EXT_TO_FMT.get(ext)
-        if fmt is None:
-            continue
-
-        # Classify by filename pattern instead of reading bytes
-        stem = filepath.stem.lower()
-        if "_small" in stem or stem.endswith("small"):
-            tier = "small"
-        elif "_large" in stem or stem.endswith("large"):
-            tier = "large"
-        else:
-            tier = "medium"
-
-        by_fmt.setdefault(fmt, {}).setdefault(tier, []).append(filepath)
-
-    _corpus_cache = by_fmt
-    return by_fmt
+def _get_available_formats() -> dict[str, int]:
+    """Get available formats with file counts."""
+    corpus = _scan_corpus()
+    fmt_counts: dict[str, int] = {}
+    for group_data in corpus.values():
+        for fmt, files in group_data.items():
+            fmt_counts[fmt] = fmt_counts.get(fmt, 0) + len(files)
+    return fmt_counts
 
 
 def _select_cases(
-    corpus_map: dict[str, dict[str, list[Path]]],
     formats: list[str],
+    groups: list[str],
     images_per_format: int,
 ) -> list[BenchmarkCase]:
-    """Select representative images from corpus."""
-    cases = []
-    for fmt in formats:
-        if fmt not in corpus_map:
-            continue
+    """Select cases from corpus filtered by groups and formats."""
+    cases = _load_corpus(
+        CORPUS_DIR,
+        groups=groups if groups else None,
+        formats=formats if formats else None,
+    )
+    # Limit per format
+    by_fmt: dict[str, list[BenchmarkCase]] = {}
+    for c in cases:
+        by_fmt.setdefault(c.fmt, []).append(c)
 
-        tiers = corpus_map[fmt]
-        selected: list[Path] = []
-
-        if images_per_format == 1:
-            # Pick one medium image
-            if "medium" in tiers and tiers["medium"]:
-                selected.append(tiers["medium"][0])
-            elif "small" in tiers and tiers["small"]:
-                selected.append(tiers["small"][0])
-            elif "large" in tiers and tiers["large"]:
-                selected.append(tiers["large"][0])
-        else:
-            # Pick from each tier
-            per_tier = max(1, images_per_format // 3)
-            for tier_name in ["small", "medium", "large"]:
-                tier_files = tiers.get(tier_name, [])
-                selected.extend(tier_files[:per_tier])
-
-            # If we have room, fill from medium
-            remaining = images_per_format - len(selected)
-            if remaining > 0 and "medium" in tiers:
-                for f in tiers["medium"]:
-                    if f not in selected and remaining > 0:
-                        selected.append(f)
-                        remaining -= 1
-
-        for filepath in selected[:images_per_format]:
-            data = filepath.read_bytes()
-            tier = _classify_size_tier(data, fmt)
-            content = filepath.parent.name
-            name = f"{content}/{filepath.stem}"
-
-            cases.append(
-                BenchmarkCase(
-                    name=name,
-                    data=data,
-                    fmt=fmt,
-                    category=tier,
-                    content=content,
-                )
-            )
-
-    return cases
+    selected = []
+    for fmt, fmt_cases in by_fmt.items():
+        selected.extend(fmt_cases[:images_per_format])
+    return selected
 
 
 def _compute_health(results_by_fmt: dict) -> dict[str, str]:
@@ -298,28 +199,45 @@ async def dashboard():
 
 @app.get("/api/corpus")
 async def get_corpus():
-    """List available formats and image counts in the corpus."""
-    corpus_map = _scan_corpus()
-    result = {}
-    for fmt, tiers in corpus_map.items():
-        total = sum(len(files) for files in tiers.values())
-        result[fmt] = {
-            "total": total,
-            "small": len(tiers.get("small", [])),
-            "medium": len(tiers.get("medium", [])),
-            "large": len(tiers.get("large", [])),
+    """List available groups, formats, and counts."""
+    corpus = _scan_corpus()
+    groups_info = {}
+    fmt_totals: dict[str, int] = {}
+
+    for group_key, fmt_data in corpus.items():
+        group_files = {}
+        for fmt, files in fmt_data.items():
+            group_files[fmt] = len(files)
+            fmt_totals[fmt] = fmt_totals.get(fmt, 0) + len(files)
+        groups_info[group_key] = {
+            "total": sum(len(f) for f in fmt_data.values()),
+            "formats": group_files,
         }
-    return {"formats": result, "corpus_dir": str(CORPUS_DIR)}
+
+    # Add group labels from constants
+    for key, info in groups_info.items():
+        if key in CORPUS_GROUPS:
+            g = CORPUS_GROUPS[key]
+            info["label"] = g.label
+            info["badge"] = g.badge
+            info["description"] = g.description
+
+    return {
+        "groups": groups_info,
+        "formats": {fmt: {"total": count} for fmt, count in fmt_totals.items()},
+        "corpus_dir": str(CORPUS_DIR),
+    }
 
 
 @app.post("/api/run")
 async def start_run(config: RunConfig):
     """Start a benchmark run."""
-    corpus_map = _scan_corpus()
-    if not corpus_map:
+    corpus = _scan_corpus()
+    if not corpus:
         raise HTTPException(status_code=400, detail="No corpus found. Download it first.")
 
-    available_formats = list(corpus_map.keys())
+    fmt_counts = _get_available_formats()
+    available_formats = list(fmt_counts.keys())
     formats = config.formats if config.formats else available_formats
 
     # Validate presets
@@ -330,8 +248,7 @@ async def start_run(config: RunConfig):
 
     run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    # Select cases
-    cases = _select_cases(corpus_map, formats, config.images_per_format)
+    cases = _select_cases(formats, config.groups, config.images_per_format)
     if not cases:
         raise HTTPException(status_code=400, detail="No cases selected.")
 
@@ -347,6 +264,7 @@ async def start_run(config: RunConfig):
         "cases_count": len(cases),
         "formats": formats,
         "presets": preset_names,
+        "groups": config.groups or list(corpus.keys()),
         "total_tasks": len(cases) * len(preset_names),
     }
 
@@ -386,6 +304,7 @@ async def stream_run(run_id: str):
                 "format": case.fmt,
                 "category": case.category,
                 "content": case.content,
+                "group": case.group,
                 "preset": preset_name,
                 "original_size": len(case.data),
                 "optimized_size": result.optimized_size,
