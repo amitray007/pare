@@ -71,3 +71,43 @@ LOW = QualityPreset(
 ALL_PRESETS = [HIGH, MEDIUM, LOW]
 
 PRESETS_BY_NAME = {p.name: p for p in ALL_PRESETS}
+
+# ---------------------------------------------------------------------------
+# Corpus groups
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CorpusGroup:
+    key: str
+    label: str
+    badge: str  # Short label for UI badges
+    description: str
+
+
+CORPUS_GROUPS = {
+    "high_res": CorpusGroup(
+        key="high_res",
+        label="High-Res",
+        badge="Hi-Res",
+        description="2000+ px, >500KB",
+    ),
+    "standard": CorpusGroup(
+        key="standard",
+        label="Standard",
+        badge="Std",
+        description="800-2000px, 100-500KB",
+    ),
+    "compact": CorpusGroup(
+        key="compact",
+        label="Compact",
+        badge="Cmpct",
+        description="<800px, <100KB",
+    ),
+    "deep_color": CorpusGroup(
+        key="deep_color",
+        label="Deep-Color",
+        badge="Deep",
+        description="10/12-bit native encoding",
+    ),
+}
