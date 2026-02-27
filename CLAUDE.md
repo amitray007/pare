@@ -31,8 +31,16 @@ python -m benchmarks.run
 # Run benchmarks filtered by format and/or preset
 python -m benchmarks.run --fmt bmp --preset high
 
+# Run benchmarks filtered by corpus group
+python -m benchmarks.run --corpus tests/corpus --group high_res --fmt jpeg
+
 # Compare current benchmark against previous run
 python -m benchmarks.run --compare
+
+# Download and manage corpus
+python scripts/download_corpus.py                      # Download all groups
+python scripts/download_corpus.py --group high_res     # Download one group
+python scripts/convert_corpus_formats.py               # Convert to BMP/TIFF/GIF/HEIC/JXL
 
 # Docker
 docker-compose up          # Pare + Redis (local dev)
