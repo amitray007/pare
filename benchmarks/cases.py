@@ -35,6 +35,7 @@ class BenchmarkCase:
     category: str  # size: small, medium, large, vector
     content: str  # content type: photo, screenshot, graphic, etc.
     quality: int = 0  # source quality for lossy formats
+    group: str = ""  # corpus group: high_res, standard, compact, deep_color
 
 
 # ---------------------------------------------------------------------------
