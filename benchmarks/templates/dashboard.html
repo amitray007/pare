@@ -581,6 +581,10 @@ body {
             </div>
           </div>
           <div class="cfg-group">
+            <div class="cfg-label">Corpus Group</div>
+            <div class="chip-grid" id="group-chips"></div>
+          </div>
+          <div class="cfg-group">
             <div class="cfg-label">Images per format</div>
             <select class="cfg-select" id="images-per-format">
               <option value="1">1</option>
@@ -625,7 +629,7 @@ body {
 </div>
 
 <script>
-let corpusFormats = {}, currentResults = [], isRunning = false, activeTab = 'overview',
+let corpusFormats = {}, corpusGroups = {}, currentResults = [], isRunning = false, activeTab = 'overview',
     healthStatus = {}, runMeta = null, progressDone = 0, progressTotal = 0,
     historyRuns = [], compareDataA = null, compareDataB = null,
     compareSelA = '', compareSelB = '';
@@ -637,7 +641,9 @@ async function loadCorpus() {
     const r = await fetch('/api/corpus');
     const d = await r.json();
     corpusFormats = d.formats;
+    corpusGroups = d.groups || {};
     renderFormatChips();
+    renderGroupChips();
   } catch(e) { console.error('Corpus load failed:', e); }
 }
 
@@ -661,6 +667,19 @@ function toggleChip(el) { el.classList.toggle('active'); }
 function togglePreset(el) { el.classList.toggle('active'); }
 function getSelectedFormats() { return [...document.querySelectorAll('#format-chips .chip.active')].map(c => c.dataset.format); }
 function getSelectedPresets() { return [...document.querySelectorAll('.preset-btn.active')].map(p => p.dataset.preset); }
+function getSelectedGroups() { return [...document.querySelectorAll('#group-chips .chip.active')].map(c => c.dataset.group); }
+
+function renderGroupChips() {
+  const c = document.getElementById('group-chips');
+  if (!c) return;
+  const allGroups = ['high_res', 'standard', 'compact', 'deep_color'];
+  const labels = { high_res: 'High-Res', standard: 'Standard', compact: 'Compact', deep_color: 'Deep-Color' };
+  c.innerHTML = allGroups.map(g => {
+    const info = corpusGroups[g];
+    const ok = info && info.total > 0;
+    return `<button class="chip ${ok?'active':'unavailable'}" data-group="${g}" ${ok?'onclick="toggleChip(this)"':''} title="${ok?info.total+' files: '+info.description:'unavailable'}">${labels[g]}</button>`;
+  }).join('');
+}
 
 async function runAll() {
   await startRun({ formats: [], presets: ['HIGH','MEDIUM','LOW'], images_per_format: 3 });
@@ -671,7 +690,8 @@ async function runConfigured() {
   await startRun({
     formats: getSelectedFormats(),
     presets: getSelectedPresets(),
-    images_per_format: parseInt(document.getElementById('images-per-format').value)
+    images_per_format: parseInt(document.getElementById('images-per-format').value),
+    groups: getSelectedGroups()
   });
 }
 
