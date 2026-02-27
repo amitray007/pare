@@ -1,0 +1,644 @@
+{
+  "version": 1,
+  "groups": {
+    "high_res": {
+      "files": [
+        {
+          "path": "high_res/landscape_01.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 337683
+        },
+        {
+          "path": "high_res/landscape_01.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 3499394
+        },
+        {
+          "path": "high_res/landscape_01.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 119117
+        },
+        {
+          "path": "high_res/landscape_01.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 261428
+        },
+        {
+          "path": "high_res/architecture_02.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 383102
+        },
+        {
+          "path": "high_res/architecture_02.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 5119748
+        },
+        {
+          "path": "high_res/architecture_02.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 96735
+        },
+        {
+          "path": "high_res/architecture_02.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 271980
+        },
+        {
+          "path": "high_res/texture_03.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 393910
+        },
+        {
+          "path": "high_res/texture_03.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 3882312
+        },
+        {
+          "path": "high_res/texture_03.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 410847
+        },
+        {
+          "path": "high_res/texture_03.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "large",
+          "size_bytes": 287208
+        },
+        {
+          "path": "high_res/architecture_02.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 11520054
+        },
+        {
+          "path": "high_res/architecture_02.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 11523296
+        },
+        {
+          "path": "high_res/architecture_02.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 1437083
+        },
+        {
+          "path": "high_res/landscape_01.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 9720054
+        },
+        {
+          "path": "high_res/landscape_01.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 9723296
+        },
+        {
+          "path": "high_res/landscape_01.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 1212078
+        },
+        {
+          "path": "high_res/texture_03.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 11520054
+        },
+        {
+          "path": "high_res/texture_03.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 11523296
+        },
+        {
+          "path": "high_res/texture_03.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 1932986
+        },
+        {
+          "path": "high_res/architecture_02.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 1609403
+        },
+        {
+          "path": "high_res/architecture_02.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 162539
+        },
+        {
+          "path": "high_res/landscape_01.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 1326719
+        },
+        {
+          "path": "high_res/landscape_01.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 136340
+        },
+        {
+          "path": "high_res/texture_03.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 1133654
+        },
+        {
+          "path": "high_res/texture_03.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 153102
+        }
+      ]
+    },
+    "standard": {
+      "files": [
+        {
+          "path": "standard/portrait_01.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 98206
+        },
+        {
+          "path": "standard/portrait_01.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 1035246
+        },
+        {
+          "path": "standard/portrait_01.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 44286
+        },
+        {
+          "path": "standard/portrait_01.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 76590
+        },
+        {
+          "path": "standard/food_02.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 103713
+        },
+        {
+          "path": "standard/food_02.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 1084066
+        },
+        {
+          "path": "standard/food_02.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 138323
+        },
+        {
+          "path": "standard/food_02.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 80162
+        },
+        {
+          "path": "standard/macro_03.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 87192
+        },
+        {
+          "path": "standard/macro_03.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 881850
+        },
+        {
+          "path": "standard/macro_03.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 107722
+        },
+        {
+          "path": "standard/macro_03.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "medium",
+          "size_bytes": 70934
+        },
+        {
+          "path": "standard/food_02.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 2880054
+        },
+        {
+          "path": "standard/food_02.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 2883296
+        },
+        {
+          "path": "standard/food_02.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 453918
+        },
+        {
+          "path": "standard/macro_03.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 2872854
+        },
+        {
+          "path": "standard/macro_03.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 2873512
+        },
+        {
+          "path": "standard/macro_03.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 288443
+        },
+        {
+          "path": "standard/portrait_01.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 2880054
+        },
+        {
+          "path": "standard/portrait_01.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 2883296
+        },
+        {
+          "path": "standard/portrait_01.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 418861
+        },
+        {
+          "path": "standard/food_02.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 307073
+        },
+        {
+          "path": "standard/food_02.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 51477
+        },
+        {
+          "path": "standard/macro_03.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 249789
+        },
+        {
+          "path": "standard/macro_03.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 36539
+        },
+        {
+          "path": "standard/portrait_01.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 312505
+        },
+        {
+          "path": "standard/portrait_01.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 42492
+        }
+      ]
+    },
+    "compact": {
+      "files": [
+        {
+          "path": "compact/abstract_01.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 6338
+        },
+        {
+          "path": "compact/abstract_01.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 72662
+        },
+        {
+          "path": "compact/abstract_01.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 7417
+        },
+        {
+          "path": "compact/abstract_01.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 3224
+        },
+        {
+          "path": "compact/monochrome_02.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 14084
+        },
+        {
+          "path": "compact/monochrome_02.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 65993
+        },
+        {
+          "path": "compact/monochrome_02.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 18288
+        },
+        {
+          "path": "compact/monochrome_02.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 10642
+        },
+        {
+          "path": "compact/colorful_03.jpg",
+          "format": "jpeg",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 32510
+        },
+        {
+          "path": "compact/colorful_03.png",
+          "format": "png",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 191184
+        },
+        {
+          "path": "compact/colorful_03.avif",
+          "format": "avif",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 21773
+        },
+        {
+          "path": "compact/colorful_03.webp",
+          "format": "webp",
+          "source_type": "cdn",
+          "category": "small",
+          "size_bytes": 35488
+        },
+        {
+          "path": "compact/abstract_01.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 320454
+        },
+        {
+          "path": "compact/abstract_01.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 321152
+        },
+        {
+          "path": "compact/abstract_01.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 42427
+        },
+        {
+          "path": "compact/colorful_03.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 351654
+        },
+        {
+          "path": "compact/colorful_03.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 354896
+        },
+        {
+          "path": "compact/colorful_03.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 128048
+        },
+        {
+          "path": "compact/monochrome_02.bmp",
+          "format": "bmp",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 360054
+        },
+        {
+          "path": "compact/monochrome_02.tiff",
+          "format": "tiff",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 363296
+        },
+        {
+          "path": "compact/monochrome_02.gif",
+          "format": "gif",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 55146
+        },
+        {
+          "path": "compact/abstract_01.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 20681
+        },
+        {
+          "path": "compact/abstract_01.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 3000
+        },
+        {
+          "path": "compact/colorful_03.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 76885
+        },
+        {
+          "path": "compact/colorful_03.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 12498
+        },
+        {
+          "path": "compact/monochrome_02.heic",
+          "format": "heic",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 34254
+        },
+        {
+          "path": "compact/monochrome_02.jxl",
+          "format": "jxl",
+          "source_type": "lossless",
+          "category": "medium",
+          "size_bytes": 6063
+        }
+      ]
+    },
+    "deep_color": {
+      "files": [
+        {
+          "path": "deep_color/avif_native/hato_8bit_yuv420.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 259104
+        },
+        {
+          "path": "deep_color/avif_native/hato_10bit_yuv422.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 370041
+        },
+        {
+          "path": "deep_color/avif_native/hato_12bit_yuv422.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 380045
+        },
+        {
+          "path": "deep_color/avif_native/fox_8bit_yuv420.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 80743
+        },
+        {
+          "path": "deep_color/avif_native/fox_10bit_yuv444.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 97436
+        },
+        {
+          "path": "deep_color/avif_native/fox_12bit_yuv422.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 90198
+        },
+        {
+          "path": "deep_color/avif_native/kimono_standard.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 85445
+        },
+        {
+          "path": "deep_color/avif_native/fox_12bit_yuv420.avif",
+          "format": "avif",
+          "source_type": "native",
+          "category": "large",
+          "size_bytes": 84078
+        }
+      ]
+    }
+  }
+}
