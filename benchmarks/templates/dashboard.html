@@ -312,6 +312,19 @@ body {
 .dpill.fail { color: var(--red); background: var(--red-bg); }
 .dpill.neutral { color: var(--muted); background: var(--border-light); }
 
+.g-badge {
+  display: inline-flex; padding: 1px 6px; border-radius: 3px;
+  font-size: 11px; font-weight: 600; font-family: var(--mono);
+  background: var(--border-light); color: var(--secondary);
+  margin-left: 4px;
+}
+.fc-groups {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-light);
+  font-size: 12px; color: var(--muted);
+}
+.fc-groups span { font-family: var(--mono); font-weight: 600; color: var(--text); }
+
 /* ── GRIDS (Estimation/Methods/Speed) ──────── */
 .grid-cols {
   display: grid;
@@ -794,6 +807,8 @@ function estPill(e) {
   return e < 10 ? '<span class="dpill pass">accurate</span>' : '<span class="dpill fail">poor</span>';
 }
 
+const groupLabels = { high_res: 'Hi-Res', standard: 'Std', compact: 'Cmpct', deep_color: 'Deep' };
+
 /* ── OVERVIEW ──────────────────────────────── */
 function renderOverview() {
   const el = document.getElementById('overview-out');
@@ -885,8 +900,27 @@ function renderOverview() {
         </div>`;
       }
 
-      out += `</div>
-        <div class="fc-footer">
+      out += `</div>`;
+
+      // Per-group breakdown
+      const byGroup = {};
+      for (const r of c.results) {
+        if (!r.opt_error && r.group) {
+          byGroup[r.group] = byGroup[r.group] || [];
+          byGroup[r.group].push(r.reduction_pct);
+        }
+      }
+      const groupEntries = Object.entries(byGroup);
+      if (groupEntries.length > 1) {
+        out += '<div class="fc-groups">';
+        for (const [g, vals] of groupEntries) {
+          const avg = vals.reduce((a,b) => a+b, 0) / vals.length;
+          out += `<span>${groupLabels[g] || g}: ${avg.toFixed(1)}%</span>`;
+        }
+        out += '</div>';
+      }
+
+      out += `<div class="fc-footer">
           <span>Est. error: <span class="fc-foot-val">${c.estErr != null ? c.estErr.toFixed(1) + '%' : '\u2014'}</span></span>
           <span>Diff: ${c.diffOk ? '<span class="fc-foot-val" style="color:var(--green)">\u2713</span>' : '<span class="fc-foot-val" style="color:var(--red)">\u2717</span>'}</span>
         </div>
@@ -943,13 +977,13 @@ function renderEstimation() {
       h += `<div class="eg-head">${preset}</div>`;
       for (const r of bp[preset]) {
         if (r.opt_error) {
-          h += `<div class="e-row"><span class="e-name">${esc(trunc(r.name, 28))}</span><span class="e-val-col error-text" style="width:240px">error</span></div>`;
+          h += `<div class="e-row"><span class="e-name">${esc(trunc(r.name, 28))}${r.group ? '<span class="g-badge">'+groupLabels[r.group]+'</span>' : ''}</span><span class="e-val-col error-text" style="width:240px">error</span></div>`;
           continue;
         }
         const d = r.est_reduction_pct - r.reduction_pct;
         const sign = d >= 0 ? '+' : '';
         h += `<div class="e-row">
-          <span class="e-name">${esc(trunc(r.name, 28))}</span>
+          <span class="e-name">${esc(trunc(r.name, 28))}${r.group ? '<span class="g-badge">'+groupLabels[r.group]+'</span>' : ''}</span>
           <span class="e-val-col est-col">${r.est_reduction_pct.toFixed(1)}%</span>
           <span class="e-val-col act-col">${r.reduction_pct.toFixed(1)}%</span>
           <span class="e-val-col delta-col ${errCls(r.est_error_pct)}">${sign}${d.toFixed(1)}%</span>
