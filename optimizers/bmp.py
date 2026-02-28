@@ -88,23 +88,31 @@ class BmpOptimizer(BaseOptimizer):
         If the image has <= 256 unique colors, builds an exact palette
         (no quantization, no color loss) and returns (palette_img, bmp_bytes, method).
         Returns None if the image has too many colors.
+
+        Uses single-pass early termination: bails out as soon as color 257 is
+        found, and builds the color-to-index map simultaneously.
         """
-        pixels = list(img.getdata())
-        unique_colors = list(set(pixels))
-        if len(unique_colors) > 256:
-            return None
+        unique = {}
+        pixel_indices = bytearray()
+
+        for pixel in img.getdata():
+            idx = unique.get(pixel)
+            if idx is None:
+                idx = len(unique)
+                if idx >= 256:
+                    return None  # Early exit — no wasted allocation
+                unique[pixel] = idx
+            pixel_indices.append(idx)
 
         w, h = img.size
-        color_to_idx = {c: i for i, c in enumerate(unique_colors)}
 
         # Build palette image with exact color mapping
         palette_img = Image.new("P", (w, h))
-        palette_data = bytes(color_to_idx[p] for p in pixels)
-        palette_img.putdata(list(palette_data))
+        palette_img.putdata(list(pixel_indices))
 
         # Build RGB palette (Pillow expects flat R,G,B list of 768 entries)
         flat_palette = [0] * 768
-        for i, color in enumerate(unique_colors):
+        for color, i in unique.items():
             if isinstance(color, int):
                 # Grayscale
                 flat_palette[i * 3] = color
