@@ -38,7 +38,7 @@ except ImportError:
     except ImportError:
         pass
 
-SAMPLE_MAX_WIDTH = 300
+SAMPLE_MAX_WIDTH = 800  # BMP/TIFF need 800px+ to capture full-resolution redundancy
 JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
 LOSSY_SAMPLE_MAX_WIDTH = 800  # HEIC/AVIF/JXL also need larger samples
 EXACT_PIXEL_THRESHOLD = 150_000  # ~390x390 pixels
@@ -224,6 +224,7 @@ async def _estimate_by_sample(
         ImageFormat.WEBP: _webp_sample_bpp,
         ImageFormat.PNG: _png_sample_bpp,
         ImageFormat.APNG: _png_sample_bpp,
+        ImageFormat.TIFF: _tiff_sample_bpp,
     }
 
     bpp_fn = _DIRECT_ENCODE_BPP_FNS.get(fmt)
@@ -307,6 +308,18 @@ async def _bpp_to_estimate(
 ) -> EstimateResponse:
     """Encode a sample with bpp_fn and extrapolate BPP to full image size."""
     output_bpp, method = await asyncio.to_thread(bpp_fn, img, sample_width, sample_height, config)
+
+    # TIFF lossless deflate/LZW: BPP scales sub-linearly with resolution because
+    # larger images have more inter-pixel redundancy for the compressor to exploit.
+    # The downsampled sample loses this redundancy, inflating BPP.  Apply a log-based
+    # correction: at 3x downscale (2400→800) correction ≈ 0.72, at 1.5x ≈ 0.88.
+    if fmt == ImageFormat.TIFF and method in ("tiff_adobe_deflate", "tiff_lzw"):
+        downscale_ratio = width / sample_width
+        if downscale_ratio > 1.0:
+            import math
+
+            output_bpp *= 1.0 / (1.0 + 0.35 * math.log(downscale_ratio))
+
     estimated_size = min(int(output_bpp * original_pixels / 8), file_size)
     reduction = max(0.0, round((file_size - estimated_size) / file_size * 100, 1))
 
@@ -552,6 +565,51 @@ def _png_sample_bpp(
     sample_pixels = sample_width * sample_height
 
     return (output_size * 8 / sample_pixels, method)
+
+
+def _tiff_sample_bpp(
+    img: Image.Image,
+    sample_width: int,
+    sample_height: int,
+    config: OptimizationConfig,
+) -> tuple[float, str]:
+    """Encode a TIFF sample with multiple compression methods, pick smallest.
+
+    Mirrors the TIFF optimizer's method selection:
+    - All presets: tiff_adobe_deflate, tiff_lzw (lossless)
+    - quality < 70: also tiff_jpeg (lossy JPEG-in-TIFF)
+    """
+    sample = img.resize((sample_width, sample_height), Image.LANCZOS)
+
+    candidates: list[tuple[int, str]] = []
+
+    # Lossless methods (all presets)
+    for compression in ("tiff_adobe_deflate", "tiff_lzw"):
+        buf = io.BytesIO()
+        try:
+            sample.save(buf, format="TIFF", compression=compression)
+            candidates.append((buf.tell(), compression))
+        except Exception:
+            pass
+
+    # Lossy JPEG-in-TIFF (quality < 70, RGB/L only — matches optimizer)
+    if config.quality < 70 and sample.mode in ("RGB", "L"):
+        buf = io.BytesIO()
+        try:
+            sample.save(buf, format="TIFF", compression="tiff_jpeg", quality=config.quality)
+            candidates.append((buf.tell(), "tiff_jpeg"))
+        except Exception:
+            pass
+
+    if not candidates:
+        buf = io.BytesIO()
+        sample.save(buf, format="TIFF", compression="raw")
+        candidates.append((buf.tell(), "tiff_raw"))
+
+    best_size, best_method = min(candidates, key=lambda x: x[0])
+    sample_pixels = sample_width * sample_height
+
+    return (best_size * 8 / sample_pixels, best_method)
 
 
 def _create_sample(
