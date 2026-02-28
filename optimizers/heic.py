@@ -1,58 +1,45 @@
-import asyncio
 import io
 
-from optimizers.base import BaseOptimizer
-from schemas import OptimizationConfig, OptimizeResult
+import pillow_heif
+from PIL import Image
+
+from optimizers.pillow_reencode import PillowReencodeOptimizer
 from utils.format_detect import ImageFormat
 
 
-class HeicOptimizer(BaseOptimizer):
+class HeicOptimizer(PillowReencodeOptimizer):
     """HEIC optimization — lossy re-encoding + metadata stripping.
 
-    Same pattern as AVIF: try metadata strip and lossy re-encoding,
-    pick the smallest result. Uses x265 (HEVC) via pillow-heif.
+    Uses x265 (HEVC) via pillow-heif.
 
-    Quality thresholds:
+    Quality thresholds (via clamp_quality with offset=10, lo=30, hi=90):
     - quality < 50 (HIGH):  HEIC q=50, aggressive re-encode
     - quality < 70 (MEDIUM): HEIC q=70, moderate re-encode
     - quality >= 70 (LOW):  HEIC q=90, conservative re-encode
     """
 
     format = ImageFormat.HEIC
+    pillow_format = "HEIF"
+    strip_method_name = "metadata-strip"
+    reencode_method_name = "heic-reencode"
+    quality_min = 30
+    quality_max = 90
+    quality_offset = 10
 
-    async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        tasks = []
+    def _ensure_plugin(self):
+        pillow_heif.register_heif_opener()
 
-        if config.strip_metadata:
-            tasks.append(asyncio.to_thread(self._strip_metadata, data))
-        tasks.append(asyncio.to_thread(self._reencode, data, config.quality))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        candidates = []
-        method_names = []
-        if config.strip_metadata:
-            method_names.append("metadata-strip")
-        method_names.append("heic-reencode")
-
-        for result, method in zip(results, method_names):
-            if not isinstance(result, Exception):
-                candidates.append((result, method))
-
-        if not candidates:
-            return self._build_result(data, data, "none")
-
-        best_data, best_method = min(candidates, key=lambda x: len(x[0]))
-        return self._build_result(data, best_data, best_method)
+    def _open_image(self, data: bytes) -> Image.Image:
+        """HEIC uses pillow-heif's direct decoder for reliable loading."""
+        self._ensure_plugin()
+        heif_file = pillow_heif.open_heif(data)
+        return heif_file.to_pillow()
 
     def _strip_metadata(self, data: bytes) -> bytes:
-        """Strip metadata from HEIC using pillow-heif."""
-        import pillow_heif
-
-        pillow_heif.register_heif_opener()
+        """HEIC strip uses quality=-1 (lossless) via pillow-heif."""
+        self._ensure_plugin()
         heif_file = pillow_heif.open_heif(data)
         img = heif_file.to_pillow()
-
         icc_profile = img.info.get("icc_profile")
 
         output = io.BytesIO()
@@ -63,28 +50,4 @@ class HeicOptimizer(BaseOptimizer):
         img.save(output, **save_kwargs)
         result = output.getvalue()
 
-        if len(result) < len(data):
-            return result
-        return data
-
-    def _reencode(self, data: bytes, quality: int) -> bytes:
-        """Re-encode HEIC at target quality via x265 (HEVC) encoder."""
-        import pillow_heif
-
-        pillow_heif.register_heif_opener()
-        heif_file = pillow_heif.open_heif(data)
-        img = heif_file.to_pillow()
-        icc_profile = img.info.get("icc_profile")
-
-        heic_quality = max(30, min(90, quality + 10))
-
-        output = io.BytesIO()
-        save_kwargs = {
-            "format": "HEIF",
-            "quality": heic_quality,
-        }
-        if icc_profile:
-            save_kwargs["icc_profile"] = icc_profile
-
-        img.save(output, **save_kwargs)
-        return output.getvalue()
+        return result if len(result) < len(data) else data
