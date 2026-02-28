@@ -995,11 +995,12 @@ function renderEstimation() {
         }
         const d = r.est_reduction_pct - r.reduction_pct;
         const sign = d >= 0 ? '+' : '';
+        const dCls = d < -0.05 ? 'good' : d > 0.05 ? 'bad' : 'ok';
         h += `<div class="e-row">
           <span class="e-name">${esc(trunc(r.name, 28))}${r.group ? '<span class="g-badge">'+groupLabels[r.group]+'</span>' : ''}</span>
           <span class="e-val-col est-col">${r.est_reduction_pct.toFixed(1)}%</span>
           <span class="e-val-col act-col">${r.reduction_pct.toFixed(1)}%</span>
-          <span class="e-val-col delta-col ${errCls(r.est_error_pct)}">${sign}${d.toFixed(1)}%</span>
+          <span class="e-val-col delta-col ${dCls}">${sign}${d.toFixed(1)}%</span>
         </div>`;
       }
     }
