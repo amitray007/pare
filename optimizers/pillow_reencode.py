@@ -1,0 +1,122 @@
+"""Shared base class for Pillow-based re-encoding optimizers (AVIF, HEIC, JXL).
+
+These three formats share the same optimization strategy:
+1. Try metadata stripping (lossless re-encode without metadata)
+2. Try lossy re-encoding at target quality
+3. Pick the smallest result
+
+Subclasses define format-specific constants (quality range, save format,
+extra kwargs) and a plugin import hook. All shared logic lives here.
+"""
+
+import asyncio
+import io
+
+from PIL import Image
+
+from optimizers.base import BaseOptimizer
+from optimizers.utils import clamp_quality
+from schemas import OptimizationConfig, OptimizeResult
+
+
+class PillowReencodeOptimizer(BaseOptimizer):
+    """Base optimizer for formats that optimize via Pillow strip + re-encode.
+
+    Subclasses MUST set these class attributes:
+        format: ImageFormat enum value
+        pillow_format: Pillow save format string ("AVIF", "HEIF", "JXL")
+        strip_method_name: Method name reported for metadata strip results
+        reencode_method_name: Method name reported for re-encode results
+        quality_min: Minimum clamped quality (default 30)
+        quality_max: Maximum clamped quality (default 90)
+        quality_offset: Added to input quality before clamping (default 10)
+
+    Subclasses MAY set:
+        extra_save_kwargs: Additional kwargs passed to Pillow save (default {})
+
+    Subclasses MUST override:
+        _ensure_plugin(): Import/register the format's Pillow plugin.
+
+    Subclasses MAY override:
+        _open_image(data): Custom image loading (e.g. HEIC uses pillow-heif).
+    """
+
+    pillow_format: str
+    strip_method_name: str
+    reencode_method_name: str
+    quality_min: int = 30
+    quality_max: int = 90
+    quality_offset: int = 10
+    extra_save_kwargs: dict = {}
+
+    def _ensure_plugin(self) -> None:
+        """Import/register the format's Pillow plugin.
+
+        Called before any Pillow operation. Override in subclasses.
+        """
+
+    def _open_image(self, data: bytes) -> Image.Image:
+        """Open image from bytes. Override for formats needing special loading."""
+        self._ensure_plugin()
+        return Image.open(io.BytesIO(data))
+
+    async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
+        """Run metadata strip and lossy re-encode concurrently, pick smallest."""
+        tasks = []
+        method_names = []
+
+        if config.strip_metadata:
+            tasks.append(asyncio.to_thread(self._strip_metadata, data))
+            method_names.append(self.strip_method_name)
+
+        tasks.append(asyncio.to_thread(self._reencode, data, config.quality))
+        method_names.append(self.reencode_method_name)
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        candidates = []
+        for result, method in zip(results, method_names):
+            if not isinstance(result, Exception):
+                candidates.append((result, method))
+
+        if not candidates:
+            return self._build_result(data, data, "none")
+
+        best_data, best_method = min(candidates, key=lambda x: len(x[0]))
+        return self._build_result(data, best_data, best_method)
+
+    def _strip_metadata(self, data: bytes) -> bytes:
+        """Strip metadata by lossless re-encode, preserving ICC profile."""
+        img = self._open_image(data)
+        icc_profile = img.info.get("icc_profile")
+
+        output = io.BytesIO()
+        save_kwargs = {"format": self.pillow_format, "lossless": True}
+        if icc_profile:
+            save_kwargs["icc_profile"] = icc_profile
+
+        img.save(output, **save_kwargs)
+        result = output.getvalue()
+
+        return result if len(result) < len(data) else data
+
+    def _reencode(self, data: bytes, quality: int) -> bytes:
+        """Re-encode at target quality with format-specific settings."""
+        img = self._open_image(data)
+        icc_profile = img.info.get("icc_profile")
+
+        mapped_quality = clamp_quality(
+            quality, offset=self.quality_offset, lo=self.quality_min, hi=self.quality_max
+        )
+
+        output = io.BytesIO()
+        save_kwargs = {
+            "format": self.pillow_format,
+            "quality": mapped_quality,
+            **self.extra_save_kwargs,
+        }
+        if icc_profile:
+            save_kwargs["icc_profile"] = icc_profile
+
+        img.save(output, **save_kwargs)
+        return output.getvalue()
