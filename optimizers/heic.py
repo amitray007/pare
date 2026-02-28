@@ -6,6 +6,8 @@ from PIL import Image
 from optimizers.pillow_reencode import PillowReencodeOptimizer
 from utils.format_detect import ImageFormat
 
+pillow_heif.register_heif_opener()  # Register once at import time
+
 
 class HeicOptimizer(PillowReencodeOptimizer):
     """HEIC optimization — lossy re-encoding + metadata stripping.
@@ -27,17 +29,15 @@ class HeicOptimizer(PillowReencodeOptimizer):
     quality_offset = 10
 
     def _ensure_plugin(self):
-        pillow_heif.register_heif_opener()
+        pass  # Plugin registered at module import time
 
     def _open_image(self, data: bytes) -> Image.Image:
         """HEIC uses pillow-heif's direct decoder for reliable loading."""
-        self._ensure_plugin()
         heif_file = pillow_heif.open_heif(data)
         return heif_file.to_pillow()
 
     def _strip_metadata_from_img(self, img: Image.Image, original_data: bytes) -> bytes:
         """HEIC strip uses quality=-1 (lossless) via pillow-heif."""
-        self._ensure_plugin()
         icc_profile = img.info.get("icc_profile")
 
         output = io.BytesIO()

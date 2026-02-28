@@ -1,5 +1,7 @@
 import asyncio
 
+import oxipng
+
 from optimizers.base import BaseOptimizer
 from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat, is_apng
@@ -136,6 +138,4 @@ class PngOptimizer(BaseOptimizer):
 
         Level: 0=fastest/least compression, 6=slowest/best compression.
         """
-        import oxipng
-
         return oxipng.optimize_from_memory(data, level=level)

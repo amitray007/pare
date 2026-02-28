@@ -1,5 +1,6 @@
 import io
 
+import pillow_avif  # noqa: F401 — registers AVIF codec with Pillow
 from PIL import Image
 
 from optimizers.pillow_reencode import PillowReencodeOptimizer
@@ -27,12 +28,10 @@ class AvifOptimizer(PillowReencodeOptimizer):
     extra_save_kwargs = {"speed": 6}  # 0=slowest/best, 10=fastest
 
     def _ensure_plugin(self):
-        import pillow_avif  # noqa: F401 — registers AVIF plugin
+        pass  # Plugin registered at module import time
 
     def _strip_metadata_from_img(self, img: Image.Image, original_data: bytes) -> bytes:
         """AVIF strip uses quality=100 instead of lossless=True."""
-        import pillow_avif  # noqa: F401
-
         icc_profile = img.info.get("icc_profile")
 
         output = io.BytesIO()
