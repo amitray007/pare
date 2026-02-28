@@ -118,11 +118,15 @@ async def test_jxl_optimizer_both_fail():
     opt = JxlOptimizer()
     data = b"\xff\x0a" + b"\x00" * 100
 
-    with patch.object(opt, "_strip_metadata", side_effect=Exception("fail")):
-        with patch.object(opt, "_reencode", side_effect=Exception("fail")):
-            config = OptimizationConfig(quality=60, strip_metadata=True)
-            result = await opt.optimize(data, config)
-            assert result.method == "none"
+    mock_img = MagicMock(spec=Image.Image)
+    mock_img.info = {}
+    mock_img.copy.return_value = MagicMock(spec=Image.Image)
+    with patch.object(opt, "_open_image", return_value=mock_img):
+        with patch.object(opt, "_strip_metadata_from_img", side_effect=Exception("fail")):
+            with patch.object(opt, "_reencode_from_img", side_effect=Exception("fail")):
+                config = OptimizationConfig(quality=60, strip_metadata=True)
+                result = await opt.optimize(data, config)
+                assert result.method == "none"
 
 
 @pytest.mark.asyncio

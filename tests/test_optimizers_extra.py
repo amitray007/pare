@@ -24,11 +24,21 @@ def avif_optimizer():
     return AvifOptimizer()
 
 
+def _mock_img():
+    """Create a mock Pillow Image for decode-once tests."""
+    img = MagicMock(spec=Image.Image)
+    img.info = {}
+    img.copy.return_value = MagicMock(spec=Image.Image)
+    return img
+
+
 @pytest.mark.asyncio
 async def test_avif_no_strip_metadata(avif_optimizer):
     """strip_metadata=False -> returns original."""
     data = b"fake avif data"
-    result = await avif_optimizer.optimize(data, OptimizationConfig(strip_metadata=False))
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(avif_optimizer, "_reencode_from_img", return_value=b"larger than original data"):
+            result = await avif_optimizer.optimize(data, OptimizationConfig(strip_metadata=False))
     assert result.method == "none"
     assert result.optimized_bytes == data
 
@@ -36,62 +46,91 @@ async def test_avif_no_strip_metadata(avif_optimizer):
 @pytest.mark.asyncio
 async def test_avif_strip_metadata_failure(avif_optimizer):
     """Metadata stripping exception -> returns original."""
-    with patch.object(avif_optimizer, "_strip_metadata", side_effect=Exception("decode error")):
-        result = await avif_optimizer.optimize(b"fake", OptimizationConfig(strip_metadata=True))
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(
+            avif_optimizer, "_strip_metadata_from_img", side_effect=Exception("decode error")
+        ):
+            with patch.object(avif_optimizer, "_reencode_from_img", side_effect=Exception("fail")):
+                result = await avif_optimizer.optimize(
+                    b"fake", OptimizationConfig(strip_metadata=True)
+                )
     assert result.method == "none"
 
 
 @pytest.mark.asyncio
 async def test_avif_strip_metadata_success(avif_optimizer):
     """Successful metadata strip -> smaller output."""
-    with patch.object(avif_optimizer, "_strip_metadata", return_value=b"small"):
-        result = await avif_optimizer.optimize(
-            b"larger original", OptimizationConfig(strip_metadata=True)
-        )
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(avif_optimizer, "_strip_metadata_from_img", return_value=b"small"):
+            with patch.object(
+                avif_optimizer, "_reencode_from_img", return_value=b"larger original data"
+            ):
+                result = await avif_optimizer.optimize(
+                    b"larger original", OptimizationConfig(strip_metadata=True)
+                )
     assert result.method == "metadata-strip"
 
 
 @pytest.mark.asyncio
 async def test_avif_strip_metadata_larger(avif_optimizer):
     """Metadata strip produces larger output -> returns original."""
-    with patch.object(
-        avif_optimizer, "_strip_metadata", return_value=b"this is even larger than the original"
-    ):
-        result = await avif_optimizer.optimize(b"short", OptimizationConfig(strip_metadata=True))
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(
+            avif_optimizer,
+            "_strip_metadata_from_img",
+            return_value=b"this is even larger than the original",
+        ):
+            with patch.object(
+                avif_optimizer,
+                "_reencode_from_img",
+                return_value=b"also larger than original",
+            ):
+                result = await avif_optimizer.optimize(
+                    b"short", OptimizationConfig(strip_metadata=True)
+                )
     assert result.method == "none"
 
 
 @pytest.mark.asyncio
 async def test_avif_reencode_success(avif_optimizer):
     """Re-encoding produces smaller output."""
-    with patch.object(avif_optimizer, "_reencode", return_value=b"small"):
-        result = await avif_optimizer.optimize(
-            b"larger original avif", OptimizationConfig(strip_metadata=False)
-        )
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(avif_optimizer, "_reencode_from_img", return_value=b"small"):
+            result = await avif_optimizer.optimize(
+                b"larger original avif", OptimizationConfig(strip_metadata=False)
+            )
     assert result.method == "avif-reencode"
 
 
 @pytest.mark.asyncio
 async def test_avif_reencode_beats_strip(avif_optimizer):
     """Re-encoding smaller than metadata strip -> picks reencode."""
-    with (
-        patch.object(avif_optimizer, "_strip_metadata", return_value=b"medium_size"),
-        patch.object(avif_optimizer, "_reencode", return_value=b"tiny"),
-    ):
-        result = await avif_optimizer.optimize(
-            b"original avif data here", OptimizationConfig(strip_metadata=True)
-        )
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with (
+            patch.object(
+                avif_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"
+            ),
+            patch.object(avif_optimizer, "_reencode_from_img", return_value=b"tiny"),
+        ):
+            result = await avif_optimizer.optimize(
+                b"original avif data here", OptimizationConfig(strip_metadata=True)
+            )
     assert result.method == "avif-reencode"
 
 
 @pytest.mark.asyncio
 async def test_avif_both_fail(avif_optimizer):
     """Both strip and reencode fail -> returns original."""
-    with (
-        patch.object(avif_optimizer, "_strip_metadata", side_effect=Exception("fail")),
-        patch.object(avif_optimizer, "_reencode", side_effect=Exception("fail")),
-    ):
-        result = await avif_optimizer.optimize(b"original", OptimizationConfig(strip_metadata=True))
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with (
+            patch.object(
+                avif_optimizer, "_strip_metadata_from_img", side_effect=Exception("fail")
+            ),
+            patch.object(avif_optimizer, "_reencode_from_img", side_effect=Exception("fail")),
+        ):
+            result = await avif_optimizer.optimize(
+                b"original", OptimizationConfig(strip_metadata=True)
+            )
     assert result.method == "none"
 
 
@@ -105,55 +144,84 @@ def heic_optimizer():
 
 @pytest.mark.asyncio
 async def test_heic_no_strip_metadata(heic_optimizer):
-    result = await heic_optimizer.optimize(b"fake heic", OptimizationConfig(strip_metadata=False))
+    with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(
+            heic_optimizer, "_reencode_from_img", return_value=b"larger than original data"
+        ):
+            result = await heic_optimizer.optimize(
+                b"fake heic", OptimizationConfig(strip_metadata=False)
+            )
     assert result.method == "none"
 
 
 @pytest.mark.asyncio
 async def test_heic_strip_metadata_failure(heic_optimizer):
-    with patch.object(heic_optimizer, "_strip_metadata", side_effect=Exception("error")):
-        result = await heic_optimizer.optimize(b"fake", OptimizationConfig(strip_metadata=True))
+    with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(
+            heic_optimizer, "_strip_metadata_from_img", side_effect=Exception("error")
+        ):
+            with patch.object(
+                heic_optimizer, "_reencode_from_img", side_effect=Exception("fail")
+            ):
+                result = await heic_optimizer.optimize(
+                    b"fake", OptimizationConfig(strip_metadata=True)
+                )
     assert result.method == "none"
 
 
 @pytest.mark.asyncio
 async def test_heic_strip_metadata_success(heic_optimizer):
-    with patch.object(heic_optimizer, "_strip_metadata", return_value=b"sm"):
-        result = await heic_optimizer.optimize(b"larger", OptimizationConfig(strip_metadata=True))
+    with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(heic_optimizer, "_strip_metadata_from_img", return_value=b"sm"):
+            with patch.object(
+                heic_optimizer, "_reencode_from_img", return_value=b"larger output"
+            ):
+                result = await heic_optimizer.optimize(
+                    b"larger", OptimizationConfig(strip_metadata=True)
+                )
     assert result.method == "metadata-strip"
 
 
 @pytest.mark.asyncio
 async def test_heic_reencode_success(heic_optimizer):
     """Re-encoding produces smaller output."""
-    with patch.object(heic_optimizer, "_reencode", return_value=b"small"):
-        result = await heic_optimizer.optimize(
-            b"larger original heic", OptimizationConfig(strip_metadata=False)
-        )
+    with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
+        with patch.object(heic_optimizer, "_reencode_from_img", return_value=b"small"):
+            result = await heic_optimizer.optimize(
+                b"larger original heic", OptimizationConfig(strip_metadata=False)
+            )
     assert result.method == "heic-reencode"
 
 
 @pytest.mark.asyncio
 async def test_heic_reencode_beats_strip(heic_optimizer):
     """Re-encoding smaller than metadata strip -> picks reencode."""
-    with (
-        patch.object(heic_optimizer, "_strip_metadata", return_value=b"medium_size"),
-        patch.object(heic_optimizer, "_reencode", return_value=b"tiny"),
-    ):
-        result = await heic_optimizer.optimize(
-            b"original heic data here", OptimizationConfig(strip_metadata=True)
-        )
+    with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
+        with (
+            patch.object(
+                heic_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"
+            ),
+            patch.object(heic_optimizer, "_reencode_from_img", return_value=b"tiny"),
+        ):
+            result = await heic_optimizer.optimize(
+                b"original heic data here", OptimizationConfig(strip_metadata=True)
+            )
     assert result.method == "heic-reencode"
 
 
 @pytest.mark.asyncio
 async def test_heic_both_fail(heic_optimizer):
     """Both strip and reencode fail -> returns original."""
-    with (
-        patch.object(heic_optimizer, "_strip_metadata", side_effect=Exception("fail")),
-        patch.object(heic_optimizer, "_reencode", side_effect=Exception("fail")),
-    ):
-        result = await heic_optimizer.optimize(b"original", OptimizationConfig(strip_metadata=True))
+    with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
+        with (
+            patch.object(
+                heic_optimizer, "_strip_metadata_from_img", side_effect=Exception("fail")
+            ),
+            patch.object(heic_optimizer, "_reencode_from_img", side_effect=Exception("fail")),
+        ):
+            result = await heic_optimizer.optimize(
+                b"original", OptimizationConfig(strip_metadata=True)
+            )
     assert result.method == "none"
 
 
