@@ -101,3 +101,28 @@ def test_reencode_uses_clamped_quality(fake_optimizer):
     result = fake_optimizer._reencode(data, 15)
     assert isinstance(result, bytes)
     assert len(result) > 0
+
+
+@pytest.mark.asyncio
+async def test_optimize_decodes_image_once(fake_optimizer):
+    """optimize() should call _open_image exactly once, not once per method."""
+    data = _make_png()
+    config = OptimizationConfig(quality=60, strip_metadata=True)
+
+    with patch.object(fake_optimizer, "_open_image", wraps=fake_optimizer._open_image) as mock_open:
+        result = await fake_optimizer.optimize(data, config)
+        assert result.success
+        # Should decode once in optimize(), not once per _strip/_reencode
+        assert mock_open.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_optimize_decodes_once_without_strip(fake_optimizer):
+    """optimize() with strip_metadata=False still decodes only once."""
+    data = _make_png()
+    config = OptimizationConfig(quality=60, strip_metadata=False)
+
+    with patch.object(fake_optimizer, "_open_image", wraps=fake_optimizer._open_image) as mock_open:
+        result = await fake_optimizer.optimize(data, config)
+        assert result.success
+        assert mock_open.call_count == 1
