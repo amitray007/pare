@@ -1190,9 +1190,9 @@ function populateCompareDropdowns() {
 
   // Resolve from globals, fall back to latest two runs
   const valA = (compareSelA && historyRuns.some(r => r.id === compareSelA)) ? compareSelA
-    : historyRuns.length >= 1 ? historyRuns[0].id : '';
-  const valB = (compareSelB && historyRuns.some(r => r.id === compareSelB)) ? compareSelB
     : historyRuns.length >= 2 ? historyRuns[1].id : '';
+  const valB = (compareSelB && historyRuns.some(r => r.id === compareSelB)) ? compareSelB
+    : historyRuns.length >= 1 ? historyRuns[0].id : '';
 
   // Persist back to globals
   compareSelA = valA;
@@ -1235,8 +1235,14 @@ async function loadCompareData() {
       fetch(`/api/runs/${idA}`).then(r => r.json()),
       fetch(`/api/runs/${idB}`).then(r => r.json())
     ]);
-    compareDataA = rA;
-    compareDataB = rB;
+    const tsA = rA.timestamp || '';
+    const tsB = rB.timestamp || '';
+    if (tsA > tsB) {
+      compareDataA = rB; compareDataB = rA;
+      compareSelA = idB; compareSelB = idA;
+    } else {
+      compareDataA = rA; compareDataB = rB;
+    }
     renderCompare();
   } catch(e) { console.error('Compare load failed:', e); }
 }
@@ -1246,12 +1252,12 @@ function renderCompare() {
 
   // Run selector bar (always rendered)
   let h = `<div class="compare-selector">
-    <label>Run A</label>
+    <label>Baseline</label>
     <select id="cmp-run-a" onchange="loadCompareData()">
       <option value="">Select a run\u2026</option>
     </select>
     <span class="compare-vs">vs</span>
-    <label>Run B</label>
+    <label>Current</label>
     <select id="cmp-run-b" onchange="loadCompareData()">
       <option value="">Select a run\u2026</option>
     </select>
@@ -1276,7 +1282,7 @@ function renderCompare() {
   const healthA = hlObj(compareDataA.health || {});
   const healthB = hlObj(compareDataB.health || {});
 
-  // Lookup: key -> result for Run A
+  // Lookup: key -> result for Baseline
   const keyA = {};
   for (const r of resultsA) { keyA[`${r.format}|${r.preset}|${r.name}`] = r; }
 
@@ -1446,7 +1452,7 @@ function renderCompare() {
     changes.sort((a, b) => b.absDelta - a.absDelta);
     const top = changes.slice(0, 10);
     h += '<div class="panel" style="margin-top:20px"><div class="panel-title">Biggest changes</div>';
-    h += '<table class="dt"><thead><tr><th>Image</th><th>Format</th><th>Preset</th><th>Run A</th><th>Run B</th><th>Delta</th></tr></thead><tbody>';
+    h += '<table class="dt"><thead><tr><th>Image</th><th>Format</th><th>Preset</th><th>Baseline</th><th>Current</th><th>Delta</th></tr></thead><tbody>';
     for (const c of top) {
       const cls = c.delta > 0.1 ? 'c-pass' : c.delta < -0.1 ? 'c-fail' : '';
       h += `<tr><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.name)}">${esc(c.name)}</td><td>${c.format}</td><td>${c.preset}</td>
