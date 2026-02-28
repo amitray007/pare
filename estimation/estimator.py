@@ -163,18 +163,9 @@ async def _estimate_exact(
     already_optimized = result.method == "none"
     reduction = result.reduction_percent if not already_optimized else 0.0
 
-    return EstimateResponse(
-        original_size=file_size,
-        original_format=fmt.value,
-        dimensions={"width": width, "height": height},
-        color_type=color_type,
-        bit_depth=bit_depth,
-        estimated_optimized_size=result.optimized_size,
-        estimated_reduction_percent=reduction,
-        optimization_potential=_classify_potential(reduction),
-        method=result.method,
-        already_optimized=already_optimized,
-        confidence="high",
+    return _build_estimate(
+        file_size, fmt, width, height, color_type, bit_depth,
+        result.optimized_size, reduction, result.method,
     )
 
 
@@ -255,18 +246,9 @@ async def _estimate_by_sample(
 
     # If optimizer says "already optimized", propagate that
     if result.method == "none":
-        return EstimateResponse(
-            original_size=file_size,
-            original_format=fmt.value,
-            dimensions={"width": width, "height": height},
-            color_type=color_type,
-            bit_depth=bit_depth,
-            estimated_optimized_size=file_size,
-            estimated_reduction_percent=0.0,
-            optimization_potential="low",
-            method="none",
-            already_optimized=True,
-            confidence="high",
+        return _build_estimate(
+            file_size, fmt, width, height, color_type, bit_depth,
+            file_size, 0.0, "none",
         )
 
     # Extrapolate output BPP to original pixel count
@@ -280,18 +262,9 @@ async def _estimate_by_sample(
     # No max_reduction cap here — this generic fallback path is only reached by
     # GIF/BMP/TIFF, whose optimizers do not implement max_reduction.
 
-    return EstimateResponse(
-        original_size=file_size,
-        original_format=fmt.value,
-        dimensions={"width": width, "height": height},
-        color_type=color_type,
-        bit_depth=bit_depth,
-        estimated_optimized_size=estimated_size,
-        estimated_reduction_percent=reduction,
-        optimization_potential=_classify_potential(reduction),
-        method=result.method,
-        already_optimized=reduction == 0,
-        confidence="high",
+    return _build_estimate(
+        file_size, fmt, width, height, color_type, bit_depth,
+        estimated_size, reduction, result.method,
     )
 
 
@@ -346,18 +319,9 @@ async def _bpp_to_estimate(
         reduction = 5.0
         estimated_size = int(file_size * (1 - reduction / 100))
 
-    return EstimateResponse(
-        original_size=file_size,
-        original_format=fmt.value,
-        dimensions={"width": width, "height": height},
-        color_type=color_type,
-        bit_depth=bit_depth,
-        estimated_optimized_size=estimated_size,
-        estimated_reduction_percent=reduction,
-        optimization_potential=_classify_potential(reduction),
-        method=method,
-        already_optimized=reduction == 0,
-        confidence="high",
+    return _build_estimate(
+        file_size, fmt, width, height, color_type, bit_depth,
+        estimated_size, reduction, method,
     )
 
 
@@ -672,18 +636,9 @@ async def estimate_from_thumbnail(
     result = await optimize_image(thumbnail_data, config)
 
     if result.method == "none":
-        return EstimateResponse(
-            original_size=original_file_size,
-            original_format=fmt.value,
-            dimensions={"width": original_width, "height": original_height},
-            color_type=color_type,
-            bit_depth=bit_depth,
-            estimated_optimized_size=original_file_size,
-            estimated_reduction_percent=0.0,
-            optimization_potential="low",
-            method="none",
-            already_optimized=True,
-            confidence="medium",
+        return _build_estimate(
+            original_file_size, fmt, original_width, original_height, color_type, bit_depth,
+            original_file_size, 0.0, "none", confidence="medium",
         )
 
     # Extrapolate BPP
@@ -694,18 +649,9 @@ async def estimate_from_thumbnail(
     reduction = round((original_file_size - estimated_size) / original_file_size * 100, 1)
     reduction = max(0.0, reduction)
 
-    return EstimateResponse(
-        original_size=original_file_size,
-        original_format=fmt.value,
-        dimensions={"width": original_width, "height": original_height},
-        color_type=color_type,
-        bit_depth=bit_depth,
-        estimated_optimized_size=estimated_size,
-        estimated_reduction_percent=reduction,
-        optimization_potential=_classify_potential(reduction),
-        method=result.method,
-        already_optimized=reduction == 0,
-        confidence="medium",  # CDN thumbnail may have re-compression artifacts
+    return _build_estimate(
+        original_file_size, fmt, original_width, original_height, color_type, bit_depth,
+        estimated_size, reduction, result.method, confidence="medium",
     )
 
 
@@ -716,6 +662,34 @@ def _classify_potential(reduction: float) -> str:
     elif reduction >= 10:
         return "medium"
     return "low"
+
+
+def _build_estimate(
+    file_size: int,
+    fmt: ImageFormat,
+    width: int,
+    height: int,
+    color_type: str | None,
+    bit_depth: int | None,
+    estimated_size: int,
+    reduction: float,
+    method: str,
+    confidence: str = "high",
+) -> EstimateResponse:
+    """Build an EstimateResponse with standard field derivations."""
+    return EstimateResponse(
+        original_size=file_size,
+        original_format=fmt.value,
+        dimensions={"width": width, "height": height},
+        color_type=color_type,
+        bit_depth=bit_depth,
+        estimated_optimized_size=estimated_size,
+        estimated_reduction_percent=reduction,
+        optimization_potential=_classify_potential(reduction),
+        method=method,
+        already_optimized=reduction == 0,
+        confidence=confidence,
+    )
 
 
 def _get_color_type(img: Image.Image) -> str | None:
