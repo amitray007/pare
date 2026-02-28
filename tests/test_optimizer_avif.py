@@ -71,10 +71,16 @@ async def test_avif_quality_tiers(avif_optimizer):
 @pytest.mark.asyncio
 async def test_avif_both_fail():
     """Both methods fail: returns method='none'."""
+    from unittest.mock import MagicMock
+
     opt = AvifOptimizer()
     data = b"\x00" * 100
-    with patch.object(opt, "_strip_metadata", side_effect=Exception("fail")):
-        with patch.object(opt, "_reencode", side_effect=Exception("fail")):
-            config = OptimizationConfig(quality=60, strip_metadata=True)
-            result = await opt.optimize(data, config)
-            assert result.method == "none"
+    mock_img = MagicMock(spec=Image.Image)
+    mock_img.info = {}
+    mock_img.copy.return_value = MagicMock(spec=Image.Image)
+    with patch.object(opt, "_open_image", return_value=mock_img):
+        with patch.object(opt, "_strip_metadata_from_img", side_effect=Exception("fail")):
+            with patch.object(opt, "_reencode_from_img", side_effect=Exception("fail")):
+                config = OptimizationConfig(quality=60, strip_metadata=True)
+                result = await opt.optimize(data, config)
+                assert result.method == "none"

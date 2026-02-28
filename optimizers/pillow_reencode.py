@@ -62,14 +62,16 @@ class PillowReencodeOptimizer(BaseOptimizer):
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
         """Run metadata strip and lossy re-encode concurrently, pick smallest."""
+        img = await asyncio.to_thread(self._open_image, data)
+
         tasks = []
         method_names = []
 
         if config.strip_metadata:
-            tasks.append(asyncio.to_thread(self._strip_metadata, data))
+            tasks.append(asyncio.to_thread(self._strip_metadata_from_img, img.copy(), data))
             method_names.append(self.strip_method_name)
 
-        tasks.append(asyncio.to_thread(self._reencode, data, config.quality))
+        tasks.append(asyncio.to_thread(self._reencode_from_img, img, config.quality))
         method_names.append(self.reencode_method_name)
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -85,9 +87,8 @@ class PillowReencodeOptimizer(BaseOptimizer):
         best_data, best_method = min(candidates, key=lambda x: len(x[0]))
         return self._build_result(data, best_data, best_method)
 
-    def _strip_metadata(self, data: bytes) -> bytes:
-        """Strip metadata by lossless re-encode, preserving ICC profile."""
-        img = self._open_image(data)
+    def _strip_metadata_from_img(self, img: Image.Image, original_data: bytes) -> bytes:
+        """Strip metadata from a pre-decoded Image, preserving ICC profile."""
         icc_profile = img.info.get("icc_profile")
 
         output = io.BytesIO()
@@ -98,11 +99,19 @@ class PillowReencodeOptimizer(BaseOptimizer):
         img.save(output, **save_kwargs)
         result = output.getvalue()
 
-        return result if len(result) < len(data) else data
+        return result if len(result) < len(original_data) else original_data
 
-    def _reencode(self, data: bytes, quality: int) -> bytes:
-        """Re-encode at target quality with format-specific settings."""
+    def _strip_metadata(self, data: bytes) -> bytes:
+        """Strip metadata by lossless re-encode, preserving ICC profile.
+
+        Convenience wrapper that decodes from bytes. Prefer _strip_metadata_from_img
+        when an Image is already available.
+        """
         img = self._open_image(data)
+        return self._strip_metadata_from_img(img, data)
+
+    def _reencode_from_img(self, img: Image.Image, quality: int) -> bytes:
+        """Re-encode a pre-decoded Image at target quality."""
         icc_profile = img.info.get("icc_profile")
 
         mapped_quality = clamp_quality(
@@ -120,3 +129,12 @@ class PillowReencodeOptimizer(BaseOptimizer):
 
         img.save(output, **save_kwargs)
         return output.getvalue()
+
+    def _reencode(self, data: bytes, quality: int) -> bytes:
+        """Re-encode at target quality with format-specific settings.
+
+        Convenience wrapper that decodes from bytes. Prefer _reencode_from_img
+        when an Image is already available.
+        """
+        img = self._open_image(data)
+        return self._reencode_from_img(img, quality)
