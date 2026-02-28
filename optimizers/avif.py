@@ -29,11 +29,10 @@ class AvifOptimizer(PillowReencodeOptimizer):
     def _ensure_plugin(self):
         import pillow_avif  # noqa: F401 — registers AVIF plugin
 
-    def _strip_metadata(self, data: bytes) -> bytes:
+    def _strip_metadata_from_img(self, img: Image.Image, original_data: bytes) -> bytes:
         """AVIF strip uses quality=100 instead of lossless=True."""
         import pillow_avif  # noqa: F401
 
-        img = Image.open(io.BytesIO(data))
         icc_profile = img.info.get("icc_profile")
 
         output = io.BytesIO()
@@ -44,4 +43,4 @@ class AvifOptimizer(PillowReencodeOptimizer):
         img.save(output, **save_kwargs)
         result = output.getvalue()
 
-        return result if len(result) < len(data) else data
+        return result if len(result) < len(original_data) else original_data
