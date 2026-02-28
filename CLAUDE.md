@@ -77,7 +77,7 @@ Sample widths: JPEG 1200px, HEIC/AVIF/JXL/WebP/PNG 800px, GIF/BMP/TIFF 300px. Pr
 
 ### Quality Controls
 
-`OptimizationConfig.quality` (1-100) drives format-specific behavior. Lower quality = more aggressive compression. Benchmark presets: HIGH (q=40), MEDIUM (q=60), LOW (q=80). Standard quality breakpoints across optimizers: `< 50` = aggressive lossy, `< 70` = moderate lossy, `>= 70` = lossless only.
+`OptimizationConfig.quality` (1-100) drives format-specific behavior. Lower quality = more aggressive compression. Benchmark presets: HIGH (q=40), MEDIUM (q=60), LOW (q=75). Standard quality breakpoints across optimizers: `< 50` = aggressive lossy, `< 70` = moderate lossy, `>= 70` = lossless only.
 
 `max_reduction` caps how much the optimizer is allowed to shrink a file (binary search for the right quality).
 
