@@ -10,10 +10,13 @@ full file for an exact result.
 
 import asyncio
 import io
+import math
+import subprocess
 
 from PIL import Image
 
 from optimizers.router import optimize_image
+from optimizers.utils import clamp_quality
 from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
 
@@ -316,8 +319,6 @@ async def _bpp_to_estimate(
     if fmt == ImageFormat.TIFF and method in ("tiff_adobe_deflate", "tiff_lzw"):
         downscale_ratio = width / sample_width
         if downscale_ratio > 1.0:
-            import math
-
             output_bpp *= 1.0 / (1.0 + 0.35 * math.log(downscale_ratio))
 
     estimated_size = min(int(output_bpp * original_pixels / 8), file_size)
@@ -405,7 +406,7 @@ def _heic_sample_bpp(
     if sample.mode not in ("RGB", "RGBA"):
         sample = sample.convert("RGB")
 
-    heic_quality = max(30, min(90, config.quality + 10))
+    heic_quality = clamp_quality(config.quality)
 
     buf = io.BytesIO()
     sample.save(buf, format="HEIF", quality=heic_quality)
@@ -428,7 +429,7 @@ def _avif_sample_bpp(
     if sample.mode not in ("RGB", "RGBA"):
         sample = sample.convert("RGB")
 
-    avif_quality = max(30, min(90, config.quality + 10))
+    avif_quality = clamp_quality(config.quality)
 
     buf = io.BytesIO()
     sample.save(buf, format="AVIF", quality=avif_quality, speed=6)
@@ -454,7 +455,7 @@ def _jxl_sample_bpp(
     if sample.mode not in ("RGB", "RGBA", "L"):
         sample = sample.convert("RGB")
 
-    jxl_quality = max(30, min(95, config.quality + 10))
+    jxl_quality = clamp_quality(config.quality, hi=95)
 
     buf = io.BytesIO()
     sample.save(buf, format="JXL", quality=jxl_quality)
@@ -500,8 +501,6 @@ def _png_sample_bpp(
     to Pillow palette quantization if pngquant is not installed.
     For lossless mode: encodes with Pillow then runs oxipng.
     """
-    import subprocess
-
     import oxipng
 
     sample = img.resize((sample_width, sample_height), Image.LANCZOS)
