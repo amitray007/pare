@@ -8,7 +8,7 @@ Format-specific image optimization engines. Each optimizer takes raw image bytes
 
 ## How to Add a New Optimizer
 
-1. Create `optimizers/<format>.py` inheriting `BaseOptimizer`
+1. Create `optimizers/<format>.py` inheriting `BaseOptimizer` (or `PillowReencodeOptimizer` for Pillow-based formats — see below)
 2. Set `format = ImageFormat.<FORMAT>` class attribute
 3. Implement `async optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult`
 4. Register in `router.py`'s `OPTIMIZERS` dict
@@ -18,7 +18,21 @@ Format-specific image optimization engines. Each optimizer takes raw image bytes
 8. Add benchmark cases in `benchmarks/cases.py` and encoder in `benchmarks/generators.py`
 9. Add tests in `tests/test_formats.py` and optionally a dedicated `tests/test_optimizer_<format>.py`
 
-See `jxl.py` and `avif.py` for recent examples of the full end-to-end pattern.
+For Pillow-based formats that use strip + re-encode, see `jxl.py` (cleanest example). For CLI-tool-based formats, see `tiff.py` and `bmp.py`.
+
+## PillowReencodeOptimizer Base Class
+
+`pillow_reencode.py` provides a shared base for formats that optimize via Pillow strip + re-encode (AVIF, HEIC, JXL). Subclasses set class attributes and override hooks:
+
+- **Required attributes**: `format`, `pillow_format`, `strip_method_name`, `reencode_method_name`
+- **Quality range**: `quality_min`, `quality_max`, `quality_offset` (defaults: 30, 90, 10)
+- **Required override**: `_ensure_plugin()` — import/register the format's Pillow plugin
+- **Optional overrides**: `_open_image(data)` (HEIC uses pillow-heif), `_strip_metadata(data)` (AVIF uses quality=100, HEIC uses quality=-1)
+
+## Shared Utilities (`utils.py`)
+
+- **`clamp_quality(quality, offset, lo, hi)`**: Map Pare quality (1-100) to format-specific quality with offset and clamping. Used by `PillowReencodeOptimizer` and the estimator's BPP helpers.
+- **`binary_search_quality(encode_fn, original_size, target_reduction, lo, hi)`**: Binary search for the lowest quality that stays within a `max_reduction` cap. Used by JPEG and WebP optimizers.
 
 ## Key Pattern: Try All, Pick Best
 

@@ -12,7 +12,7 @@ Two files:
 
 1. **`estimator.py`** — Entry point. Downloads/receives image, determines whether to use exact mode (small/SVG/animated) or extrapolation mode (large raster).
 
-2. **`presets.py`** — Maps preset names (high/medium/low) to `OptimizationConfig` instances.
+2. **`presets.py`** — Maps preset names (high/medium/low) to `OptimizationConfig` instances. Delegates to `benchmarks.constants.PRESETS_BY_NAME` as the single source of truth.
 
 ## Modes
 
@@ -22,18 +22,18 @@ Two files:
 
 ## Direct-Encode BPP Helpers
 
-Each helper mirrors the corresponding optimizer's encoding settings:
+Each helper mirrors the corresponding optimizer's encoding settings. Quality clamping for HEIC/AVIF/JXL uses `clamp_quality()` from `optimizers/utils.py` — the same function used by the optimizers themselves.
 
 | Helper | Optimizer match | Quality mapping |
 |--------|----------------|-----------------|
 | `_jpeg_sample_bpp` | `optimizers/jpeg.py` Pillow path | `config.quality` directly |
-| `_heic_sample_bpp` | `optimizers/heic.py` `_reencode` | `max(30, min(90, quality + 10))` |
-| `_avif_sample_bpp` | `optimizers/avif.py` `_reencode` | `max(30, min(90, quality + 10))`, speed=6 |
-| `_jxl_sample_bpp` | `optimizers/jxl.py` `_reencode` | `max(30, min(95, quality + 10))` |
+| `_heic_sample_bpp` | `optimizers/heic.py` `_reencode` | `clamp_quality(config.quality)` (offset=10, lo=30, hi=90) |
+| `_avif_sample_bpp` | `optimizers/avif.py` `_reencode` | `clamp_quality(config.quality)` (offset=10, lo=30, hi=90), speed=6 |
+| `_jxl_sample_bpp` | `optimizers/jxl.py` `_reencode` | `clamp_quality(config.quality, hi=95)` |
 | `_webp_sample_bpp` | `optimizers/webp.py` Pillow path | `config.quality`, method=4 |
 | `_png_sample_bpp` | `optimizers/png.py` pipeline | oxipng level + optional pngquant quantization |
 
-**IMPORTANT:** When changing quality mappings or encoding parameters in an optimizer, update the corresponding `_*_sample_bpp()` helper to match.
+**IMPORTANT:** When changing quality mappings or encoding parameters in an optimizer, update the corresponding `_*_sample_bpp()` helper to match. For HEIC/AVIF/JXL, both the optimizer and BPP helper use `clamp_quality()`, so changes to the quality range constants in the optimizer class are automatically reflected.
 
 ## Verification
 
