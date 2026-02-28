@@ -6,9 +6,10 @@ function used by the /estimate endpoint.
 """
 
 from benchmarks.constants import PRESETS_BY_NAME
+from schemas import OptimizationConfig
 
 
-def get_config_for_preset(preset: str) -> "OptimizationConfig":
+def get_config_for_preset(preset: str) -> OptimizationConfig:
     """Convert a preset name to an OptimizationConfig.
 
     Args:
