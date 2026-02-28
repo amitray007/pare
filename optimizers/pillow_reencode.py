@@ -47,7 +47,7 @@ class PillowReencodeOptimizer(BaseOptimizer):
     quality_min: int = 30
     quality_max: int = 90
     quality_offset: int = 10
-    extra_save_kwargs: dict = {}
+    extra_save_kwargs: dict | None = None
 
     def _ensure_plugin(self) -> None:
         """Import/register the format's Pillow plugin.
@@ -122,7 +122,7 @@ class PillowReencodeOptimizer(BaseOptimizer):
         save_kwargs = {
             "format": self.pillow_format,
             "quality": mapped_quality,
-            **self.extra_save_kwargs,
+            **(self.extra_save_kwargs or {}),
         }
         if icc_profile:
             save_kwargs["icc_profile"] = icc_profile

@@ -47,7 +47,6 @@ async def test_heic_strip_metadata_with_pillow_heif_mock():
 
     opt = HeicOptimizer()
 
-    mock_heif = MagicMock()
     mock_img = MagicMock(spec=Image.Image)
     mock_img.info = {}  # No ICC profile
 
@@ -56,13 +55,9 @@ async def test_heic_strip_metadata_with_pillow_heif_mock():
 
     mock_img.save = mock_save
 
-    mock_heif_file = MagicMock()
-    mock_heif_file.to_pillow.return_value = mock_img
-    mock_heif.open_heif.return_value = mock_heif_file
-
     original = b"x" * 5000
 
-    with patch("optimizers.heic.pillow_heif", mock_heif):
+    with patch.object(opt, "_open_image", return_value=mock_img):
         result = opt._strip_metadata(original)
     assert result == b"small_heic"
 
@@ -100,7 +95,6 @@ async def test_heic_strip_metadata_larger_returns_original():
 
     opt = HeicOptimizer()
 
-    mock_heif = MagicMock()
     mock_img = MagicMock(spec=Image.Image)
     mock_img.info = {"icc_profile": b"profile"}
     mock_img.mode = "RGB"
@@ -110,13 +104,10 @@ async def test_heic_strip_metadata_larger_returns_original():
         output.write(b"x" * 10000)
 
     mock_img.save = mock_save
-    mock_heif_file = MagicMock()
-    mock_heif_file.to_pillow.return_value = mock_img
-    mock_heif.open_heif.return_value = mock_heif_file
 
     original = b"x" * 500
 
-    with patch("optimizers.heic.pillow_heif", mock_heif):
+    with patch.object(opt, "_open_image", return_value=mock_img):
         result = opt._strip_metadata(original)
     assert result == original
 
