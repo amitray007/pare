@@ -65,6 +65,17 @@ async def test_cwebp_fallback_exception(webp_optimizer):
     assert result is None
 
 
+def test_find_capped_quality_decodes_once(webp_optimizer):
+    """_find_capped_quality should decode the image once, not per iteration."""
+    data = _make_webp(quality=95, size=(200, 200))
+    config = OptimizationConfig(quality=60, max_reduction=5.0)
+
+    with patch("optimizers.webp.Image.open", wraps=Image.open) as mock_open:
+        webp_optimizer._find_capped_quality(data, config)
+        # Should decode once, not once per binary search iteration
+        assert mock_open.call_count == 1
+
+
 @pytest.mark.asyncio
 async def test_webp_find_capped_quality_binary_search(webp_optimizer):
     """Binary search finds quality within max_reduction cap."""
