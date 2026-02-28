@@ -98,7 +98,7 @@ async def test_jxl_optimizer_with_mock():
 
     mock_jxlpy = MagicMock()
     with patch.dict("sys.modules", {"pillow_jxl": None, "jxlpy": mock_jxlpy}):
-        with patch("optimizers.jxl.Image.open") as mock_open:
+        with patch("optimizers.pillow_reencode.Image.open") as mock_open:
             mock_img = MagicMock(spec=Image.Image)
             mock_img.info = {}
             mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(small_output))
@@ -134,7 +134,7 @@ async def test_jxl_optimizer_strip_returns_original():
 
     mock_jxlpy = MagicMock()
     with patch.dict("sys.modules", {"pillow_jxl": None, "jxlpy": mock_jxlpy}):
-        with patch("optimizers.jxl.Image.open") as mock_open:
+        with patch("optimizers.pillow_reencode.Image.open") as mock_open:
             mock_img = MagicMock(spec=Image.Image)
             mock_img.info = {}
             mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 500))
