@@ -4,8 +4,11 @@ Loads groups.json manifest and provides group-aware case selection.
 Falls back to dimension-based classification when groups.json is absent.
 """
 
+import io
 import json
 from pathlib import Path
+
+from PIL import Image
 
 from benchmarks.cases import BenchmarkCase
 
@@ -47,10 +50,6 @@ def _classify_group_by_dims(data: bytes, fmt: str, filepath: Path) -> str:
         return "standard"
 
     try:
-        import io
-
-        from PIL import Image
-
         img = Image.open(io.BytesIO(data))
         max_dim = max(img.size)
         file_size = len(data)
