@@ -5,6 +5,7 @@ from PIL import Image
 
 from config import settings
 from optimizers.base import BaseOptimizer
+from optimizers.utils import binary_search_quality
 from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat
 from utils.subprocess_runner import run_tool
@@ -122,36 +123,16 @@ class JpegOptimizer(BaseOptimizer):
         icc_profile: bytes | None,
         exif_bytes: bytes | None,
     ) -> bytes | None:
-        """Binary search Pillow quality to cap lossy reduction at max_reduction.
+        """Binary search Pillow quality to cap lossy reduction at max_reduction."""
 
-        Returns the encoded output at the lowest quality that stays within
-        the cap, or None if even q=100 exceeds the cap.
-        """
-        target = config.max_reduction
-
-        out_100 = self._pillow_encode(img, 100, config.progressive_jpeg, icc_profile, exif_bytes)
-        red_100 = (1 - len(out_100) / original_size) * 100
-        if red_100 > target:
-            return None  # Even q=100 exceeds cap
-
-        lo, hi = config.quality, 100
-        best_out = out_100
-
-        for _ in range(5):
-            if hi - lo <= 1:
-                break
-            mid = (lo + hi) // 2
-            out_mid = self._pillow_encode(
-                img, mid, config.progressive_jpeg, icc_profile, exif_bytes
+        def encode_fn(quality: int) -> bytes:
+            return self._pillow_encode(
+                img, quality, config.progressive_jpeg, icc_profile, exif_bytes
             )
-            red_mid = (1 - len(out_mid) / original_size) * 100
-            if red_mid > target:
-                lo = mid
-            else:
-                hi = mid
-                best_out = out_mid
 
-        return best_out
+        return binary_search_quality(
+            encode_fn, original_size, config.max_reduction, lo=config.quality, hi=100
+        )
 
     async def _run_jpegtran(self, data: bytes, progressive: bool) -> bytes:
         """Run jpegtran for lossless Huffman table optimization.
