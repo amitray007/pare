@@ -1,21 +1,14 @@
-"""Preset -> OptimizationConfig mapping for the estimation API."""
+"""Preset -> OptimizationConfig mapping for the estimation API.
 
-from schemas import OptimizationConfig
+Delegates to benchmarks.constants as the single source of truth for preset
+definitions. This module provides the get_config_for_preset() convenience
+function used by the /estimate endpoint.
+"""
 
-PRESET_CONFIGS = {
-    "high": OptimizationConfig(
-        quality=40, png_lossy=True, strip_metadata=True, progressive_jpeg=True
-    ),
-    "medium": OptimizationConfig(
-        quality=60, png_lossy=True, strip_metadata=True, progressive_jpeg=True
-    ),
-    "low": OptimizationConfig(
-        quality=75, png_lossy=False, strip_metadata=True, progressive_jpeg=True
-    ),
-}
+from benchmarks.constants import PRESETS_BY_NAME
 
 
-def get_config_for_preset(preset: str) -> OptimizationConfig:
+def get_config_for_preset(preset: str) -> "OptimizationConfig":
     """Convert a preset name to an OptimizationConfig.
 
     Args:
@@ -27,7 +20,7 @@ def get_config_for_preset(preset: str) -> OptimizationConfig:
     Raises:
         ValueError: If preset is not recognized.
     """
-    key = preset.lower()
-    if key not in PRESET_CONFIGS:
+    key = preset.upper()
+    if key not in PRESETS_BY_NAME:
         raise ValueError(f"Invalid preset: '{preset}'. Must be 'high', 'medium', or 'low'.")
-    return PRESET_CONFIGS[key]
+    return PRESETS_BY_NAME[key].config
