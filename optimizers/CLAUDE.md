@@ -26,8 +26,10 @@ For Pillow-based formats that use strip + re-encode, see `jxl.py` (cleanest exam
 
 - **Required attributes**: `format`, `pillow_format`, `strip_method_name`, `reencode_method_name`
 - **Quality range**: `quality_min`, `quality_max`, `quality_offset` (defaults: 30, 90, 10)
-- **Required override**: `_ensure_plugin()` — import/register the format's Pillow plugin
-- **Optional overrides**: `_open_image(data)` (HEIC uses pillow-heif), `_strip_metadata(data)` (AVIF uses quality=100, HEIC uses quality=-1)
+- **Required override**: `_ensure_plugin()` — import/register the format's Pillow plugin (currently a no-op in all subclasses since plugins register at module level)
+- **Optional overrides**: `_open_image(data)` (HEIC uses pillow-heif), `_strip_metadata_from_img(img, data)` (AVIF uses quality=100, HEIC uses quality=-1)
+- **Decode-once pattern**: `optimize()` decodes via `_open_image()` once, passes `img.copy()` to strip and `img` to reencode. Override `_strip_metadata_from_img(img, data)` instead of `_strip_metadata(data)` for format-specific strip behavior.
+- **Plugin imports**: Moved to module level — `_ensure_plugin()` is a no-op in all current subclasses.
 
 ## Shared Utilities (`utils.py`)
 
