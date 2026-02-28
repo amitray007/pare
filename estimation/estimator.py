@@ -10,6 +10,7 @@ full file for an exact result.
 
 import asyncio
 import io
+import logging
 import math
 import subprocess
 
@@ -19,6 +20,8 @@ from optimizers.router import optimize_image
 from optimizers.utils import clamp_quality
 from schemas import EstimateResponse, OptimizationConfig
 from utils.format_detect import ImageFormat, detect_format
+
+logger = logging.getLogger("pare.estimation")
 
 # Register optional Pillow format plugins so Image.open() can identify all formats.
 # These are imported lazily by the optimizers; the estimator needs them registered
@@ -566,8 +569,8 @@ def _tiff_sample_bpp(
         try:
             sample.save(buf, format="TIFF", compression=compression)
             candidates.append((buf.tell(), compression))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("TIFF sample encode with %s failed: %s", compression, exc)
 
     # Lossy JPEG-in-TIFF (quality < 70, RGB/L only — matches optimizer)
     if config.quality < 70 and sample.mode in ("RGB", "L"):
@@ -575,8 +578,8 @@ def _tiff_sample_bpp(
         try:
             sample.save(buf, format="TIFF", compression="tiff_jpeg", quality=config.quality)
             candidates.append((buf.tell(), "tiff_jpeg"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("TIFF sample encode with tiff_jpeg failed: %s", exc)
 
     if not candidates:
         buf = io.BytesIO()

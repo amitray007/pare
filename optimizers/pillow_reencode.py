@@ -11,12 +11,15 @@ extra kwargs) and a plugin import hook. All shared logic lives here.
 
 import asyncio
 import io
+import logging
 
 from PIL import Image
 
 from optimizers.base import BaseOptimizer
 from optimizers.utils import clamp_quality
 from schemas import OptimizationConfig, OptimizeResult
+
+logger = logging.getLogger("pare.optimizers")
 
 
 class PillowReencodeOptimizer(BaseOptimizer):
@@ -52,8 +55,12 @@ class PillowReencodeOptimizer(BaseOptimizer):
     def _ensure_plugin(self) -> None:
         """Import/register the format's Pillow plugin.
 
-        Called before any Pillow operation. Override in subclasses.
+        Called before any Pillow operation. Subclasses MUST override.
         """
+        raise NotImplementedError(
+            f"{type(self).__name__} must override _ensure_plugin() "
+            f"to register the Pillow plugin for {self.pillow_format}"
+        )
 
     def _open_image(self, data: bytes) -> Image.Image:
         """Open image from bytes. Override for formats needing special loading."""
@@ -78,10 +85,22 @@ class PillowReencodeOptimizer(BaseOptimizer):
 
         candidates = []
         for result, method in zip(results, method_names):
-            if not isinstance(result, Exception):
+            if isinstance(result, BaseException):
+                logger.warning(
+                    "%s method %s failed: %s: %s",
+                    self.pillow_format,
+                    method,
+                    type(result).__name__,
+                    result,
+                )
+            else:
                 candidates.append((result, method))
 
         if not candidates:
+            logger.error(
+                "All optimization methods failed for %s, returning original",
+                self.pillow_format,
+            )
             return self._build_result(data, data, "none")
 
         best_data, best_method = min(candidates, key=lambda x: len(x[0]))

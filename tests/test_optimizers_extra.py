@@ -498,7 +498,7 @@ async def test_avif_strip_returns_original_when_bigger():
 
     original_data = b"\x00" * 200
 
-    with patch("optimizers.avif.Image.open") as mock_open:
+    with patch("optimizers.pillow_reencode.Image.open") as mock_open:
         mock_img = MagicMock(spec=Image.Image)
         mock_img.info = {}
         mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 500))
@@ -515,7 +515,7 @@ async def test_avif_reencode_with_icc():
     """Cover AvifOptimizer._reencode ICC profile line."""
     opt = AvifOptimizer()
 
-    with patch("optimizers.avif.Image.open") as mock_open:
+    with patch("optimizers.pillow_reencode.Image.open") as mock_open:
         mock_img = MagicMock(spec=Image.Image)
         mock_img.info = {"icc_profile": b"\x00" * 50}
         mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 100))
@@ -534,7 +534,7 @@ async def test_avif_strip_with_icc():
     """Cover AvifOptimizer._strip_metadata ICC profile line."""
     opt = AvifOptimizer()
 
-    with patch("optimizers.avif.Image.open") as mock_open:
+    with patch("optimizers.pillow_reencode.Image.open") as mock_open:
         mock_img = MagicMock(spec=Image.Image)
         mock_img.info = {"icc_profile": b"\x00" * 50}
         mock_img.save = MagicMock(side_effect=lambda buf, **kw: buf.write(b"\x00" * 10))
