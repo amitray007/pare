@@ -164,8 +164,15 @@ async def _estimate_exact(
     reduction = result.reduction_percent if not already_optimized else 0.0
 
     return _build_estimate(
-        file_size, fmt, width, height, color_type, bit_depth,
-        result.optimized_size, reduction, result.method,
+        file_size,
+        fmt,
+        width,
+        height,
+        color_type,
+        bit_depth,
+        result.optimized_size,
+        reduction,
+        result.method,
     )
 
 
@@ -233,8 +240,15 @@ async def _estimate_by_sample(
     # If optimizer says "already optimized", propagate that
     if result.method == "none":
         return _build_estimate(
-            file_size, fmt, width, height, color_type, bit_depth,
-            file_size, 0.0, "none",
+            file_size,
+            fmt,
+            width,
+            height,
+            color_type,
+            bit_depth,
+            file_size,
+            0.0,
+            "none",
         )
 
     # Extrapolate output BPP to original pixel count
@@ -249,8 +263,15 @@ async def _estimate_by_sample(
     # GIF/BMP/TIFF, whose optimizers do not implement max_reduction.
 
     return _build_estimate(
-        file_size, fmt, width, height, color_type, bit_depth,
-        estimated_size, reduction, result.method,
+        file_size,
+        fmt,
+        width,
+        height,
+        color_type,
+        bit_depth,
+        estimated_size,
+        reduction,
+        result.method,
     )
 
 
@@ -306,8 +327,15 @@ async def _bpp_to_estimate(
         estimated_size = int(file_size * (1 - reduction / 100))
 
     return _build_estimate(
-        file_size, fmt, width, height, color_type, bit_depth,
-        estimated_size, reduction, method,
+        file_size,
+        fmt,
+        width,
+        height,
+        color_type,
+        bit_depth,
+        estimated_size,
+        reduction,
+        method,
     )
 
 
@@ -638,8 +666,16 @@ async def estimate_from_thumbnail(
 
     if result.method == "none":
         return _build_estimate(
-            original_file_size, fmt, original_width, original_height, color_type, bit_depth,
-            original_file_size, 0.0, "none", confidence="medium",
+            original_file_size,
+            fmt,
+            original_width,
+            original_height,
+            color_type,
+            bit_depth,
+            original_file_size,
+            0.0,
+            "none",
+            confidence="medium",
         )
 
     # Extrapolate BPP
@@ -651,8 +687,16 @@ async def estimate_from_thumbnail(
     reduction = max(0.0, reduction)
 
     return _build_estimate(
-        original_file_size, fmt, original_width, original_height, color_type, bit_depth,
-        estimated_size, reduction, result.method, confidence="medium",
+        original_file_size,
+        fmt,
+        original_width,
+        original_height,
+        color_type,
+        bit_depth,
+        estimated_size,
+        reduction,
+        result.method,
+        confidence="medium",
     )
 
 

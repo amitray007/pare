@@ -62,7 +62,7 @@ async def test_heic_strip_metadata_with_pillow_heif_mock():
 
     original = b"x" * 5000
 
-    with patch.dict("sys.modules", {"pillow_heif": mock_heif}):
+    with patch("optimizers.heic.pillow_heif", mock_heif):
         result = opt._strip_metadata(original)
     assert result == b"small_heic"
 
@@ -116,7 +116,7 @@ async def test_heic_strip_metadata_larger_returns_original():
 
     original = b"x" * 500
 
-    with patch.dict("sys.modules", {"pillow_heif": mock_heif}):
+    with patch("optimizers.heic.pillow_heif", mock_heif):
         result = opt._strip_metadata(original)
     assert result == original
 
