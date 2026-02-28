@@ -37,7 +37,9 @@ async def test_avif_no_strip_metadata(avif_optimizer):
     """strip_metadata=False -> returns original."""
     data = b"fake avif data"
     with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
-        with patch.object(avif_optimizer, "_reencode_from_img", return_value=b"larger than original data"):
+        with patch.object(
+            avif_optimizer, "_reencode_from_img", return_value=b"larger than original data"
+        ):
             result = await avif_optimizer.optimize(data, OptimizationConfig(strip_metadata=False))
     assert result.method == "none"
     assert result.optimized_bytes == data
@@ -107,9 +109,7 @@ async def test_avif_reencode_beats_strip(avif_optimizer):
     """Re-encoding smaller than metadata strip -> picks reencode."""
     with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
         with (
-            patch.object(
-                avif_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"
-            ),
+            patch.object(avif_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"),
             patch.object(avif_optimizer, "_reencode_from_img", return_value=b"tiny"),
         ):
             result = await avif_optimizer.optimize(
@@ -123,9 +123,7 @@ async def test_avif_both_fail(avif_optimizer):
     """Both strip and reencode fail -> returns original."""
     with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
         with (
-            patch.object(
-                avif_optimizer, "_strip_metadata_from_img", side_effect=Exception("fail")
-            ),
+            patch.object(avif_optimizer, "_strip_metadata_from_img", side_effect=Exception("fail")),
             patch.object(avif_optimizer, "_reencode_from_img", side_effect=Exception("fail")),
         ):
             result = await avif_optimizer.optimize(
@@ -160,9 +158,7 @@ async def test_heic_strip_metadata_failure(heic_optimizer):
         with patch.object(
             heic_optimizer, "_strip_metadata_from_img", side_effect=Exception("error")
         ):
-            with patch.object(
-                heic_optimizer, "_reencode_from_img", side_effect=Exception("fail")
-            ):
+            with patch.object(heic_optimizer, "_reencode_from_img", side_effect=Exception("fail")):
                 result = await heic_optimizer.optimize(
                     b"fake", OptimizationConfig(strip_metadata=True)
                 )
@@ -173,9 +169,7 @@ async def test_heic_strip_metadata_failure(heic_optimizer):
 async def test_heic_strip_metadata_success(heic_optimizer):
     with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
         with patch.object(heic_optimizer, "_strip_metadata_from_img", return_value=b"sm"):
-            with patch.object(
-                heic_optimizer, "_reencode_from_img", return_value=b"larger output"
-            ):
+            with patch.object(heic_optimizer, "_reencode_from_img", return_value=b"larger output"):
                 result = await heic_optimizer.optimize(
                     b"larger", OptimizationConfig(strip_metadata=True)
                 )
@@ -198,9 +192,7 @@ async def test_heic_reencode_beats_strip(heic_optimizer):
     """Re-encoding smaller than metadata strip -> picks reencode."""
     with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
         with (
-            patch.object(
-                heic_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"
-            ),
+            patch.object(heic_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"),
             patch.object(heic_optimizer, "_reencode_from_img", return_value=b"tiny"),
         ):
             result = await heic_optimizer.optimize(
@@ -214,9 +206,7 @@ async def test_heic_both_fail(heic_optimizer):
     """Both strip and reencode fail -> returns original."""
     with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
         with (
-            patch.object(
-                heic_optimizer, "_strip_metadata_from_img", side_effect=Exception("fail")
-            ),
+            patch.object(heic_optimizer, "_strip_metadata_from_img", side_effect=Exception("fail")),
             patch.object(heic_optimizer, "_reencode_from_img", side_effect=Exception("fail")),
         ):
             result = await heic_optimizer.optimize(
