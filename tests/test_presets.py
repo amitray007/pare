@@ -15,9 +15,9 @@ def test_medium_preset_maps_to_quality_60():
     assert config.png_lossy is True
 
 
-def test_low_preset_maps_to_quality_75():
+def test_low_preset_maps_to_quality_80():
     config = get_config_for_preset("low")
-    assert config.quality == 75
+    assert config.quality == 80
     assert config.png_lossy is False
 
 

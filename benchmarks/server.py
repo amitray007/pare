@@ -12,6 +12,7 @@ Usage:
 import asyncio
 import json
 import os
+import re
 import subprocess
 import time
 import uuid
@@ -159,6 +160,15 @@ def _save_run(run_data: dict):
     run_id = run_data["id"]
     path = RUNS_DIR / f"{run_id}.json"
     path.write_text(json.dumps(run_data, indent=2), encoding="utf-8")
+
+
+_RUN_ID_RE = re.compile(r"^run-\d{8}-\d{6}-[a-f0-9]{6}$")
+
+
+def _validate_run_id(run_id: str) -> None:
+    """Validate run_id format to prevent path traversal."""
+    if not _RUN_ID_RE.match(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run ID format")
 
 
 def _load_runs() -> list[dict]:
@@ -391,6 +401,7 @@ async def list_runs():
 @app.get("/api/runs/{run_id}")
 async def get_run(run_id: str):
     """Get full results of a past run."""
+    _validate_run_id(run_id)
     _ensure_dirs()
     path = RUNS_DIR / f"{run_id}.json"
     if not path.exists():
@@ -401,6 +412,7 @@ async def get_run(run_id: str):
 @app.delete("/api/runs/{run_id}")
 async def delete_run(run_id: str):
     """Delete a past run."""
+    _validate_run_id(run_id)
     _ensure_dirs()
     path = RUNS_DIR / f"{run_id}.json"
     if not path.exists():
