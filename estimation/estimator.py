@@ -207,20 +207,6 @@ async def _estimate_by_sample(
     sample_height = max(1, int(height * ratio))
     sample_pixels = sample_width * sample_height
 
-    # Direct-encode path: encode sample at target quality, bypassing the
-    # optimizer pipeline whose output-never-larger gate breaks on small samples.
-    # Maps format -> BPP helper function.
-    _DIRECT_ENCODE_BPP_FNS = {
-        ImageFormat.JPEG: _jpeg_sample_bpp,
-        ImageFormat.HEIC: _heic_sample_bpp,
-        ImageFormat.AVIF: _avif_sample_bpp,
-        ImageFormat.JXL: _jxl_sample_bpp,
-        ImageFormat.WEBP: _webp_sample_bpp,
-        ImageFormat.PNG: _png_sample_bpp,
-        ImageFormat.APNG: _png_sample_bpp,
-        ImageFormat.TIFF: _tiff_sample_bpp,
-    }
-
     bpp_fn = _DIRECT_ENCODE_BPP_FNS.get(fmt)
     if bpp_fn is not None:
         return await _bpp_to_estimate(
@@ -573,6 +559,21 @@ def _tiff_sample_bpp(
     sample_pixels = sample_width * sample_height
 
     return (best_size * 8 / sample_pixels, best_method)
+
+
+# Direct-encode path: encode sample at target quality, bypassing the
+# optimizer pipeline whose output-never-larger gate breaks on small samples.
+# Maps format -> BPP helper function.
+_DIRECT_ENCODE_BPP_FNS = {
+    ImageFormat.JPEG: _jpeg_sample_bpp,
+    ImageFormat.HEIC: _heic_sample_bpp,
+    ImageFormat.AVIF: _avif_sample_bpp,
+    ImageFormat.JXL: _jxl_sample_bpp,
+    ImageFormat.WEBP: _webp_sample_bpp,
+    ImageFormat.PNG: _png_sample_bpp,
+    ImageFormat.APNG: _png_sample_bpp,
+    ImageFormat.TIFF: _tiff_sample_bpp,
+}
 
 
 def _create_sample(
