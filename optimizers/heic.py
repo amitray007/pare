@@ -1,12 +1,9 @@
 import io
 
-import pillow_heif
 from PIL import Image
 
 from optimizers.pillow_reencode import PillowReencodeOptimizer
 from utils.format_detect import ImageFormat
-
-pillow_heif.register_heif_opener()  # Register once at import time
 
 
 class HeicOptimizer(PillowReencodeOptimizer):
@@ -29,10 +26,15 @@ class HeicOptimizer(PillowReencodeOptimizer):
     quality_offset = 10
 
     def _ensure_plugin(self):
-        pass  # Plugin registered at module import time
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
 
     def _open_image(self, data: bytes) -> Image.Image:
         """HEIC uses pillow-heif's direct decoder for reliable loading."""
+        import pillow_heif
+
+        self._ensure_plugin()
         heif_file = pillow_heif.open_heif(data)
         return heif_file.to_pillow()
 

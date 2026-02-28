@@ -1,8 +1,3 @@
-try:
-    import pillow_jxl  # noqa: F401 — registers JXL codec with Pillow
-except ImportError:
-    import jxlpy  # noqa: F401
-
 from optimizers.pillow_reencode import PillowReencodeOptimizer
 from utils.format_detect import ImageFormat
 
@@ -27,4 +22,7 @@ class JxlOptimizer(PillowReencodeOptimizer):
     quality_offset = 10
 
     def _ensure_plugin(self):
-        pass  # Plugin registered at module import time
+        try:
+            import pillow_jxl  # noqa: F401
+        except ImportError:
+            import jxlpy  # noqa: F401
