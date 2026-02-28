@@ -35,11 +35,9 @@ class HeicOptimizer(PillowReencodeOptimizer):
         heif_file = pillow_heif.open_heif(data)
         return heif_file.to_pillow()
 
-    def _strip_metadata(self, data: bytes) -> bytes:
+    def _strip_metadata_from_img(self, img: Image.Image, original_data: bytes) -> bytes:
         """HEIC strip uses quality=-1 (lossless) via pillow-heif."""
         self._ensure_plugin()
-        heif_file = pillow_heif.open_heif(data)
-        img = heif_file.to_pillow()
         icc_profile = img.info.get("icc_profile")
 
         output = io.BytesIO()
@@ -50,4 +48,4 @@ class HeicOptimizer(PillowReencodeOptimizer):
         img.save(output, **save_kwargs)
         result = output.getvalue()
 
-        return result if len(result) < len(data) else data
+        return result if len(result) < len(original_data) else original_data
