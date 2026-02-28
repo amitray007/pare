@@ -144,3 +144,44 @@ async def test_all_formats_never_larger(
         assert (
             result.optimized_size <= result.original_size
         ), f"{name}: optimized ({result.optimized_size}) > original ({result.original_size})"
+
+
+# --- BMP palette detection unit tests ---
+
+
+def test_bmp_lossless_palette_photographic():
+    """Photographic BMP (>256 colors) returns None quickly without full scan."""
+    from PIL import Image
+
+    from optimizers.bmp import BmpOptimizer
+
+    # Create an image with >256 unique colors (gradient)
+    img = Image.new("RGB", (100, 100))
+    for x in range(100):
+        for y in range(100):
+            img.putpixel((x, y), (x * 2, y * 2, (x + y) % 256))
+
+    result = BmpOptimizer._try_lossless_palette(img)
+    assert result is None  # Too many colors
+
+
+def test_bmp_lossless_palette_few_colors():
+    """BMP with <=256 colors produces valid palette image."""
+    from PIL import Image
+
+    from optimizers.bmp import BmpOptimizer
+
+    # Create an image with exactly 4 colors
+    img = Image.new("RGB", (10, 10), (255, 0, 0))
+    for x in range(5):
+        for y in range(5):
+            img.putpixel((x, y), (0, 255, 0))
+    img.putpixel((9, 9), (0, 0, 255))
+    img.putpixel((9, 0), (255, 255, 0))
+
+    result = BmpOptimizer._try_lossless_palette(img)
+    assert result is not None
+    palette_img, bmp_bytes, method = result
+    assert method == "bmp-palette-lossless"
+    assert palette_img.mode == "P"
+    assert len(bmp_bytes) > 0
