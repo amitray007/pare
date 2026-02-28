@@ -104,9 +104,9 @@ async def test_webp_find_capped_quality_q100_exceeds(webp_optimizer):
     config = OptimizationConfig(quality=1, max_reduction=0.001)
 
     # Can't easily test None return with real Pillow, so mock
-    with patch.object(webp_optimizer, "_pillow_optimize") as mock_opt:
+    with patch.object(webp_optimizer, "_encode_webp") as mock_enc:
         # q=100 produces output that's 10% of input -> 90% reduction > 0.001%
-        mock_opt.return_value = b"x" * int(len(data) * 0.1)
+        mock_enc.return_value = b"x" * int(len(data) * 0.1)
         result = webp_optimizer._find_capped_quality(data, config)
     assert result is None
 

@@ -50,9 +50,11 @@ class WebpOptimizer(BaseOptimizer):
 
     def _find_capped_quality(self, data: bytes, config: OptimizationConfig) -> bytes | None:
         """Binary search Pillow quality to cap reduction at max_reduction."""
+        img = Image.open(io.BytesIO(data))
+        is_animated = getattr(img, "n_frames", 1) > 1
 
         def encode_fn(quality: int) -> bytes:
-            return self._pillow_optimize(data, quality)
+            return self._encode_webp(img, quality, is_animated)
 
         return binary_search_quality(
             encode_fn, len(data), config.max_reduction, lo=config.quality, hi=100
@@ -65,14 +67,18 @@ class WebpOptimizer(BaseOptimizer):
         For animated: preserves all frames via save_all=True.
         """
         img = Image.open(io.BytesIO(data))
-        output = io.BytesIO()
-
         is_animated = getattr(img, "n_frames", 1) > 1
+        return self._encode_webp(img, quality, is_animated)
+
+    @staticmethod
+    def _encode_webp(img: Image.Image, quality: int, is_animated: bool) -> bytes:
+        """Encode a Pillow Image to WebP bytes."""
+        output = io.BytesIO()
 
         save_kwargs = {
             "format": "WEBP",
             "quality": quality,
-            "method": 4,  # Good compression, 2-3x faster than method=6
+            "method": 4,
         }
 
         if is_animated:
