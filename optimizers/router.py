@@ -49,5 +49,9 @@ async def optimize_image(
         UnsupportedFormatError: If format is not recognized.
     """
     fmt = detect_format(data)
-    optimizer = OPTIMIZERS[fmt]
+    optimizer = OPTIMIZERS.get(fmt)
+    if optimizer is None:
+        from exceptions import UnsupportedFormatError
+
+        raise UnsupportedFormatError(f"Format {fmt.value} is not enabled")
     return await optimizer.optimize(data, config)

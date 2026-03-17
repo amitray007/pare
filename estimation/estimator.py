@@ -87,6 +87,12 @@ async def estimate(
         config = OptimizationConfig()
 
     fmt = detect_format(data)
+
+    if fmt == ImageFormat.JXL and not settings.enable_jxl:
+        from exceptions import UnsupportedFormatError
+
+        raise UnsupportedFormatError("JXL support is disabled")
+
     file_size = len(data)
 
     # SVG/SVGZ: no pixel data — compress the whole file
