@@ -51,14 +51,15 @@ def check_tools() -> dict[str, bool]:
         results["pillow"] = True
     except ImportError:
         results["pillow"] = False
-    try:
+    if settings.enable_jxl:
         try:
-            import pillow_jxl  # noqa: F401
+            try:
+                import pillow_jxl  # noqa: F401
+            except ImportError:
+                import jxlpy  # noqa: F401
+            results["jxl_plugin"] = True
         except ImportError:
-            import jxlpy  # noqa: F401
-        results["jxl_plugin"] = True
-    except ImportError:
-        results["jxl_plugin"] = False
+            results["jxl_plugin"] = False
     return results
 
 

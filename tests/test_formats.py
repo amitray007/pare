@@ -9,6 +9,7 @@ import shutil
 
 import pytest
 
+from config import settings
 from optimizers.router import optimize_image
 from schemas import OptimizationConfig
 
@@ -116,6 +117,7 @@ async def test_format_tiff(sample_tiff):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not settings.enable_jxl, reason="JXL support disabled")
 async def test_format_jxl(sample_jxl):
     """JXL optimization via jxlpy re-encoding."""
     config = OptimizationConfig(quality=60)

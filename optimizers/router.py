@@ -1,9 +1,9 @@
+from config import settings
 from optimizers.avif import AvifOptimizer
 from optimizers.bmp import BmpOptimizer
 from optimizers.gif import GifOptimizer
 from optimizers.heic import HeicOptimizer
 from optimizers.jpeg import JpegOptimizer
-from optimizers.jxl import JxlOptimizer
 from optimizers.png import PngOptimizer
 from optimizers.svg import SvgOptimizer
 from optimizers.tiff import TiffOptimizer
@@ -24,8 +24,12 @@ OPTIMIZERS = {
     ImageFormat.HEIC: HeicOptimizer(),
     ImageFormat.TIFF: TiffOptimizer(),
     ImageFormat.BMP: BmpOptimizer(),
-    ImageFormat.JXL: JxlOptimizer(),
 }
+
+if settings.enable_jxl:
+    from optimizers.jxl import JxlOptimizer
+
+    OPTIMIZERS[ImageFormat.JXL] = JxlOptimizer()
 
 
 async def optimize_image(
@@ -45,5 +49,9 @@ async def optimize_image(
         UnsupportedFormatError: If format is not recognized.
     """
     fmt = detect_format(data)
-    optimizer = OPTIMIZERS[fmt]
+    optimizer = OPTIMIZERS.get(fmt)
+    if optimizer is None:
+        from exceptions import UnsupportedFormatError
+
+        raise UnsupportedFormatError(f"Format {fmt.value} is not enabled")
     return await optimizer.optimize(data, config)

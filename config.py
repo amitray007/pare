@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # --- Encoder Selection ---
     jpeg_encoder: str = "pillow"  # "pillow" (default) or "cjpeg" (MozJPEG fallback)
 
+    # --- Format Support ---
+    enable_jxl: bool = False  # Requires libjxl build (cjxl, djxl, jpegli, jxlpy)
+
     # --- Logging ---
     log_level: str = "ERROR"
 
