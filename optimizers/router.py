@@ -1,9 +1,9 @@
+from config import settings
 from optimizers.avif import AvifOptimizer
 from optimizers.bmp import BmpOptimizer
 from optimizers.gif import GifOptimizer
 from optimizers.heic import HeicOptimizer
 from optimizers.jpeg import JpegOptimizer
-from optimizers.jxl import JxlOptimizer
 from optimizers.png import PngOptimizer
 from optimizers.svg import SvgOptimizer
 from optimizers.tiff import TiffOptimizer
@@ -24,8 +24,12 @@ OPTIMIZERS = {
     ImageFormat.HEIC: HeicOptimizer(),
     ImageFormat.TIFF: TiffOptimizer(),
     ImageFormat.BMP: BmpOptimizer(),
-    ImageFormat.JXL: JxlOptimizer(),
 }
+
+if settings.enable_jxl:
+    from optimizers.jxl import JxlOptimizer
+
+    OPTIMIZERS[ImageFormat.JXL] = JxlOptimizer()
 
 
 async def optimize_image(

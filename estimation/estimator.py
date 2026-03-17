@@ -16,6 +16,7 @@ import subprocess
 
 from PIL import Image
 
+from config import settings
 from optimizers.router import optimize_image
 from optimizers.utils import clamp_quality
 from schemas import EstimateResponse, OptimizationConfig
@@ -36,13 +37,15 @@ try:
     import pillow_avif  # noqa: F401 — auto-registers on import
 except ImportError:
     pass
-try:
-    import pillow_jxl  # noqa: F401 — auto-registers on import
-except ImportError:
+
+if settings.enable_jxl:
     try:
-        import jxlpy  # noqa: F401
+        import pillow_jxl  # noqa: F401 — auto-registers on import
     except ImportError:
-        pass
+        try:
+            import jxlpy  # noqa: F401
+        except ImportError:
+            pass
 
 SAMPLE_MAX_WIDTH = 800  # BMP/TIFF need 800px+ to capture full-resolution redundancy
 JPEG_SAMPLE_MAX_WIDTH = 1200  # JPEG needs larger samples for accurate BPP scaling
@@ -65,8 +68,9 @@ _EXACT_FILE_SIZE_FORMATS = {
     ImageFormat.WEBP,
     ImageFormat.HEIC,
     ImageFormat.AVIF,
-    ImageFormat.JXL,
 }
+if settings.enable_jxl:
+    _EXACT_FILE_SIZE_FORMATS.add(ImageFormat.JXL)
 
 
 async def estimate(
@@ -599,12 +603,14 @@ _DIRECT_ENCODE_BPP_FNS = {
     ImageFormat.JPEG: _jpeg_sample_bpp,
     ImageFormat.HEIC: _heic_sample_bpp,
     ImageFormat.AVIF: _avif_sample_bpp,
-    ImageFormat.JXL: _jxl_sample_bpp,
     ImageFormat.WEBP: _webp_sample_bpp,
     ImageFormat.PNG: _png_sample_bpp,
     ImageFormat.APNG: _png_sample_bpp,
     ImageFormat.TIFF: _tiff_sample_bpp,
 }
+
+if settings.enable_jxl:
+    _DIRECT_ENCODE_BPP_FNS[ImageFormat.JXL] = _jxl_sample_bpp
 
 
 def _create_sample(

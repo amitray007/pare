@@ -2,6 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from config import settings
 from routers.health import check_tools
 
 
@@ -104,6 +107,7 @@ def test_check_tools_with_cjpeg_encoder():
         health.REQUIRED_TOOLS.update(original_tools)
 
 
+@pytest.mark.skipif(not settings.enable_jxl, reason="JXL support disabled")
 def test_check_tools_jxl_import_failure():
     """Cover the ImportError fallback for jxl_plugin in check_tools."""
     import builtins

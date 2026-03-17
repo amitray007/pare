@@ -1,33 +1,4 @@
-# ---- Stage 0: Build jpegli (libjpeg.so.62 from libjxl) ----
-FROM debian:bookworm-slim AS jpegli-builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake build-essential git ca-certificates pkg-config \
-    libbrotli-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN git clone --depth 1 --branch v0.11.1 https://github.com/libjxl/libjxl.git /libjxl \
-    && cd /libjxl \
-    && git submodule update --init --depth 1 third_party/highway third_party/skcms third_party/libjpeg-turbo \
-    && mkdir build && cd build \
-    && cmake -DCMAKE_INSTALL_PREFIX=/opt/jpegli \
-             -DBUILD_TESTING=OFF \
-             -DJPEGXL_ENABLE_TOOLS=ON \
-             -DJPEGXL_ENABLE_DOXYGEN=OFF \
-             -DJPEGXL_ENABLE_MANPAGES=OFF \
-             -DJPEGXL_ENABLE_BENCHMARK=OFF \
-             -DJPEGXL_ENABLE_EXAMPLES=OFF \
-             -DJPEGXL_ENABLE_FUZZERS=OFF \
-             -DJPEGXL_ENABLE_JPEGLI=ON \
-             -DJPEGXL_ENABLE_JPEGLI_LIBJPEG=ON \
-             -DJPEGXL_ENABLE_SKCMS=ON \
-             -DJPEGXL_ENABLE_SJPEG=OFF \
-             -DJPEGXL_ENABLE_OPENEXR=OFF \
-             .. \
-    && make -j$(nproc) jpegli-static jpeg cjxl djxl \
-    && make install
-
-# ---- Stage 1: Build MozJPEG from source ----
+# ---- Stage 0: Build MozJPEG from source ----
 FROM debian:bookworm-slim AS mozjpeg-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -47,19 +18,12 @@ RUN curl -L https://github.com/mozilla/mozjpeg/archive/refs/tags/v${MOZJPEG_VERS
     && make -j$(nproc) \
     && make install
 
-# ---- Stage 2: Production image ----
+# ---- Stage 1: Production image ----
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.source="https://github.com/amitray007/pare"
 LABEL org.opencontainers.image.description="Serverless image compression API"
 LABEL org.opencontainers.image.licenses="MIT"
-
-# Copy jpegli libjpeg.so.62 (Pillow picks this up via ldconfig)
-COPY --from=jpegli-builder /opt/jpegli/lib/libjpeg.so.62* /usr/local/lib/
-# Copy JPEG XL CLI tools
-COPY --from=jpegli-builder /opt/jpegli/bin/cjxl /usr/local/bin/cjxl
-COPY --from=jpegli-builder /opt/jpegli/bin/djxl /usr/local/bin/djxl
-RUN ldconfig
 
 # Copy MozJPEG binaries (jpegtran always needed; cjpeg for JPEG_ENCODER=cjpeg fallback)
 COPY --from=mozjpeg-builder /opt/mozjpeg/bin/cjpeg /usr/local/bin/cjpeg
