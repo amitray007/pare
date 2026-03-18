@@ -111,4 +111,3 @@ class HealthResponse(BaseModel):
 
     status: str = "ok"
     tools: dict
-    version: str

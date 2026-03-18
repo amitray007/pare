@@ -371,24 +371,14 @@ def test_get_client_ip_single_forwarded():
 
 
 def test_root_endpoint_returns_service_info(client):
-    """GET / returns service name, version, supported formats, and endpoints."""
+    """GET / returns service name, supported formats, and endpoints."""
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.json()
     assert body["service"] == "Pare"
     assert body["description"] == "Serverless image compression API"
-    assert "version" in body
     assert "supported_formats" in body
     assert "endpoints" in body
-
-
-def test_root_endpoint_version_matches_settings(client):
-    """GET / version field matches settings.version."""
-    from config import settings
-
-    resp = client.get("/")
-    body = resp.json()
-    assert body["version"] == settings.version
 
 
 def test_root_endpoint_supported_formats_sorted(client):

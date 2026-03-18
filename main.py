@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Pare",
     description="Image Optimizer Service",
-    version=settings.version,
+    version="0.0.0",
     lifespan=lifespan,
 )
 
@@ -116,7 +116,6 @@ async def root():
     return {
         "service": "Pare",
         "description": "Serverless image compression API",
-        "version": settings.version,
         "supported_formats": sorted(fmt.value for fmt in OPTIMIZERS),
         "endpoints": ENDPOINT_DESCRIPTIONS,
     }
