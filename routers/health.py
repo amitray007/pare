@@ -70,5 +70,5 @@ async def health():
     return HealthResponse(
         status="ok" if all_available else "degraded",
         tools=tools,
-        version="0.1.0",
+        version=settings.version,
     )

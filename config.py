@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # --- Format Support ---
     enable_jxl: bool = False  # Requires libjxl build (cjxl, djxl, jpegli, jxlpy)
 
+    # --- Version ---
+    version: str = "dev"
+
     # --- Logging ---
     log_level: str = "ERROR"
 

@@ -3,11 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import settings
 from exceptions import PareError
 from middleware import SecurityMiddleware
 from routers import estimate, health, optimize
+from utils.format_detect import ImageFormat
 from utils.logging import get_logger, setup_logging
 
 
@@ -42,7 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Pare",
     description="Image Optimizer Service",
-    version="0.1.0",
+    version=settings.version,
     lifespan=lifespan,
 )
 
@@ -79,6 +81,46 @@ async def pare_error_handler(request: Request, exc: PareError):
             **exc.details,
         },
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "success": False,
+                "error": "not_found",
+                "message": f"No endpoint matches '{request.method} {request.url.path}'.",
+                "available_endpoints": {
+                    "GET /": "Service info and supported formats",
+                    "GET /health": "Health check and tool availability",
+                    "POST /optimize": "Optimize an image (multipart upload or JSON with URL)",
+                    "POST /estimate": "Estimate compression savings without full optimization",
+                },
+                "docs": "See GET / for more details.",
+            },
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": "http_error", "message": str(exc.detail)},
+    )
+
+
+@app.get("/")
+async def root():
+    """Service info: what Pare does, supported formats, and available endpoints."""
+    return {
+        "service": "Pare",
+        "description": "Serverless image compression API",
+        "version": settings.version,
+        "supported_formats": sorted(f.value for f in ImageFormat),
+        "endpoints": {
+            "POST /optimize": "Compress an image. Accepts multipart file upload or JSON with image URL.",
+            "POST /estimate": "Estimate compression savings without running full optimization.",
+            "GET /health": "Health check — reports tool availability and service status.",
+        },
+    }
 
 
 # Routers
