@@ -19,6 +19,7 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.next_version.outputs.version }}
+      semver: ${{ steps.next_version.outputs.semver }}
 
     steps:
       - name: Checkout
@@ -64,6 +65,7 @@ jobs:
 
           NEXT="v${MAJOR}.${MINOR}.${PATCH}"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "semver=${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
           echo "Bump: $(cat "$GITHUB_OUTPUT" | grep bump | cut -d= -f2) -> $NEXT"
 
       - name: Generate changelog
@@ -138,4 +140,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            APP_VERSION=${{ needs.release.outputs.version }}
+            APP_VERSION=${{ needs.release.outputs.semver }}

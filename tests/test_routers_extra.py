@@ -398,13 +398,13 @@ def test_root_endpoint_supported_formats_sorted(client):
     assert formats == sorted(formats)
 
 
-def test_root_endpoint_lists_all_image_formats(client):
-    """GET / includes all ImageFormat enum values."""
-    from utils.format_detect import ImageFormat
+def test_root_endpoint_lists_registered_formats_only(client):
+    """GET / includes only formats with registered optimizers."""
+    from optimizers.router import OPTIMIZERS
 
     resp = client.get("/")
     formats = resp.json()["supported_formats"]
-    expected = sorted(f.value for f in ImageFormat)
+    expected = sorted(fmt.value for fmt in OPTIMIZERS)
     assert formats == expected
 
 
@@ -415,6 +415,13 @@ def test_root_endpoint_has_required_endpoints(client):
     assert "POST /optimize" in endpoints
     assert "POST /estimate" in endpoints
     assert "GET /health" in endpoints
+
+
+def test_root_and_404_share_same_endpoint_descriptions(client):
+    """GET / endpoints and 404 available_endpoints use the same shared constant."""
+    root_endpoints = client.get("/").json()["endpoints"]
+    not_found_endpoints = client.get("/nope").json()["available_endpoints"]
+    assert root_endpoints == not_found_endpoints
 
 
 # --- Custom 404 handler ---
@@ -478,4 +485,59 @@ def test_non_404_http_exception_returns_structured_error(client):
     body = resp.json()
     assert body["success"] is False
     assert body["error"] == "http_error"
-    assert "Method not allowed" in body["message"]
+    assert body["message"] == "Method not allowed"
+
+
+def test_non_404_http_exception_preserves_headers(client):
+    """Non-404 HTTP exceptions preserve exc.headers (e.g. Allow on 405)."""
+    from fastapi import HTTPException
+
+    from main import app
+
+    @app.get("/test-headers-trigger")
+    async def trigger():
+        raise HTTPException(
+            status_code=405,
+            detail="Not allowed",
+            headers={"Allow": "POST"},
+        )
+
+    resp = client.get("/test-headers-trigger")
+    assert resp.status_code == 405
+    assert resp.headers.get("Allow") == "POST"
+
+
+def test_non_404_http_exception_structured_detail(client):
+    """Non-404 HTTP exceptions preserve structured (dict) detail as-is."""
+    from fastapi import HTTPException
+
+    from main import app
+
+    @app.get("/test-structured-detail")
+    async def trigger():
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "email", "reason": "invalid"},
+        )
+
+    resp = client.get("/test-structured-detail")
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["message"] == {"field": "email", "reason": "invalid"}
+
+
+def test_intentional_route_404_passes_through(client):
+    """A 404 raised inside a matched route returns the original detail, not endpoint discovery."""
+    from fastapi import HTTPException
+
+    from main import app
+
+    @app.get("/test-resource-not-found")
+    async def trigger():
+        raise HTTPException(status_code=404, detail="User not found")
+
+    resp = client.get("/test-resource-not-found")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["message"] == "User not found"
+    assert "available_endpoints" not in body
