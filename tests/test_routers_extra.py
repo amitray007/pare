@@ -365,3 +365,117 @@ def test_get_client_ip_single_forwarded():
 
     ip = _get_client_ip(mock_request)
     assert ip == "10.0.0.1"
+
+
+# --- GET / root endpoint ---
+
+
+def test_root_endpoint_returns_service_info(client):
+    """GET / returns service name, version, supported formats, and endpoints."""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["service"] == "Pare"
+    assert body["description"] == "Serverless image compression API"
+    assert "version" in body
+    assert "supported_formats" in body
+    assert "endpoints" in body
+
+
+def test_root_endpoint_version_matches_settings(client):
+    """GET / version field matches settings.version."""
+    from config import settings
+
+    resp = client.get("/")
+    body = resp.json()
+    assert body["version"] == settings.version
+
+
+def test_root_endpoint_supported_formats_sorted(client):
+    """GET / supported_formats list is sorted alphabetically."""
+    resp = client.get("/")
+    formats = resp.json()["supported_formats"]
+    assert formats == sorted(formats)
+
+
+def test_root_endpoint_lists_all_image_formats(client):
+    """GET / includes all ImageFormat enum values."""
+    from utils.format_detect import ImageFormat
+
+    resp = client.get("/")
+    formats = resp.json()["supported_formats"]
+    expected = sorted(f.value for f in ImageFormat)
+    assert formats == expected
+
+
+def test_root_endpoint_has_required_endpoints(client):
+    """GET / lists optimize, estimate, and health endpoints."""
+    resp = client.get("/")
+    endpoints = resp.json()["endpoints"]
+    assert "POST /optimize" in endpoints
+    assert "POST /estimate" in endpoints
+    assert "GET /health" in endpoints
+
+
+# --- Custom 404 handler ---
+
+
+def test_404_returns_structured_json(client):
+    """Unmatched route returns structured 404 with available_endpoints."""
+    resp = client.get("/nonexistent")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["success"] is False
+    assert body["error"] == "not_found"
+    assert "available_endpoints" in body
+    assert "docs" in body
+
+
+def test_404_message_includes_method_and_path(client):
+    """404 message includes the request method and path."""
+    resp = client.get("/bad/path")
+    body = resp.json()
+    assert "GET" in body["message"]
+    assert "/bad/path" in body["message"]
+
+
+def test_404_post_to_invalid_route(client):
+    """POST to an invalid route also gets structured 404."""
+    resp = client.post("/invalid")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["success"] is False
+    assert body["error"] == "not_found"
+    assert "POST" in body["message"]
+    assert "/invalid" in body["message"]
+
+
+def test_404_available_endpoints_lists_all(client):
+    """404 response lists all four available endpoints."""
+    resp = client.get("/nope")
+    endpoints = resp.json()["available_endpoints"]
+    assert "GET /" in endpoints
+    assert "GET /health" in endpoints
+    assert "POST /optimize" in endpoints
+    assert "POST /estimate" in endpoints
+
+
+# --- Custom HTTP exception handler (non-404) ---
+
+
+def test_non_404_http_exception_returns_structured_error(client):
+    """Non-404 HTTP exceptions return structured JSON with error details."""
+    from fastapi import HTTPException
+
+    from main import app
+
+    @app.get("/test-405-trigger")
+    async def trigger():
+        raise HTTPException(status_code=405, detail="Method not allowed")
+
+    resp = client.get("/test-405-trigger")
+    assert resp.status_code == 405
+    body = resp.json()
+    assert body["success"] is False
+    assert body["error"] == "http_error"
+    assert "Method not allowed" in body["message"]
