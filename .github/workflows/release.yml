@@ -87,16 +87,11 @@ jobs:
           echo "Changelog:"
           cat /tmp/changelog.md
 
-      - name: Update __version__ and create tag
+      - name: Create tag
         run: |
           VERSION="${{ steps.next_version.outputs.version }}"
-          SEMVER="${VERSION#v}"
-          echo "$SEMVER" > __version__
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add __version__
-          git commit -m "chore: bump version to ${VERSION} [skip ci]"
-          git push origin main
           git tag "$VERSION"
           git push origin "$VERSION"
 
@@ -119,8 +114,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
