@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-FastAPI endpoint handlers. Three routes:
+FastAPI endpoint handlers. Three routes (a fourth, `GET /`, lives in `main.py`):
 
 - **`POST /optimize`** (`optimize.py`): Two input modes (multipart file upload, JSON with URL) and two response modes (raw bytes with X-* headers, JSON with storage URL). Acquires a `CompressionGate` semaphore slot before optimization.
 - **`POST /estimate`** (`estimate.py`): Same input modes as /optimize. Uses sample-based compression (~50-500ms depending on format; PNG with oxipng is slowest). Does **not** acquire a semaphore slot.

@@ -51,11 +51,12 @@ docker build -t pare .     # Full build with jpegli, MozJPEG, JXL tools
 
 ### Request Flow
 
-Three endpoints in `routers/`:
+Four endpoints:
 
-- **`POST /optimize`**: Multipart file upload or JSON with URL -> `optimizers/router.py` (format detection + dispatch) -> format-specific optimizer -> binary response (or JSON with GCS storage URL). Acquires `CompressionGate` semaphore slot.
-- **`POST /estimate`**: Same input modes -> `estimation/estimator.py` (sample-based compression) -> JSON response. Does **not** acquire semaphore slot. Latency: ~50-500ms depending on format.
-- **`GET /health`**: Returns `"ok"` or `"degraded"` based on CLI tool availability.
+- **`GET /`** (in `main.py`): Service info — name, version, supported formats, and available endpoints. Also provides a structured 404 response for unmatched routes.
+- **`POST /optimize`** (in `routers/`): Multipart file upload or JSON with URL -> `optimizers/router.py` (format detection + dispatch) -> format-specific optimizer -> binary response (or JSON with GCS storage URL). Acquires `CompressionGate` semaphore slot.
+- **`POST /estimate`** (in `routers/`): Same input modes -> `estimation/estimator.py` (sample-based compression) -> JSON response. Does **not** acquire semaphore slot. Latency: ~50-500ms depending on format.
+- **`GET /health`** (in `routers/`): Returns `"ok"` or `"degraded"` based on CLI tool availability.
 
 Middleware chain (in `middleware.py`): request ID injection -> authentication -> rate limiting -> route handler.
 

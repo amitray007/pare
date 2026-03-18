@@ -3,12 +3,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import settings
 from exceptions import PareError
 from middleware import SecurityMiddleware
+from optimizers.router import OPTIMIZERS
 from routers import estimate, health, optimize
 from utils.logging import get_logger, setup_logging
+
+ENDPOINT_DESCRIPTIONS = {
+    "GET /": "Service info and supported formats",
+    "GET /health": "Health check and tool availability",
+    "POST /optimize": "Optimize an image (multipart upload or JSON with URL)",
+    "POST /estimate": "Estimate compression savings without full optimization",
+}
 
 
 @asynccontextmanager
@@ -42,7 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Pare",
     description="Image Optimizer Service",
-    version="0.1.0",
+    version=settings.version,
     lifespan=lifespan,
 )
 
@@ -79,6 +88,38 @@ async def pare_error_handler(request: Request, exc: PareError):
             **exc.details,
         },
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404 and request.scope.get("route") is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "success": False,
+                "error": "not_found",
+                "message": f"No endpoint matches '{request.method} {request.url.path}'.",
+                "available_endpoints": ENDPOINT_DESCRIPTIONS,
+                "docs": "See GET / for more details.",
+            },
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": "http_error", "message": exc.detail},
+        headers=exc.headers,
+    )
+
+
+@app.get("/")
+async def root():
+    """Service info: what Pare does, supported formats, and available endpoints."""
+    return {
+        "service": "Pare",
+        "description": "Serverless image compression API",
+        "version": settings.version,
+        "supported_formats": sorted(fmt.value for fmt in OPTIMIZERS),
+        "endpoints": ENDPOINT_DESCRIPTIONS,
+    }
 
 
 # Routers

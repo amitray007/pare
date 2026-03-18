@@ -51,7 +51,7 @@ def test_health_endpoint_ok(client):
     data = resp.json()
     assert data["status"] in ("ok", "degraded")
     assert "tools" in data
-    assert data["version"] == "0.1.0"
+    assert data["version"] == settings.version
 
 
 def test_health_endpoint_degraded(client):
