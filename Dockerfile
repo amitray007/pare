@@ -43,10 +43,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Version (set by CI, defaults to "dev" for local builds)
-ARG APP_VERSION=dev
-ENV VERSION=${APP_VERSION}
-
 # Copy application
 COPY . /app
 WORKDIR /app

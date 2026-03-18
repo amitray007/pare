@@ -19,7 +19,6 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.next_version.outputs.version }}
-      semver: ${{ steps.next_version.outputs.semver }}
 
     steps:
       - name: Checkout
@@ -65,7 +64,6 @@ jobs:
 
           NEXT="v${MAJOR}.${MINOR}.${PATCH}"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "semver=${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
           echo "Bump: $(cat "$GITHUB_OUTPUT" | grep bump | cut -d= -f2) -> $NEXT"
 
       - name: Generate changelog
@@ -89,12 +87,18 @@ jobs:
           echo "Changelog:"
           cat /tmp/changelog.md
 
-      - name: Create tag
+      - name: Update __version__ and create tag
         run: |
+          VERSION="${{ steps.next_version.outputs.version }}"
+          SEMVER="${VERSION#v}"
+          echo "$SEMVER" > __version__
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.next_version.outputs.version }}"
-          git push origin "${{ steps.next_version.outputs.version }}"
+          git add __version__
+          git commit -m "chore: bump version to ${VERSION} [skip ci]"
+          git push origin main
+          git tag "$VERSION"
+          git push origin "$VERSION"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -115,6 +119,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -139,5 +145,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            APP_VERSION=${{ needs.release.outputs.semver }}

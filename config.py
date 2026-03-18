@@ -1,6 +1,15 @@
 import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+
+def _read_version() -> str:
+    version_file = Path(__file__).parent / "__version__"
+    try:
+        return version_file.read_text().strip()
+    except FileNotFoundError:
+        return "dev"
 
 
 class Settings(BaseSettings):
@@ -43,7 +52,7 @@ class Settings(BaseSettings):
     enable_jxl: bool = False  # Requires libjxl build (cjxl, djxl, jpegli, jxlpy)
 
     # --- Version ---
-    version: str = "dev"
+    version: str = _read_version()
 
     # --- Logging ---
     log_level: str = "ERROR"
