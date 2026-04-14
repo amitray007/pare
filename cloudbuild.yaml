@@ -25,6 +25,8 @@ steps:
       - '--image=${_REGISTRY}/$PROJECT_ID/${_SERVICE}:$COMMIT_SHA'
       - '--region=${_REGION}'
       - '--platform=managed'
+      - '--concurrency=24'
+      - '--timeout=300'
 
 substitutions:
   _DOCKERFILE: 'Dockerfile'

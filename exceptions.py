@@ -73,6 +73,13 @@ class AuthenticationError(PareError):
     error_code = "unauthorized"
 
 
+class ImageTooLargeError(PareError):
+    """Image dimensions exceed maximum allowed pixel count or decompressed size."""
+
+    status_code = 413
+    error_code = "image_too_large"
+
+
 class BackpressureError(PareError):
     """Compression queue is full."""
 

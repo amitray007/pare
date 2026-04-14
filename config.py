@@ -1,5 +1,6 @@
 import os
 
+from PIL import Image
 from pydantic_settings import BaseSettings
 
 
@@ -8,12 +9,13 @@ class Settings(BaseSettings):
 
     # --- Server ---
     port: int = 8080
-    workers: int = 4
+    workers: int = 1
     graceful_shutdown_timeout: int = 30
 
     # --- File Limits ---
     max_file_size_mb: int = 32
     max_file_size_bytes: int = 0  # Computed in model_post_init
+    max_image_pixels: int = 100_000_000  # 100 megapixels
 
     # --- Optimization Defaults ---
     default_quality: int = 80
@@ -54,6 +56,7 @@ class Settings(BaseSettings):
             self.compression_semaphore_size = os.cpu_count() or 4
         if self.max_queue_depth == 0:
             self.max_queue_depth = 2 * self.compression_semaphore_size
+        Image.MAX_IMAGE_PIXELS = self.max_image_pixels
 
 
 settings = Settings()
