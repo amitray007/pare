@@ -1,6 +1,5 @@
 """Tests for memory guards: pixel limits, decompressed size validation, frame limits."""
 
-import asyncio
 import io
 from unittest.mock import patch
 
@@ -9,11 +8,7 @@ from PIL import Image
 
 from exceptions import BackpressureError, ImageTooLargeError
 from utils.concurrency import CompressionGate
-from utils.image_validation import (
-    MAX_DECOMPRESSED_BYTES,
-    MAX_FRAME_COUNT,
-    validate_image_dimensions,
-)
+from utils.image_validation import validate_image_dimensions
 
 
 class TestPixelCountLimit:

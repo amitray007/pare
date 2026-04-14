@@ -65,24 +65,26 @@ async def test_cwebp_fallback_exception(webp_optimizer):
     assert result is None
 
 
-def test_find_capped_quality_decodes_once(webp_optimizer):
-    """_find_capped_quality should decode the image once, not per iteration."""
+def test_find_capped_quality_uses_predecoded_image(webp_optimizer):
+    """_find_capped_quality uses a pre-decoded image, no Image.open calls."""
     data = _make_webp(quality=95, size=(200, 200))
+    img, is_animated = webp_optimizer._decode_image(data)
     config = OptimizationConfig(quality=60, max_reduction=5.0)
 
-    with patch("optimizers.webp.Image.open", wraps=Image.open) as mock_open:
-        webp_optimizer._find_capped_quality(data, config)
-        # Should decode once, not once per binary search iteration
-        assert mock_open.call_count == 1
+    with patch("optimizers.webp.Image.open") as mock_open:
+        webp_optimizer._find_capped_quality(img, is_animated, data, config)
+        # Should NOT call Image.open — uses pre-decoded img
+        mock_open.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_webp_find_capped_quality_binary_search(webp_optimizer):
     """Binary search finds quality within max_reduction cap."""
     data = _make_webp(quality=95, size=(200, 200))
+    img, is_animated = webp_optimizer._decode_image(data)
     config = OptimizationConfig(quality=60, max_reduction=5.0)
 
-    result = webp_optimizer._find_capped_quality(data, config)
+    result = webp_optimizer._find_capped_quality(img, is_animated, data, config)
     # Should return some bytes (binary search found a quality)
     if result is not None:
         reduction = (1 - len(result) / len(data)) * 100
@@ -92,22 +94,18 @@ async def test_webp_find_capped_quality_binary_search(webp_optimizer):
 @pytest.mark.asyncio
 async def test_webp_find_capped_quality_q100_exceeds(webp_optimizer):
     """q=100 still exceeds cap -> returns None."""
-    # Create a very compressible image
     img = Image.new("RGB", (500, 500), (0, 0, 0))
     buf = io.BytesIO()
     img.save(buf, format="WEBP", quality=100)
     data = buf.getvalue()
-    # Padding to make it artificially large
-    # data is intentionally small; test exercises the capped quality path
 
-    # Use a real WebP that Pillow can optimize dramatically
+    decoded_img, is_animated = webp_optimizer._decode_image(data)
     config = OptimizationConfig(quality=1, max_reduction=0.001)
 
-    # Can't easily test None return with real Pillow, so mock
     with patch.object(webp_optimizer, "_encode_webp") as mock_enc:
         # q=100 produces output that's 10% of input -> 90% reduction > 0.001%
         mock_enc.return_value = b"x" * int(len(data) * 0.1)
-        result = webp_optimizer._find_capped_quality(data, config)
+        result = webp_optimizer._find_capped_quality(decoded_img, is_animated, data, config)
     assert result is None
 
 
@@ -116,9 +114,9 @@ async def test_webp_max_reduction_triggers_find_capped(webp_optimizer):
     """Optimize path: max_reduction triggers _find_capped_quality."""
     data = _make_webp(quality=95, size=(200, 200))
 
-    with patch.object(webp_optimizer, "_pillow_optimize") as mock_pil:
+    with patch.object(webp_optimizer, "_encode_webp") as mock_enc:
         # Pillow returns very small (triggers cap)
-        mock_pil.return_value = b"tiny"
+        mock_enc.return_value = b"tiny"
         with patch.object(
             webp_optimizer, "_find_capped_quality", return_value=b"capped"
         ) as mock_cap:
