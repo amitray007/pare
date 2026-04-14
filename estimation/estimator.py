@@ -155,10 +155,13 @@ async def estimate(
 
 
 def _open_image(data: bytes) -> Image.Image:
-    """Open image in Pillow and fully load pixel data into memory."""
-    img = Image.open(io.BytesIO(data))
-    img.load()
-    return img
+    """Open image lazily — reads headers only, no pixel decompression.
+
+    Pillow's Image.open() reads format/size/mode from headers without
+    decompressing pixel data. Call img.load() later only when pixel
+    access is needed (e.g., resize for sample-based estimation).
+    """
+    return Image.open(io.BytesIO(data))
 
 
 async def _estimate_exact(
@@ -201,6 +204,10 @@ async def _estimate_by_sample(
     bit_depth: int | None,
 ) -> EstimateResponse:
     """Downsample, compress sample, extrapolate BPP to full image."""
+    # Load pixel data now — needed for img.resize() in sample creation.
+    # Deferred from _open_image() to avoid loading pixels for exact-mode paths.
+    await asyncio.to_thread(img.load)
+
     original_pixels = width * height
 
     # JPEG uses a larger sample (1200px) because JPEG BPP doesn't scale
