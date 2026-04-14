@@ -28,7 +28,10 @@ def _mock_img():
     """Create a mock Pillow Image for decode-once tests."""
     img = MagicMock(spec=Image.Image)
     img.info = {}
+    img.size = (100, 100)  # Small image — uses parallel path in optimizers
     img.copy.return_value = MagicMock(spec=Image.Image)
+    img.copy.return_value.info = {}
+    img.copy.return_value.size = (100, 100)
     return img
 
 
@@ -106,14 +109,18 @@ async def test_avif_reencode_success(avif_optimizer):
 
 @pytest.mark.asyncio
 async def test_avif_reencode_beats_strip(avif_optimizer):
-    """Re-encoding smaller than metadata strip -> picks reencode."""
+    """Re-encoding smaller than metadata strip -> picks reencode.
+
+    Uses quality=60 because quality >= 70 + strip_metadata skips reencode.
+    """
     with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
         with (
             patch.object(avif_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"),
             patch.object(avif_optimizer, "_reencode_from_img", return_value=b"tiny"),
         ):
             result = await avif_optimizer.optimize(
-                b"original avif data here", OptimizationConfig(strip_metadata=True)
+                b"original avif data here",
+                OptimizationConfig(quality=60, strip_metadata=True),
             )
     assert result.method == "avif-reencode"
 
@@ -189,14 +196,18 @@ async def test_heic_reencode_success(heic_optimizer):
 
 @pytest.mark.asyncio
 async def test_heic_reencode_beats_strip(heic_optimizer):
-    """Re-encoding smaller than metadata strip -> picks reencode."""
+    """Re-encoding smaller than metadata strip -> picks reencode.
+
+    Uses quality=60 because quality >= 70 + strip_metadata skips reencode.
+    """
     with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
         with (
             patch.object(heic_optimizer, "_strip_metadata_from_img", return_value=b"medium_size"),
             patch.object(heic_optimizer, "_reencode_from_img", return_value=b"tiny"),
         ):
             result = await heic_optimizer.optimize(
-                b"original heic data here", OptimizationConfig(strip_metadata=True)
+                b"original heic data here",
+                OptimizationConfig(quality=60, strip_metadata=True),
             )
     assert result.method == "heic-reencode"
 
@@ -242,8 +253,8 @@ async def test_webp_cwebp_fallback(webp_optimizer):
     buf = io.BytesIO()
     img.save(buf, format="WEBP", quality=50)
     data = buf.getvalue()
-    # Mock _pillow_optimize to return data that's >= 90% of input (triggering fallback)
-    with patch.object(webp_optimizer, "_pillow_optimize", return_value=data):
+    # Mock _encode_webp to return data that's >= input (triggering cwebp win)
+    with patch.object(webp_optimizer, "_encode_webp", return_value=data):
         with patch.object(webp_optimizer, "_cwebp_fallback", return_value=b"tiny"):
             result = await webp_optimizer.optimize(data, OptimizationConfig(quality=60))
     assert result.method == "cwebp"
@@ -256,7 +267,7 @@ async def test_webp_cwebp_fallback_none(webp_optimizer):
     buf = io.BytesIO()
     img.save(buf, format="WEBP", quality=50)
     data = buf.getvalue()
-    with patch.object(webp_optimizer, "_pillow_optimize", return_value=data):
+    with patch.object(webp_optimizer, "_encode_webp", return_value=data):
         with patch.object(webp_optimizer, "_cwebp_fallback", return_value=None):
             result = await webp_optimizer.optimize(data, OptimizationConfig(quality=60))
     assert result.success
@@ -292,7 +303,9 @@ def test_webp_pillow_animated():
     buf = io.BytesIO()
     frames[0].save(buf, format="WEBP", save_all=True, append_images=frames[1:], duration=100)
     data = buf.getvalue()
-    result = opt._pillow_optimize(data, 60)
+    img, is_animated = opt._decode_image(data)
+    assert is_animated
+    result = opt._encode_webp(img, 60, is_animated)
     assert len(result) > 0
 
 

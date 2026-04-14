@@ -8,7 +8,9 @@ from estimation.estimator import estimate as run_estimate
 from estimation.presets import get_config_for_preset
 from exceptions import BadRequestError, FileTooLargeError
 from schemas import EstimateResponse, OptimizationConfig
+from utils.concurrency import estimate_gate
 from utils.format_detect import detect_format
+from utils.image_validation import validate_image_dimensions
 from utils.url_fetch import fetch_image
 
 router = APIRouter()
@@ -103,7 +105,15 @@ async def estimate(
     # Validate format
     detect_format(data)
 
-    return await run_estimate(data, config)
+    # Validate decompressed size (reject images that would use too much memory)
+    validate_image_dimensions(data)
+
+    # Acquire estimate slot (503 if queue full)
+    await estimate_gate.acquire()
+    try:
+        return await run_estimate(data, config)
+    finally:
+        estimate_gate.release()
 
 
 async def _fetch_dimensions(url: str, is_authenticated: bool) -> tuple[int, int]:

@@ -102,10 +102,10 @@ def _print_format_table(fmt: str, results: list[BenchmarkResult], out) -> None:
 
     header = (
         f"  {'Name':<40} {'Orig':>8} {'Opt':>8} {'Reduc':>7} "
-        f"{'MB/s':>6} {'Time':>8}  {'Method'}"
+        f"{'Mem MB':>7} {'Mem x':>6} {'CPU ms':>7} {'Time':>8}  {'Method'}"
     )
     print(header, file=out)
-    print("  " + "-" * 95, file=out)
+    print("  " + "-" * 115, file=out)
 
     for r in results:
         if r.opt_error:
@@ -117,7 +117,9 @@ def _print_format_table(fmt: str, results: list[BenchmarkResult], out) -> None:
             f"{_fmt_size(len(r.case.data)):>8} "
             f"{_fmt_size(r.optimized_size):>8} "
             f"{r.reduction_pct:>6.1f}% "
-            f"{_fmt_speed(r.bytes_per_second):>6} "
+            f"{r.peak_memory_mb:>6.1f}M "
+            f"{r.memory_multiplier:>5.1f}x "
+            f"{r.cpu_time_ms:>6.0f}ms "
             f"{r.opt_time_ms:>7.0f}ms "
             f" {r.method}",
             file=out,
@@ -128,13 +130,17 @@ def _print_format_table(fmt: str, results: list[BenchmarkResult], out) -> None:
         avg_reduction = sum(r.reduction_pct for r in valid) / len(valid)
         max_reduction = max(r.reduction_pct for r in valid)
         avg_time = sum(r.opt_time_ms for r in valid) / len(valid)
+        avg_mem = sum(r.peak_memory_mb for r in valid) / len(valid)
+        max_mem = max(r.peak_memory_mb for r in valid)
+        avg_cpu = sum(r.cpu_time_ms for r in valid) / len(valid)
         total_orig = sum(len(r.case.data) for r in valid)
         total_opt = sum(r.optimized_size for r in valid)
         overall_pct = (1 - total_opt / total_orig) * 100 if total_orig else 0
 
         print(
             f"\n  Avg reduction: {avg_reduction:.1f}%  |  Max: {max_reduction:.1f}%  |  "
-            f"Weighted: {overall_pct:.1f}%  |  Avg time: {avg_time:.0f}ms",
+            f"Weighted: {overall_pct:.1f}%  |  Avg time: {avg_time:.0f}ms  |  "
+            f"Avg mem: {avg_mem:.1f}MB  |  Peak mem: {max_mem:.1f}MB  |  Avg CPU: {avg_cpu:.0f}ms",
             file=out,
         )
 
@@ -150,23 +156,24 @@ def _print_summary(suite: BenchmarkSuite, out) -> None:
             by_fmt[r.case.fmt].append(r)
 
     print(
-        f"  {'Format':<10} {'Cases':>6} {'Avg %':>7} {'Max %':>7} {'Weighted %':>11} {'Avg ms':>8}",
+        f"  {'Format':<10} {'Cases':>6} {'Avg %':>7} {'Max %':>7} "
+        f"{'Avg ms':>8} {'Avg Mem':>8} {'Peak Mem':>9} {'Avg CPU':>8}",
         file=out,
     )
-    print("  " + "-" * 52, file=out)
+    print("  " + "-" * 70, file=out)
 
     for fmt in sorted(by_fmt.keys()):
         results = by_fmt[fmt]
         avg_pct = sum(r.reduction_pct for r in results) / len(results)
         max_pct = max(r.reduction_pct for r in results)
-        total_orig = sum(len(r.case.data) for r in results)
-        total_opt = sum(r.optimized_size for r in results)
-        weighted = (1 - total_opt / total_orig) * 100 if total_orig else 0
         avg_ms = sum(r.opt_time_ms for r in results) / len(results)
+        avg_mem = sum(r.peak_memory_mb for r in results) / len(results)
+        peak_mem = max(r.peak_memory_mb for r in results)
+        avg_cpu = sum(r.cpu_time_ms for r in results) / len(results)
 
         print(
             f"  {fmt.upper():<10} {len(results):>6} {avg_pct:>6.1f}% {max_pct:>6.1f}% "
-            f"{weighted:>10.1f}% {avg_ms:>7.0f}ms",
+            f"{avg_ms:>7.0f}ms {avg_mem:>6.1f}MB {peak_mem:>7.1f}MB {avg_cpu:>6.0f}ms",
             file=out,
         )
 
@@ -239,6 +246,9 @@ def export_json(suite: BenchmarkSuite) -> str:
                 "reduction_pct": round(r.reduction_pct, 2),
                 "method": r.method,
                 "opt_time_ms": round(r.opt_time_ms, 1),
+                "cpu_time_ms": round(r.cpu_time_ms, 1),
+                "peak_memory_mb": round(r.peak_memory_mb, 2),
+                "memory_multiplier": round(r.memory_multiplier, 1),
                 "bytes_per_second": round(r.bytes_per_second, 0),
                 "opt_error": r.opt_error or None,
                 "est_reduction_pct": round(r.est_reduction_pct, 2),

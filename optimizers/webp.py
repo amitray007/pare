@@ -17,16 +17,19 @@ class WebpOptimizer(BaseOptimizer):
     """WebP optimization: Pillow + cwebp CLI run concurrently, pick smallest.
 
     Pipeline:
-    1. Run Pillow re-encode and cwebp CLI in parallel
-    2. Pick the smallest result
-    3. If max_reduction set and exceeded, binary search quality
+    1. Decode image once
+    2. Run Pillow re-encode and cwebp CLI in parallel
+    3. Pick the smallest result
+    4. If max_reduction set and exceeded, binary search quality (reuses decoded img)
     """
 
     format = ImageFormat.WEBP
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        # Run Pillow and cwebp concurrently — pick smallest
-        pillow_task = asyncio.to_thread(self._pillow_optimize, data, config.quality)
+        # Decode once, share across all paths
+        img, is_animated = await asyncio.to_thread(self._decode_image, data)
+
+        pillow_task = asyncio.to_thread(self._encode_webp, img, config.quality, is_animated)
         cwebp_task = self._cwebp_fallback(data, config.quality)
 
         pillow_result, cwebp_result = await asyncio.gather(pillow_task, cwebp_task)
@@ -37,21 +40,34 @@ class WebpOptimizer(BaseOptimizer):
             best = cwebp_result
             method = "cwebp"
 
-        # Cap reduction if max_reduction is set
+        # Cap reduction if max_reduction is set (reuses pre-decoded img)
         if config.max_reduction is not None:
             reduction = (1 - len(best) / len(data)) * 100
             if reduction > config.max_reduction:
-                capped = await asyncio.to_thread(self._find_capped_quality, data, config)
+                capped = await asyncio.to_thread(
+                    self._find_capped_quality, img, is_animated, data, config
+                )
                 if capped is not None:
                     best = capped
                     method = "pillow"
 
         return self._build_result(data, best, method)
 
-    def _find_capped_quality(self, data: bytes, config: OptimizationConfig) -> bytes | None:
-        """Binary search Pillow quality to cap reduction at max_reduction."""
+    @staticmethod
+    def _decode_image(data: bytes) -> tuple[Image.Image, bool]:
+        """Decode WebP once. Returns (img, is_animated)."""
         img = Image.open(io.BytesIO(data))
         is_animated = getattr(img, "n_frames", 1) > 1
+        return img, is_animated
+
+    def _find_capped_quality(
+        self,
+        img: Image.Image,
+        is_animated: bool,
+        data: bytes,
+        config: OptimizationConfig,
+    ) -> bytes | None:
+        """Binary search Pillow quality to cap reduction at max_reduction."""
 
         def encode_fn(quality: int) -> bytes:
             return self._encode_webp(img, quality, is_animated)
@@ -60,19 +76,12 @@ class WebpOptimizer(BaseOptimizer):
             encode_fn, len(data), config.max_reduction, lo=config.quality, hi=100
         )
 
-    def _pillow_optimize(self, data: bytes, quality: int) -> bytes:
-        """In-process WebP optimization via Pillow.
-
-        Handles both static and animated WebP.
-        For animated: preserves all frames via save_all=True.
-        """
-        img = Image.open(io.BytesIO(data))
-        is_animated = getattr(img, "n_frames", 1) > 1
-        return self._encode_webp(img, quality, is_animated)
-
     @staticmethod
     def _encode_webp(img: Image.Image, quality: int, is_animated: bool) -> bytes:
         """Encode a Pillow Image to WebP bytes."""
+        if is_animated:
+            img.seek(0)  # Reset frame pointer before re-encode
+
         output = io.BytesIO()
 
         save_kwargs = {

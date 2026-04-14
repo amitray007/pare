@@ -21,6 +21,10 @@ from schemas import OptimizationConfig, OptimizeResult
 
 logger = logging.getLogger("pare.optimizers")
 
+# Images above this threshold run strip+reencode sequentially
+# to avoid memory-expensive img.copy() calls.
+PARALLEL_PIXEL_THRESHOLD = 5_000_000  # 5 megapixels
+
 
 class PillowReencodeOptimizer(BaseOptimizer):
     """Base optimizer for formats that optimize via Pillow strip + re-encode.
@@ -68,20 +72,30 @@ class PillowReencodeOptimizer(BaseOptimizer):
         return Image.open(io.BytesIO(data))
 
     async def optimize(self, data: bytes, config: OptimizationConfig) -> OptimizeResult:
-        """Run metadata strip and lossy re-encode concurrently, pick smallest."""
+        """Run metadata strip and lossy re-encode, pick smallest.
+
+        For images >5MP, runs sequentially to avoid img.copy() memory overhead.
+        For small images, runs concurrently (parallel with copy).
+        """
         img = await asyncio.to_thread(self._open_image, data)
 
-        tasks = []
-        method_names = []
+        pixel_count = img.size[0] * img.size[1]
+        use_parallel = pixel_count < PARALLEL_PIXEL_THRESHOLD
 
-        if config.strip_metadata:
-            tasks.append(asyncio.to_thread(self._strip_metadata_from_img, img.copy(), data))
-            method_names.append(self.strip_method_name)
+        # For lossless presets (quality >= 70) with strip enabled, skip lossy reencode.
+        # The strip path (lossless re-encode) is almost always better at high quality.
+        skip_reencode = config.quality >= 70 and config.strip_metadata
 
-        tasks.append(asyncio.to_thread(self._reencode_from_img, img, config.quality))
-        method_names.append(self.reencode_method_name)
+        # No methods would run — return original immediately
+        if skip_reencode and not config.strip_metadata:
+            return self._build_result(data, data, "none")
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        if use_parallel:
+            results, method_names = await self._optimize_parallel(img, data, config, skip_reencode)
+        else:
+            results, method_names = await self._optimize_sequential(
+                img, data, config, skip_reencode
+            )
 
         candidates = []
         for result, method in zip(results, method_names):
@@ -105,6 +119,59 @@ class PillowReencodeOptimizer(BaseOptimizer):
 
         best_data, best_method = min(candidates, key=lambda x: len(x[0]))
         return self._build_result(data, best_data, best_method)
+
+    async def _optimize_parallel(
+        self,
+        img: Image.Image,
+        data: bytes,
+        config: OptimizationConfig,
+        skip_reencode: bool = False,
+    ) -> tuple[list, list[str]]:
+        """Small image: run strip and reencode concurrently with img.copy()."""
+        tasks = []
+        method_names = []
+
+        if config.strip_metadata:
+            tasks.append(asyncio.to_thread(self._strip_metadata_from_img, img.copy(), data))
+            method_names.append(self.strip_method_name)
+
+        if not skip_reencode:
+            tasks.append(asyncio.to_thread(self._reencode_from_img, img, config.quality))
+            method_names.append(self.reencode_method_name)
+
+        results = list(await asyncio.gather(*tasks, return_exceptions=True))
+        return results, method_names
+
+    async def _optimize_sequential(
+        self,
+        img: Image.Image,
+        data: bytes,
+        config: OptimizationConfig,
+        skip_reencode: bool = False,
+    ) -> tuple[list, list[str]]:
+        """Large image: run strip then reencode sequentially on shared img."""
+        results = []
+        method_names = []
+
+        if config.strip_metadata:
+            try:
+                strip_result = await asyncio.to_thread(self._strip_metadata_from_img, img, data)
+                results.append(strip_result)
+            except Exception as e:
+                results.append(e)
+            method_names.append(self.strip_method_name)
+
+        if not skip_reencode:
+            try:
+                reencode_result = await asyncio.to_thread(
+                    self._reencode_from_img, img, config.quality
+                )
+                results.append(reencode_result)
+            except Exception as e:
+                results.append(e)
+            method_names.append(self.reencode_method_name)
+
+        return results, method_names
 
     def _strip_metadata_from_img(self, img: Image.Image, original_data: bytes) -> bytes:
         """Strip metadata from a pre-decoded Image, preserving ICC profile."""

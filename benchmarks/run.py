@@ -87,9 +87,11 @@ def _compare_reports(path_a: Path, path_b: Path) -> None:
     all_fmts = sorted(set(list(old_by_fmt.keys()) + list(new_by_fmt.keys())))
 
     print(
-        f"\n  {'Format':<10} {'Old Avg%':>9} {'New Avg%':>9} {'Delta':>8} {'Old ms':>8} {'New ms':>8} {'Delta':>8}"
+        f"\n  {'Format':<10} {'Old Avg%':>9} {'New Avg%':>9} {'Delta':>8} "
+        f"{'Old ms':>8} {'New ms':>8} {'Delta':>8} "
+        f"{'Old Mem':>8} {'New Mem':>8} {'Delta':>8}"
     )
-    print("  " + "-" * 65)
+    print("  " + "-" * 95)
 
     for fmt in all_fmts:
         old_results = [r for r in old_by_fmt.get(fmt, []) if not r.get("opt_error")]
@@ -101,15 +103,24 @@ def _compare_reports(path_a: Path, path_b: Path) -> None:
         new_avg = sum(r["reduction_pct"] for r in new_results) / len(new_results)
         old_ms = sum(r["opt_time_ms"] for r in old_results) / len(old_results)
         new_ms = sum(r["opt_time_ms"] for r in new_results) / len(new_results)
+        old_mem = sum(r.get("peak_memory_mb", 0) for r in old_results) / len(old_results)
+        new_mem = sum(r.get("peak_memory_mb", 0) for r in new_results) / len(new_results)
 
         d_pct = new_avg - old_avg
         d_ms = new_ms - old_ms
+        d_mem = new_mem - old_mem
         sign_pct = "+" if d_pct >= 0 else ""
         sign_ms = "+" if d_ms >= 0 else ""
+        sign_mem = "+" if d_mem >= 0 else ""
+
+        mem_old_str = f"{old_mem:.1f}MB" if old_mem > 0 else "n/a"
+        mem_new_str = f"{new_mem:.1f}MB" if new_mem > 0 else "n/a"
+        mem_delta_str = f"{sign_mem}{d_mem:.1f}MB" if old_mem > 0 and new_mem > 0 else "n/a"
 
         print(
             f"  {fmt.upper():<10} {old_avg:>8.1f}% {new_avg:>8.1f}% {sign_pct}{d_pct:>6.1f}% "
-            f"{old_ms:>7.0f}ms {new_ms:>7.0f}ms {sign_ms}{d_ms:>6.0f}ms"
+            f"{old_ms:>7.0f}ms {new_ms:>7.0f}ms {sign_ms}{d_ms:>6.0f}ms "
+            f"{mem_old_str:>8} {mem_new_str:>8} {mem_delta_str:>8}"
         )
 
     # Estimation accuracy delta

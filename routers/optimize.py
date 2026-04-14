@@ -13,8 +13,9 @@ from schemas import (
     StorageConfig,
 )
 from storage.gcs import gcs_uploader
-from utils.concurrency import compression_gate
+from utils.concurrency import MEMORY_MULTIPLIERS, compression_gate
 from utils.format_detect import MIME_TYPES, detect_format
+from utils.image_validation import validate_image_dimensions
 from utils.url_fetch import fetch_image
 
 router = APIRouter()
@@ -69,14 +70,21 @@ async def optimize(
         )
 
     # Validate format (will raise UnsupportedFormatError if unrecognized)
-    detect_format(data)
+    fmt = detect_format(data)
 
-    # Acquire compression slot (503 if queue full)
-    await compression_gate.acquire()
+    # Validate decompressed size (reject images that would use too much memory)
+    validate_image_dimensions(data)
+
+    # Estimate memory for this request based on format + compressed size
+    multiplier = MEMORY_MULTIPLIERS.get(fmt.value, 4)
+    estimated_memory = len(data) * multiplier
+
+    # Acquire compression slot (503 if queue or memory budget full)
+    await compression_gate.acquire(estimated_memory=estimated_memory)
     try:
         result = await optimize_image(data, opt_config)
     finally:
-        compression_gate.release()
+        compression_gate.release(estimated_memory=estimated_memory)
 
     # Response format depends on storage config
     if storage_config:

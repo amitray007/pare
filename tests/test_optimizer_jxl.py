@@ -120,7 +120,11 @@ async def test_jxl_optimizer_both_fail():
 
     mock_img = MagicMock(spec=Image.Image)
     mock_img.info = {}
-    mock_img.copy.return_value = MagicMock(spec=Image.Image)
+    mock_img.size = (100, 100)
+    mock_copy = MagicMock(spec=Image.Image)
+    mock_copy.info = {}
+    mock_copy.size = (100, 100)
+    mock_img.copy.return_value = mock_copy
     with patch.object(opt, "_open_image", return_value=mock_img):
         with patch.object(opt, "_strip_metadata_from_img", side_effect=Exception("fail")):
             with patch.object(opt, "_reencode_from_img", side_effect=Exception("fail")):

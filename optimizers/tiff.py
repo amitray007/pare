@@ -8,6 +8,10 @@ from schemas import OptimizationConfig, OptimizeResult
 from utils.format_detect import ImageFormat
 from utils.metadata import strip_metadata_selective
 
+# Images above this threshold run compression methods sequentially
+# to avoid memory-expensive img.copy() calls. Below it, parallel is fine.
+PARALLEL_PIXEL_THRESHOLD = 5_000_000  # 5 megapixels
+
 
 class TiffOptimizer(BaseOptimizer):
     """TIFF optimization — try multiple compression methods, pick smallest.
@@ -24,7 +28,8 @@ class TiffOptimizer(BaseOptimizer):
     - quality < 70:  lossy JPEG + lossless, pick smallest (moderate)
     - quality >= 70: lossless only (gentle)
 
-    All compression methods run concurrently via asyncio.gather.
+    For images >5MP, methods run sequentially on the shared Image to avoid
+    memory-expensive img.copy() calls. Below 5MP, methods run concurrently.
     """
 
     format = ImageFormat.TIFF
@@ -39,14 +44,31 @@ class TiffOptimizer(BaseOptimizer):
         if config.quality < 70 and img.mode in ("RGB", "L"):
             methods.append("tiff_jpeg")
 
-        results = await asyncio.gather(
-            *[
-                asyncio.to_thread(
-                    self._try_compression, img.copy(), compression, config, exif_bytes, icc_profile
+        pixel_count = img.size[0] * img.size[1]
+
+        if pixel_count < PARALLEL_PIXEL_THRESHOLD:
+            # Small image: parallel with copies (fast, memory is negligible)
+            results = await asyncio.gather(
+                *[
+                    asyncio.to_thread(
+                        self._try_compression,
+                        img.copy(),
+                        compression,
+                        config,
+                        exif_bytes,
+                        icc_profile,
+                    )
+                    for compression in methods
+                ]
+            )
+        else:
+            # Large image: sequential on shared img (no copies, saves memory)
+            results = []
+            for compression in methods:
+                result = await asyncio.to_thread(
+                    self._try_compression, img, compression, config, exif_bytes, icc_profile
                 )
-                for compression in methods
-            ]
-        )
+                results.append(result)
 
         best, best_method = data, "none"
         for candidate, method in results:

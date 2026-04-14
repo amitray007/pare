@@ -8,6 +8,7 @@ import asyncio
 import os
 import sys
 import time
+import tracemalloc
 from dataclasses import dataclass, field
 
 from benchmarks.cases import BenchmarkCase, build_all_cases
@@ -29,6 +30,10 @@ class BenchmarkResult:
     opt_error: str = ""
     # Throughput
     bytes_per_second: float = 0.0
+    # Resource usage
+    peak_memory_mb: float = 0.0  # Peak Python heap allocation during optimization
+    cpu_time_ms: float = 0.0  # CPU time (user + system, excludes I/O wait)
+    memory_multiplier: float = 0.0  # peak_memory / input_size
     # Estimation results
     est_size: int = 0
     est_reduction_pct: float = 0.0
@@ -49,6 +54,11 @@ class BenchmarkSuite:
     presets_used: list[str] = field(default_factory=list)
 
 
+# Global lock for tracemalloc — it's process-global state, so only one
+# benchmark case can measure memory at a time.
+_tracemalloc_lock = asyncio.Lock()
+
+
 async def run_single(
     case: BenchmarkCase,
     config: OptimizationConfig,
@@ -57,21 +67,39 @@ async def run_single(
     """Run optimize + estimate on a single benchmark case.
 
     Optimization and estimation run concurrently since they're independent.
+    Memory profiling is serialized via a global lock (tracemalloc is process-global).
     """
     result = BenchmarkResult(case=case, preset_name=preset_name)
 
     async def _optimize():
         try:
-            t0 = time.perf_counter()
-            opt_result = await optimize_image(case.data, config)
-            elapsed_s = time.perf_counter() - t0
+            # Serialize tracemalloc access — it's process-global state
+            async with _tracemalloc_lock:
+                cpu_start = time.process_time()
+                tracemalloc.start()
+
+                t0 = time.perf_counter()
+                opt_result = await optimize_image(case.data, config)
+                elapsed_s = time.perf_counter() - t0
+
+                _, peak_bytes = tracemalloc.get_traced_memory()
+                tracemalloc.stop()
+                cpu_elapsed = time.process_time() - cpu_start
+
             result.opt_time_ms = elapsed_s * 1000
+            result.cpu_time_ms = cpu_elapsed * 1000
+            result.peak_memory_mb = peak_bytes / (1024 * 1024)
             result.optimized_size = opt_result.optimized_size
             result.reduction_pct = opt_result.reduction_percent
             result.method = opt_result.method
+            input_size = len(case.data)
             if elapsed_s > 0:
-                result.bytes_per_second = len(case.data) / elapsed_s
+                result.bytes_per_second = input_size / elapsed_s
+            if input_size > 0:
+                result.memory_multiplier = peak_bytes / input_size
         except Exception as e:
+            if tracemalloc.is_tracing():
+                tracemalloc.stop()
             result.opt_error = str(e)
 
     async def _estimate():
