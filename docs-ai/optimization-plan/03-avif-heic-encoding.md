@@ -271,13 +271,13 @@ Add AVIF and HEIC test images at various quality levels to the benchmark suite. 
 
 ```bash
 # Run benchmarks for AVIF (will need test images added first)
-python -m benchmarks.run --fmt avif
+python -m bench.run --mode timing --fmt avif
 
 # Run benchmarks for HEIC (will need test images added first)
 # Note: HEIC benchmark images require pillow-heif for generation
 
 # Full suite to check nothing else broke
-python -m benchmarks.run
+python -m bench.run --mode timing
 
 # Check estimation accuracy
 # AVIF/HEIC estimation will start rough — calibrate after first benchmark run

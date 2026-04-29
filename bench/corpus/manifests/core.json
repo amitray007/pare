@@ -1,0 +1,147 @@
+{
+  "manifest_version": 1,
+  "manifest_name": "core",
+  "library_versions": {},
+  "entries": [
+    {
+      "name": "photo_noise_small_png",
+      "bucket": "small",
+      "content_kind": "photo_noise",
+      "seed": 1,
+      "width": 192,
+      "height": 144,
+      "output_formats": ["png"],
+      "tags": ["photo", "worst_case"]
+    },
+    {
+      "name": "photo_perlin_small_png",
+      "bucket": "small",
+      "content_kind": "photo_perlin",
+      "seed": 2,
+      "width": 256,
+      "height": 192,
+      "output_formats": ["png"],
+      "tags": ["photo"]
+    },
+    {
+      "name": "photo_perlin_medium_png",
+      "bucket": "medium",
+      "content_kind": "photo_perlin",
+      "seed": 3,
+      "width": 768,
+      "height": 576,
+      "output_formats": ["png"],
+      "tags": ["photo"]
+    },
+    {
+      "name": "photo_perlin_small_jpeg",
+      "bucket": "small",
+      "content_kind": "photo_perlin",
+      "seed": 4,
+      "width": 1024,
+      "height": 768,
+      "output_formats": ["jpeg"],
+      "tags": ["photo"]
+    },
+    {
+      "name": "photo_perlin_medium_jpeg",
+      "bucket": "medium",
+      "content_kind": "photo_perlin",
+      "seed": 5,
+      "width": 2400,
+      "height": 1800,
+      "output_formats": ["jpeg"],
+      "tags": ["photo"]
+    },
+    {
+      "name": "photo_perlin_small_webp",
+      "bucket": "small",
+      "content_kind": "photo_perlin",
+      "seed": 6,
+      "width": 1024,
+      "height": 768,
+      "output_formats": ["webp"],
+      "tags": ["photo"]
+    },
+    {
+      "name": "graphic_palette_small_png",
+      "bucket": "small",
+      "content_kind": "graphic_palette",
+      "seed": 7,
+      "width": 512,
+      "height": 384,
+      "output_formats": ["png"],
+      "tags": ["graphic", "palette"]
+    },
+    {
+      "name": "graphic_geometric_small_webp",
+      "bucket": "small",
+      "content_kind": "graphic_geometric",
+      "seed": 8,
+      "width": 1024,
+      "height": 768,
+      "output_formats": ["webp"],
+      "tags": ["graphic"]
+    },
+    {
+      "name": "transparent_overlay_small_png",
+      "bucket": "small",
+      "content_kind": "transparent_overlay",
+      "seed": 9,
+      "width": 192,
+      "height": 144,
+      "output_formats": ["png"],
+      "tags": ["transparent"]
+    },
+    {
+      "name": "text_screenshot_small_png",
+      "bucket": "small",
+      "content_kind": "text_screenshot",
+      "seed": 10,
+      "width": 384,
+      "height": 288,
+      "output_formats": ["png"],
+      "tags": ["text"]
+    },
+    {
+      "name": "path_thin_gradient_small_jpeg",
+      "bucket": "small",
+      "content_kind": "path_thin_gradient",
+      "seed": 0,
+      "width": 1024,
+      "height": 768,
+      "output_formats": ["jpeg"],
+      "tags": ["pathological", "banding"]
+    },
+    {
+      "name": "path_text_on_flat_small_jpeg",
+      "bucket": "small",
+      "content_kind": "path_text_on_flat",
+      "seed": 0,
+      "width": 512,
+      "height": 384,
+      "output_formats": ["jpeg"],
+      "tags": ["pathological", "chroma"]
+    },
+    {
+      "name": "animated_translation_small_apng",
+      "bucket": "small",
+      "content_kind": "animated_translation",
+      "seed": 11,
+      "width": 192,
+      "height": 144,
+      "output_formats": ["apng"],
+      "tags": ["animated"]
+    },
+    {
+      "name": "animated_redraw_small_gif",
+      "bucket": "small",
+      "content_kind": "animated_redraw",
+      "seed": 12,
+      "width": 192,
+      "height": 144,
+      "output_formats": ["gif"],
+      "tags": ["animated", "worst_case"]
+    }
+  ]
+}

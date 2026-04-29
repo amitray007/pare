@@ -1,7 +1,21 @@
 import asyncio
+import contextvars
+import time
+from typing import Callable
 
 from config import settings
 from exceptions import OptimizationError, ToolTimeoutError
+
+# Optional instrumentation hook used by the bench runner. When set to a
+# callable, every `run_tool()` invocation reports back the tool name,
+# wall-clock duration, and exit code so the bench can attribute time to
+# specific CLI tools (e.g. mozjpeg vs jpegtran). Set to None in
+# production for zero overhead — the only cost is a contextvar lookup
+# and a None comparison per call.
+RunToolProbe = Callable[[str, float, int], None]
+run_tool_probe: contextvars.ContextVar[RunToolProbe | None] = contextvars.ContextVar(
+    "run_tool_probe", default=None
+)
 
 
 async def run_tool(
@@ -35,6 +49,9 @@ async def run_tool(
     if allowed_exit_codes is None:
         allowed_exit_codes = set()
 
+    probe = run_tool_probe.get()
+    t0 = time.perf_counter_ns() if probe is not None else 0
+
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.PIPE,
@@ -50,11 +67,22 @@ async def run_tool(
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
+        if probe is not None:
+            try:
+                probe(cmd[0], (time.perf_counter_ns() - t0) / 1e6, -1)
+            except Exception:
+                pass
         raise ToolTimeoutError(
             f"Tool {cmd[0]} timed out after {timeout}s",
             tool=cmd[0],
             timeout=timeout,
         )
+
+    if probe is not None:
+        try:
+            probe(cmd[0], (time.perf_counter_ns() - t0) / 1e6, proc.returncode)
+        except Exception:
+            pass
 
     if proc.returncode != 0 and proc.returncode not in allowed_exit_codes:
         raise OptimizationError(

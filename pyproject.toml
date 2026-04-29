@@ -14,6 +14,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
+    "bench",
     "config",
     "schemas",
     "exceptions",

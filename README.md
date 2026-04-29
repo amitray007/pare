@@ -445,62 +445,31 @@ Releases are fully automated. Every push to `main` creates a new version tag, a 
 
 ## Benchmarks
 
-```bash
-python -m benchmarks.run                          # All formats, all presets
-python -m benchmarks.run --fmt png --preset high  # Filter by format/preset
-python -m benchmarks.run --compare                # Delta vs previous run
-python -m benchmarks.run --json                   # JSON to stdout
-python -m benchmarks.run --corpus tests/corpus    # Real-world corpus images
-```
-
-Reports are saved to `reports/` as timestamped HTML + JSON files.
-
-### Benchmark Dashboard
-
-An interactive web dashboard for running benchmarks against the real-world corpus and viewing results in real time.
+The bench harness in `bench/` captures subprocess-aware CPU and peak RSS — Pare's optimizers do most of their work inside subprocesses (mozjpeg, pngquant, oxipng, cjxl, gifsicle), so parent-only measurement undercounts real CPU by 2–3×.
 
 ```bash
-# Start the dashboard server
-python -m benchmarks.server
-# → http://localhost:8081
+# Build the deterministic corpus (synthetic, manifest-pinned pixel SHAs)
+python -m bench.corpus build --manifest core
+python -m bench.corpus verify --manifest core
+
+# Run the bench
+python -m bench.run --mode quick                       # 1 iter/case, ~1 min, PR sanity
+python -m bench.run --mode timing --repeat 5           # p50/p95/p99 + MAD
+python -m bench.run --mode memory                      # peak RSS + tracemalloc
+python -m bench.run --fmt png --bucket small           # filter by format/bucket/tag
+
+# Diff two runs with Welch's t-test + Cohen's d
+python -m bench.compare reports/baseline.json reports/head.json --threshold-pct 10
+
+# Render a run as Markdown for PR comments
+python -m bench.run report reports/bench.json --format markdown
 ```
 
-The dashboard requires the test corpus to be downloaded first:
+**What the bench tracks per case**: wall, parent + children CPU (via `RUSAGE_CHILDREN`), peak RSS for both, parallelism (CPU / wall), per-CLI-tool attribution, optional Python heap allocations (memory mode), reduction %, method, and per-iteration phase breakdown. JSON output is the canonical schema; Markdown is a derived view.
 
-```bash
-python scripts/download_corpus.py                      # Download all groups
-python scripts/download_corpus.py --group high_res     # Download one group
-python scripts/convert_corpus_formats.py               # Convert to BMP/TIFF/GIF/HEIC/JXL
-```
+**Size buckets**: `tiny` (≤10 KB), `small` (10–100 KB), `medium` (100 KB–1 MB), `large` (1–5 MB), `xlarge` (>5 MB). Manifest entries declare the target bucket; the builder validates that the encoded file lands in the declared bucket and fails fast if it doesn't.
 
-**Dashboard features:**
-- Select formats, presets, and corpus groups to benchmark
-- Live progress via SSE (Server-Sent Events) as each case completes
-- Per-format health indicators (pass/warn/fail) based on preset differentiation and estimation accuracy
-- Run history with saved results (stored in `.benchmark-data/runs/`)
-
-**Dashboard API:**
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Serves the dashboard UI |
-| `/api/corpus` | GET | Lists available corpus groups, formats, and file counts |
-| `/api/run` | POST | Starts a benchmark run. Body: `{"formats": [], "presets": ["HIGH","MEDIUM","LOW"], "groups": []}` |
-| `/api/run/{run_id}/stream` | GET | SSE stream of benchmark results as they complete |
-| `/api/runs` | GET | Lists past run summaries |
-| `/api/runs/{run_id}` | GET | Full results of a specific past run |
-| `/api/runs/{run_id}` | DELETE | Delete a past run |
-
-**Corpus groups:**
-
-| Group | Content | Dimensions |
-|-------|---------|------------|
-| `high_res` | Landscape, architecture, texture | 2000+ px, > 500 KB |
-| `standard` | Portrait, food, macro | 800–2000 px, 100–500 KB |
-| `compact` | Abstract, monochrome, colorful | < 800 px, < 100 KB |
-| `deep_color` | Native AVIF (10/12-bit) | Varies |
-
-Each group (except `deep_color`) has 3 photos in 9 formats (JPEG, PNG, AVIF, WebP, BMP, TIFF, GIF, HEIC, JXL) = 27 files per group. `deep_color` has 8 native AVIF samples.
+**Content kinds**: photographic (`photo_gradient`, `photo_perlin`, `photo_noise`), graphic (`graphic_geometric`, `graphic_palette`), text (`text_screenshot`), transparent (`transparent_overlay`, `transparent_sprite`), animated (`animated_translation`, `animated_fade`, `animated_sprite_static`, `animated_redraw`), deep-color (`deep_color_smooth`, `deep_color_thin_gradient`), and 8 pathological cases (`path_thin_gradient`, `path_text_on_flat`, `path_chroma_clash`, etc.) that target known codec failure modes.
 
 ### Results Summary
 

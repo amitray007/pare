@@ -25,22 +25,23 @@ pytest tests/test_sample_estimator.py::test_large_jpeg_extrapolation -v
 # Lint and format check
 python -m ruff check . && python -m black --check .
 
-# Run benchmarks (all formats, all presets)
-python -m benchmarks.run
+# Build the deterministic corpus (synthetic images, manifest-pinned)
+python -m bench.corpus build --manifest core
+python -m bench.corpus verify --manifest core             # Re-synthesize and check pixel hashes
+python -m bench.corpus list --manifest core                # Inspect manifest contents
 
-# Run benchmarks filtered by format and/or preset
-python -m benchmarks.run --fmt bmp --preset high
+# Run benchmarks
+python -m bench.run --mode quick                           # 1 iter per case, ~1 min
+python -m bench.run --mode timing --repeat 5 --warmup 1    # p50/p95/p99 + MAD
+python -m bench.run --mode memory                          # peak RSS + tracemalloc
+python -m bench.run --mode timing --fmt png --bucket small # filter by format/bucket/tag
+python -m bench.run --annotate "branch=staging" --out reports/bench.json
 
-# Run benchmarks filtered by corpus group
-python -m benchmarks.run --corpus tests/corpus --group high_res --fmt jpeg
+# Diff two runs with Welch's t-test + Cohen's d
+python -m bench.compare reports/baseline.json reports/head.json --threshold-pct 10
 
-# Compare current benchmark against previous run
-python -m benchmarks.run --compare
-
-# Download and manage corpus
-python scripts/download_corpus.py                      # Download all groups
-python scripts/download_corpus.py --group high_res     # Download one group
-python scripts/convert_corpus_formats.py               # Convert to BMP/TIFF/GIF/HEIC/JXL
+# Render a run as Markdown (PR comment / step summary)
+python -m bench.run report reports/bench.json --format markdown
 
 # Docker
 docker-compose up          # Pare + Redis (local dev)
@@ -98,7 +99,7 @@ Applied per-request via `SecurityMiddleware`. Auth (Bearer token, empty key = de
 - **Estimation mirrors optimizers**: Direct-encode BPP helpers must match their optimizer's encoding parameters. When changing quality mappings in an optimizer, update the corresponding `_*_sample_bpp()` helper in `estimation/estimator.py`.
 - **Output guarantee**: `_build_result()` ensures the API never returns a file larger than the input.
 - **Format detection**: Done by magic bytes in `utils/format_detect.py`, never by file extension or Content-Type header.
-- **Benchmark verification**: After changing optimizer or estimation logic, run `python -m benchmarks.run --fmt <format>` and check that preset differentiation exists (HIGH > MEDIUM > LOW reduction) and estimation accuracy (Avg Err column) stays under ~15%.
+- **Benchmark verification**: After changing optimizer or estimation logic, run `python -m bench.run --mode timing --fmt <format>` and check that preset differentiation exists (HIGH > MEDIUM > LOW reduction) and that the new run does not regress vs baseline (`python -m bench.compare baseline.json head.json`).
 - **Async discipline**: Wrap CPU-bound work in `asyncio.to_thread()`. Use `asyncio.gather()` for concurrent independent operations.
 - **CLI tools via stdin/stdout**: `utils/subprocess_runner.py`'s `run_tool()` pipes bytes through CLI tools — no temp files. Use `allowed_exit_codes` for expected non-zero exits (e.g., pngquant exit 99).
 
