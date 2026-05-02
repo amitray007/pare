@@ -25,4 +25,4 @@ class JxlOptimizer(PillowReencodeOptimizer):
         try:
             import pillow_jxl  # noqa: F401
         except ImportError:
-            import jxlpy  # noqa: F401
+            import jxlpy.JXLImagePlugin  # noqa: F401

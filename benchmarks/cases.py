@@ -113,7 +113,7 @@ def _jxl_cases() -> list[BenchmarkCase]:
         try:
             import pillow_jxl  # noqa: F401
         except ImportError:
-            import jxlpy  # noqa: F401
+            import jxlpy.JXLImagePlugin  # noqa: F401
 
         return _lossy_photo_cases("jxl", "jxl", "JXL")
     except ImportError:

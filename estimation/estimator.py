@@ -43,7 +43,7 @@ if settings.enable_jxl:
         import pillow_jxl  # noqa: F401 — auto-registers on import
     except ImportError:
         try:
-            import jxlpy  # noqa: F401
+            import jxlpy.JXLImagePlugin  # noqa: F401
         except ImportError:
             pass
 
@@ -447,7 +447,7 @@ def _jxl_sample_bpp(
     try:
         import pillow_jxl  # noqa: F401
     except ImportError:
-        import jxlpy  # noqa: F401
+        import jxlpy.JXLImagePlugin  # noqa: F401
 
     sample = img.resize((sample_width, sample_height), Image.LANCZOS)
     if sample.mode not in ("RGB", "RGBA", "L"):

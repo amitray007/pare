@@ -162,7 +162,7 @@ def encode_image(
         try:
             import pillow_jxl  # noqa: F401
         except ImportError:
-            import jxlpy  # noqa: F401
+            import jxlpy.JXLImagePlugin  # noqa: F401
 
         img.convert("RGB").save(buf, format="JXL", quality=quality)
     return buf.getvalue()
