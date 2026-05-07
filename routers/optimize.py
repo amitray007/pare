@@ -20,6 +20,31 @@ from utils.url_fetch import fetch_image
 
 router = APIRouter()
 
+_UPLOAD_CHUNK_SIZE = 64 * 1024  # 64 KiB
+
+
+async def _read_upload_streaming(file: UploadFile) -> bytes:
+    """Read a multipart upload in chunks, rejecting as soon as the size limit is crossed.
+
+    UploadFile is backed by a SpooledTemporaryFile; repeated read(n) calls return
+    successive chunks until EOF (empty bytes). This avoids materialising the full
+    body before the size check — a hostile 200 MB upload is aborted on the first
+    chunk that crosses max_file_size_bytes.
+    """
+    buf = bytearray()
+    while True:
+        chunk = await file.read(_UPLOAD_CHUNK_SIZE)
+        if not chunk:
+            break
+        if len(buf) + len(chunk) > settings.max_file_size_bytes:
+            raise FileTooLargeError(
+                f"File size exceeds limit of {settings.max_file_size_bytes} bytes",
+                file_size=len(buf) + len(chunk),
+                limit=settings.max_file_size_bytes,
+            )
+        buf.extend(chunk)
+    return bytes(buf)
+
 
 @router.post("/optimize")
 async def optimize(
@@ -34,14 +59,15 @@ async def optimize(
     2. JSON body: url field + inline optimization/storage config
 
     Two response modes:
-    1. No storage config → raw bytes with X-* headers
-    2. Storage config present → JSON with storage URL + stats
+    1. No storage config -> raw bytes with X-* headers
+    2. Storage config present -> JSON with storage URL + stats
     """
     content_type = request.headers.get("content-type", "")
 
     if file is not None:
-        # Multipart file upload mode
-        data = await file.read()
+        # Multipart file upload mode -- streams in chunks to reject oversized
+        # uploads before the full body is buffered in RAM.
+        data = await _read_upload_streaming(file)
         opt_config, storage_config = _parse_form_options(options)
     elif "application/json" in content_type:
         # JSON URL mode
@@ -61,14 +87,6 @@ async def optimize(
     else:
         raise BadRequestError("Expected multipart/form-data or application/json")
 
-    # Validate file size
-    if len(data) > settings.max_file_size_bytes:
-        raise FileTooLargeError(
-            f"File size {len(data)} bytes exceeds limit of {settings.max_file_size_mb} MB",
-            file_size=len(data),
-            limit=settings.max_file_size_bytes,
-        )
-
     # Validate format (will raise UnsupportedFormatError if unrecognized)
     fmt = detect_format(data)
 
@@ -82,7 +100,7 @@ async def optimize(
     # Acquire compression slot (503 if queue or memory budget full)
     await compression_gate.acquire(estimated_memory=estimated_memory)
     try:
-        result = await optimize_image(data, opt_config)
+        result = await optimize_image(data, opt_config, fmt=fmt)
     finally:
         compression_gate.release(estimated_memory=estimated_memory)
 

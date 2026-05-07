@@ -1,0 +1,175 @@
+name: Bench (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Benchmark mode'
+        type: choice
+        options: [pr, quick, timing, memory, accuracy, quality, load]
+        default: pr
+      manifest:
+        description: 'Corpus manifest'
+        type: choice
+        options: [core, full]
+        default: core
+      repeat:
+        description: 'Number of repetitions (--repeat flag)'
+        type: string
+        default: '3'
+      warmup:
+        description: 'Warmup iterations (--warmup flag)'
+        type: string
+        default: '1'
+      noise_floor_pct:
+        description: 'Noise-floor threshold %% for low-iteration compare (--noise-floor-pct flag)'
+        type: string
+        default: '25'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # Allow concurrent runs on different branches; cancel only same-branch + same-input runs.
+  group: bench-${{ github.ref_name }}-${{ inputs.mode }}-${{ inputs.manifest }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: Bench (${{ inputs.mode }} / ${{ inputs.manifest }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build pare image (with layer cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: pare:run-${{ github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build corpus + run bench in container
+        # Bench-only deps (numpy, psutil) live in requirements-bench.txt and
+        # are deliberately NOT in the production image. Install at runtime so
+        # the production image stays lean. Fix permissions afterwards because
+        # Docker writes as root by default; subsequent steps (upload-artifact,
+        # gh pr comment) run as the runner user and can't touch root-owned
+        # files in the workspace.
+        run: |
+          mkdir -p reports tests/corpus bench/corpus/cache
+          docker run --rm \
+            -v "$(pwd):/work" \
+            -w /work \
+            pare:run-${{ github.run_id }} \
+            bash -c "pip install --no-cache-dir -r requirements-bench.txt && \
+                     python -m bench.corpus build --manifest ${{ inputs.manifest }} && \
+                     python -m bench.run \
+                       --mode ${{ inputs.mode }} \
+                       --manifest ${{ inputs.manifest }} \
+                       --repeat ${{ inputs.repeat }} \
+                       --warmup ${{ inputs.warmup }} \
+                       --annotate ci=github \
+                       --annotate branch=${{ github.ref_name }} \
+                       --out reports/_head.json"
+          sudo chown -R "$(id -u):$(id -g)" reports tests/corpus bench/corpus/cache
+
+      - name: Compare against baseline (or skip if missing)
+        id: compare
+        # Each docker run --rm creates a fresh container, so the runtime
+        # pip install from the bench step is gone. Reinstall bench deps
+        # before running the compare/report module here too.
+        run: |
+          BASELINE="reports/baseline.${{ inputs.manifest }}.json"
+          if [ ! -f "$BASELINE" ]; then
+            echo "no-baseline=true" >> "$GITHUB_OUTPUT"
+            echo "no baseline for manifest=${{ inputs.manifest }}, skipping comparison"
+            printf '_No baseline found at `%s`. Uploading head report only._\n\n' "$BASELINE" > /tmp/compare.md
+            docker run --rm \
+              -v "$(pwd):/work" \
+              -w /work \
+              pare:run-${{ github.run_id }} \
+              bash -c "pip install --no-cache-dir -q -r requirements-bench.txt && \
+                       python -m bench.run report reports/_head.json --format markdown" \
+              >> /tmp/compare.md
+          else
+            echo "no-baseline=false" >> "$GITHUB_OUTPUT"
+            set +e
+            docker run --rm \
+              -v "$(pwd):/work" \
+              -w /work \
+              pare:run-${{ github.run_id }} \
+              bash -c "pip install --no-cache-dir -q -r requirements-bench.txt && \
+                       python -m bench.compare \"$BASELINE\" reports/_head.json \
+                         --threshold-pct 10 \
+                         --noise-floor-pct ${{ inputs.noise_floor_pct }} \
+                         --format markdown" \
+              > /tmp/compare.md
+            echo "compare-exit=$?" >> "$GITHUB_OUTPUT"
+            set -e
+          fi
+
+      - name: Compose bench comment
+        run: |
+          {
+            echo '<!-- pare-bench-comment -->'
+            echo ""
+            echo "## Pare bench — \`${{ inputs.mode }}\` mode / \`${{ inputs.manifest }}\` manifest"
+            echo ""
+            echo "_Run: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · Branch: \`${{ github.ref_name }}\` · Threshold: \`±10%\`_"
+            echo ""
+            cat /tmp/compare.md
+            echo ""
+            echo "<sub>Posted by \`.github/workflows/bench.yml\`.</sub>"
+          } > /tmp/comment.md
+
+      - name: Detect open PR for this branch
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=$(gh pr list --head "${{ github.ref_name }}" --json number --jq '.[0].number // empty')
+          echo "pr-number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Find existing bench comment on PR
+        id: find-comment
+        if: steps.find-pr.outputs.pr-number != ''
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ steps.find-pr.outputs.pr-number }}
+          body-includes: '<!-- pare-bench-comment -->'
+          direction: last
+
+      - name: Post or update PR comment
+        if: steps.find-pr.outputs.pr-number != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.find-pr.outputs.pr-number }}
+          body-path: /tmp/comment.md
+          edit-mode: replace
+
+      - name: Upload head artifact (always)
+        # Always upload — useful for refreshing the baseline from a
+        # Docker-accurate run, and for post-mortem on regression failures.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-head-${{ github.run_id }}
+          path: reports/_head.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Fail if regression detected
+        if: steps.compare.outputs.no-baseline == 'false' && steps.compare.outputs.compare-exit != '0'
+        run: |
+          echo "::error::bench.compare detected regressions exceeding ±10% threshold; see PR comment for details."
+          exit 1

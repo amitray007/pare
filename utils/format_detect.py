@@ -130,8 +130,10 @@ def is_apng(data: bytes) -> bool:
 
     while offset + 8 <= len(data):
         # Each chunk: 4-byte length + 4-byte type + data + 4-byte CRC
-        if offset + 4 > len(data):
-            break
+        if offset + 4 > len(
+            data
+        ):  # pragma: no cover — unreachable: while guard ensures offset+8 <= len
+            break  # pragma: no cover
         chunk_length = struct.unpack(">I", data[offset : offset + 4])[0]
         chunk_type = data[offset + 4 : offset + 8]
 

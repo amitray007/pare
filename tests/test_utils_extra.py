@@ -234,6 +234,43 @@ async def test_url_fetch_http_blocked():
         await fetch_image("http://example.com/image.png")
 
 
+def _make_stream_client(responses):
+    """Build a mock client where client.stream() yields responses in order.
+
+    Each entry in *responses* is a MagicMock with the attributes that
+    fetch_image() inspects (is_redirect, is_success, headers, …).
+
+    The streaming path calls `client.stream("GET", url, timeout=…)` as an
+    async context manager and then iterates `response.aiter_bytes()`.
+    """
+    response_iter = iter(responses)
+
+    def _stream_ctx(*args, **kwargs):
+        response = next(response_iter)
+        ctx = AsyncMock()
+        ctx.__aenter__ = AsyncMock(return_value=response)
+        ctx.__aexit__ = AsyncMock(return_value=None)
+        return ctx
+
+    mock_client = MagicMock()
+    mock_client.stream = _stream_ctx
+    return mock_client
+
+
+def _make_success_response(body: bytes, headers: dict | None = None):
+    """Return a mock response that streams *body* via aiter_bytes()."""
+
+    async def _aiter():
+        yield body
+
+    resp = MagicMock()
+    resp.is_redirect = False
+    resp.is_success = True
+    resp.headers = headers or {}
+    resp.aiter_bytes = _aiter
+    return resp
+
+
 @pytest.mark.asyncio
 async def test_url_fetch_timeout():
     """Timeout raises URLFetchError."""
@@ -241,13 +278,17 @@ async def test_url_fetch_timeout():
 
     from utils.url_fetch import fetch_image
 
-    with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.side_effect = httpx.TimeoutException("timeout")
+    def _stream_timeout(*args, **kwargs):
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+        ctx.__aexit__ = AsyncMock(return_value=None)
+        return ctx
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+    mock_client = MagicMock()
+    mock_client.stream = _stream_timeout
+
+    with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             with pytest.raises(URLFetchError, match="timed out"):
                 await fetch_image("https://example.com/img.png")
 
@@ -259,13 +300,17 @@ async def test_url_fetch_request_error():
 
     from utils.url_fetch import fetch_image
 
-    with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.side_effect = httpx.RequestError("connection failed")
+    def _stream_error(*args, **kwargs):
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(side_effect=httpx.RequestError("connection failed"))
+        ctx.__aexit__ = AsyncMock(return_value=None)
+        return ctx
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+    mock_client = MagicMock()
+    mock_client.stream = _stream_error
+
+    with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             with pytest.raises(URLFetchError, match="fetch failed"):
                 await fetch_image("https://example.com/img.png")
 
@@ -275,21 +320,13 @@ async def test_url_fetch_success():
     """Successful fetch returns image bytes."""
     from utils.url_fetch import fetch_image
 
-    mock_response = MagicMock()
-    mock_response.is_redirect = False
-    mock_response.is_success = True
-    mock_response.headers = {}
-    mock_response.content = b"\x89PNG fake image data"
+    body = b"\x89PNG fake image data"
+    mock_client = _make_stream_client([_make_success_response(body)])
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             result = await fetch_image("https://example.com/img.png")
-            assert result == b"\x89PNG fake image data"
+            assert result == body
 
 
 @pytest.mark.asyncio
@@ -297,24 +334,17 @@ async def test_url_fetch_redirect():
     """Redirect is followed with SSRF check at each hop."""
     from utils.url_fetch import fetch_image
 
-    redirect_response = MagicMock()
-    redirect_response.is_redirect = True
-    redirect_response.next_request = MagicMock()
-    redirect_response.next_request.url = "https://cdn.example.com/img.png"
+    redirect_resp = MagicMock()
+    redirect_resp.is_redirect = True
+    redirect_resp.next_request = MagicMock()
+    redirect_resp.next_request.url = "https://cdn.example.com/img.png"
 
-    final_response = MagicMock()
-    final_response.is_redirect = False
-    final_response.is_success = True
-    final_response.headers = {}
-    final_response.content = b"image bytes"
+    final_resp = _make_success_response(b"image bytes")
+
+    mock_client = _make_stream_client([redirect_resp, final_resp])
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.side_effect = [redirect_response, final_response]
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             result = await fetch_image("https://example.com/img.png")
             assert result == b"image bytes"
 
@@ -324,18 +354,15 @@ async def test_url_fetch_non_success_status():
     """Non-2xx status raises URLFetchError."""
     from utils.url_fetch import fetch_image
 
-    mock_response = MagicMock()
-    mock_response.is_redirect = False
-    mock_response.is_success = False
-    mock_response.status_code = 404
+    resp = MagicMock()
+    resp.is_redirect = False
+    resp.is_success = False
+    resp.status_code = 404
+
+    mock_client = _make_stream_client([resp])
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             with pytest.raises(URLFetchError, match="HTTP 404"):
                 await fetch_image("https://example.com/img.png")
 
@@ -345,19 +372,11 @@ async def test_url_fetch_content_length_too_large():
     """Content-Length header too large -> FileTooLargeError."""
     from utils.url_fetch import fetch_image
 
-    mock_response = MagicMock()
-    mock_response.is_redirect = False
-    mock_response.is_success = True
-    mock_response.headers = {"content-length": str(999999999)}
-    mock_response.content = b"x"
+    resp = _make_success_response(b"x", headers={"content-length": str(999_999_999)})
+    mock_client = _make_stream_client([resp])
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             with pytest.raises(FileTooLargeError):
                 await fetch_image("https://example.com/img.png")
 
@@ -367,17 +386,14 @@ async def test_url_fetch_redirect_no_location():
     """Redirect without Location header -> URLFetchError."""
     from utils.url_fetch import fetch_image
 
-    mock_response = MagicMock()
-    mock_response.is_redirect = True
-    mock_response.next_request = None
+    resp = MagicMock()
+    resp.is_redirect = True
+    resp.next_request = None
+
+    mock_client = _make_stream_client([resp])
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             with pytest.raises(URLFetchError, match="Redirect without Location"):
                 await fetch_image("https://example.com/img.png")
 
@@ -387,40 +403,42 @@ async def test_url_fetch_too_many_redirects():
     """Too many redirects -> URLFetchError."""
     from utils.url_fetch import fetch_image
 
-    mock_response = MagicMock()
-    mock_response.is_redirect = True
-    mock_response.next_request = MagicMock()
-    mock_response.next_request.url = "https://example.com/redir"
+    # Build enough redirect responses to exhaust the hop limit (default 5).
+    # _make_stream_client uses iter(), so we need max_redirects + 2 entries.
+    redirect_resp = MagicMock()
+    redirect_resp.is_redirect = True
+    redirect_resp.next_request = MagicMock()
+    redirect_resp.next_request.url = "https://example.com/redir"
+
+    # 10 redirects is safely above the default limit of 5.
+    mock_client = _make_stream_client([redirect_resp] * 10)
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             with pytest.raises(URLFetchError, match="Too many redirects"):
                 await fetch_image("https://example.com/img.png")
 
 
 @pytest.mark.asyncio
 async def test_url_fetch_body_too_large():
-    """Response body exceeds size limit -> FileTooLargeError."""
+    """Response body exceeds size limit -> FileTooLargeError (detected mid-stream)."""
     from utils.url_fetch import fetch_image
 
-    mock_response = MagicMock()
-    mock_response.is_redirect = False
-    mock_response.is_success = True
-    mock_response.headers = {}
-    mock_response.content = b"x" * (33 * 1024 * 1024 + 1)  # > 32MB
+    big_chunk = b"x" * (33 * 1024 * 1024 + 1)  # > 32 MB
+
+    async def _aiter_big():
+        yield big_chunk
+
+    resp = MagicMock()
+    resp.is_redirect = False
+    resp.is_success = True
+    resp.headers = {}
+    resp.aiter_bytes = _aiter_big
+
+    mock_client = _make_stream_client([resp])
 
     with patch("utils.url_fetch.validate_url", return_value="https://example.com/img.png"):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("utils.url_fetch._get_client", new=AsyncMock(return_value=mock_client)):
             with pytest.raises(FileTooLargeError):
                 await fetch_image("https://example.com/img.png")
 

@@ -40,8 +40,9 @@ class JpegOptimizer(BaseOptimizer):
             self._decode_image, data, config.strip_metadata
         )
 
-        # Run Pillow encode and jpegtran concurrently
-        pillow_out, jpegtran_out = await asyncio.gather(
+        # Run Pillow encode and jpegtran concurrently.
+        # return_exceptions=True prevents an unhandled sibling cancellation on failure.
+        results = await asyncio.gather(
             asyncio.to_thread(
                 self._pillow_encode,
                 img,
@@ -51,7 +52,14 @@ class JpegOptimizer(BaseOptimizer):
                 exif_bytes,
             ),
             self._run_jpegtran(data, config.progressive_jpeg),
+            return_exceptions=True,
         )
+        pillow_out, jpegtran_out = results
+        if isinstance(pillow_out, BaseException):
+            raise pillow_out  # primary path failure — let the caller see it
+        if isinstance(jpegtran_out, BaseException):
+            # jpegtran is best-effort; fall back to original (Pillow path will win comparison)
+            jpegtran_out = data
 
         # Cap lossy if max_reduction is set.
         # Jpegtran (lossless) is never capped — no quality loss.
@@ -155,10 +163,18 @@ class JpegOptimizer(BaseOptimizer):
         """MozJPEG subprocess pipeline (legacy fallback)."""
         bmp_data = await asyncio.to_thread(self._decode_to_bmp, data, config.strip_metadata)
 
-        mozjpeg_out, jpegtran_out = await asyncio.gather(
+        # return_exceptions=True prevents an unhandled sibling cancellation on failure.
+        cjpeg_results = await asyncio.gather(
             self._run_cjpeg(bmp_data, config.quality, config.progressive_jpeg),
             self._run_jpegtran(data, config.progressive_jpeg),
+            return_exceptions=True,
         )
+        mozjpeg_out, jpegtran_out = cjpeg_results
+        if isinstance(mozjpeg_out, BaseException):
+            raise mozjpeg_out  # primary path failure — let the caller see it
+        if isinstance(jpegtran_out, BaseException):
+            # jpegtran is best-effort; fall back to original (cjpeg path will win comparison)
+            jpegtran_out = data
 
         if config.max_reduction is not None:
             moz_red = (1 - len(mozjpeg_out) / len(data)) * 100

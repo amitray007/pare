@@ -31,3 +31,11 @@ def test_invalid_preset_raises():
 
     with pytest.raises(ValueError, match="Invalid preset"):
         get_config_for_preset("ultra")
+
+
+def test_quality_preset_str_returns_name():
+    from estimation.presets import HIGH, LOW, MEDIUM
+
+    assert str(HIGH) == "HIGH"
+    assert str(MEDIUM) == "MEDIUM"
+    assert str(LOW) == "LOW"

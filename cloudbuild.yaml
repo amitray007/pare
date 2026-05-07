@@ -25,8 +25,9 @@ steps:
       - '--image=${_REGISTRY}/$PROJECT_ID/${_SERVICE}:$COMMIT_SHA'
       - '--region=${_REGION}'
       - '--platform=managed'
-      - '--concurrency=24'
+      - '--concurrency=32'
       - '--timeout=300'
+      - '--update-env-vars=MEMORY_BUDGET_MB=7168,MAX_QUEUE_DEPTH=32'
 
 substitutions:
   _DOCKERFILE: 'Dockerfile'

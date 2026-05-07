@@ -29,6 +29,7 @@ For Pillow-based formats that use strip + re-encode, see `jxl.py` (cleanest exam
 - **Required override**: `_ensure_plugin()` — import/register the format's Pillow plugin. Must use lazy imports (inside the method) since these packages are optional and may not be installed in all environments.
 - **Optional overrides**: `_open_image(data)` (HEIC uses pillow-heif), `_strip_metadata_from_img(img, data)` (AVIF uses quality=100, HEIC uses quality=-1)
 - **Decode-once pattern**: `optimize()` decodes via `_open_image()` once, passes `img.copy()` to strip and `img` to reencode. Override `_strip_metadata_from_img(img, data)` instead of `_strip_metadata(data)` for format-specific strip behavior.
+- **Pre-flight invariant** (AVIF only today, but applies to any format that adds a similar skip): the metadata-byte parser used by the pre-flight skip rule MUST agree with `_strip_metadata_from_img` about which boxes are actually removed. ICC profiles and `colr/nclx` are preserved by `_strip_metadata_from_img` (via the `icc_profile=` kwarg) — counting them as strippable inflates `meta_bytes` and silently breaks the skip threshold. If you ever change one side, update the other.
 
 ## Shared Utilities (`utils.py`)
 

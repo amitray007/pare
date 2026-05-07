@@ -9,6 +9,15 @@ logger = logging.getLogger(__name__)
 # Redis client initialized lazily
 _redis = None
 
+# Cumulative count of Redis errors since process start. Operators can alert on this
+# counter (e.g., via log scraping or /health) rather than on the absence of rate limiting.
+_rate_limit_redis_error_count = 0
+
+
+def get_rate_limit_redis_error_count() -> int:
+    """Return the number of Redis errors encountered by the rate limiter since process start."""
+    return _rate_limit_redis_error_count
+
 
 async def get_redis():
     """Get or create async Redis connection."""
@@ -115,5 +124,19 @@ async def safe_check_rate_limit(client_ip: str, is_authenticated: bool) -> None:
         await check_burst_limit(client_ip)
     except RateLimitError:
         raise  # Propagate actual rate limit hits
-    except Exception:
-        logger.warning("Rate limiter unavailable — allowing request")
+    # Policy: fail-open on Redis errors (preserves availability). Visibility
+    # is via the error log + counter — operators page on the counter, not
+    # the absence of rate limiting. To switch to fail-closed, change to
+    # `raise RateLimitError(...)` here.
+    except Exception as e:
+        global _rate_limit_redis_error_count
+        _rate_limit_redis_error_count += 1
+        logger.exception(
+            f"Rate limiter unavailable — fail-open allowed request: {e}",
+            extra={
+                "context": {
+                    "redis_error_count": _rate_limit_redis_error_count,
+                    "exc_type": type(e).__name__,
+                }
+            },
+        )

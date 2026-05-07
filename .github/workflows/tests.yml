@@ -40,6 +40,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          pip install -r requirements-bench.txt
 
       - name: Run tests with coverage
         id: tests
@@ -200,14 +201,26 @@ jobs:
           comment-author: "github-actions[bot]"
           body-includes: "<!-- coverage-report -->"
 
-      - name: Create or update coverage comment
+      - name: Delete previous coverage comment
+        if: |
+          github.event_name == 'pull_request' &&
+          always() &&
+          steps.parse.outcome == 'success' &&
+          steps.find_comment.outputs.comment-id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method DELETE \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/issues/comments/${{ steps.find_comment.outputs.comment-id }}"
+
+      - name: Post fresh coverage comment at bottom of PR
         if: github.event_name == 'pull_request' && always() && steps.parse.outcome == 'success'
         uses: peter-evans/create-or-update-comment@v4
         with:
-          comment-id: ${{ steps.find_comment.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
           body: ${{ steps.parse.outputs.comment_body }}
-          edit-mode: replace
 
       - name: Fail if tests failed
         if: always() && steps.tests.outcome == 'failure'

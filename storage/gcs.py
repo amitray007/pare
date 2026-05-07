@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from google.cloud import storage as gcs_lib
@@ -48,17 +49,7 @@ class GCSUploader:
             PareError: If upload fails.
         """
         try:
-            bucket = self.client.bucket(
-                config.bucket,
-                user_project=config.project,
-            )
-            blob = bucket.blob(config.path)
-
-            content_type = MIME_TYPES.get(fmt, "application/octet-stream")
-            blob.upload_from_string(data, content_type=content_type)
-
-            if config.public:
-                blob.make_public()
+            await asyncio.to_thread(self._upload_sync, data, fmt, config)
 
             gs_url = f"gs://{config.bucket}/{config.path}"
             public_url = (
@@ -79,6 +70,20 @@ class GCSUploader:
                 bucket=config.bucket,
                 path=config.path,
             )
+
+    def _upload_sync(self, data: bytes, fmt: str, config: StorageConfig) -> None:
+        """Blocking GCS upload — intended to be called via asyncio.to_thread."""
+        bucket = self.client.bucket(
+            config.bucket,
+            user_project=config.project,
+        )
+        blob = bucket.blob(config.path)
+
+        content_type = MIME_TYPES.get(fmt, "application/octet-stream")
+        blob.upload_from_string(data, content_type=content_type)
+
+        if config.public:
+            blob.make_public()
 
 
 # Module-level singleton

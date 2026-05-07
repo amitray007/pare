@@ -1,0 +1,115 @@
+name: bench-baseline-update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'optimizers/**'
+      - 'estimation/**'
+      - 'utils/**'
+      - 'bench/**'
+      - 'schemas.py'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'Dockerfile'
+      - '.github/workflows/bench-baseline-update.yml'
+
+permissions:
+  contents: write   # commit the refreshed baseline back to main
+  issues: write     # open the "baseline drift" issue when comparison is dirty
+
+concurrency:
+  # Serialize on-main baseline refreshes — multiple back-to-back merges
+  # otherwise race for the commit slot.
+  group: bench-baseline-main
+  cancel-in-progress: false
+
+jobs:
+  baseline-refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: ${{ !contains(github.event.head_commit.message, '[skip bench-baseline]') && !contains(github.event.head_commit.message, '[skip ci]') }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build pare image (with layer cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: pare:baseline-${{ github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build corpus + run quick mode in container
+        run: |
+          mkdir -p reports tests/corpus bench/corpus/cache
+          docker run --rm -v "$(pwd):/work" -w /work \
+            pare:baseline-${{ github.run_id }} \
+            bash -c "pip install --no-cache-dir -r requirements-bench.txt && \
+                     python -m bench.corpus build --manifest core && \
+                     python -m bench.run --mode quick --manifest core \
+                       --annotate ci=github \
+                       --annotate kind=baseline-candidate \
+                       --annotate sha=${{ github.sha }} \
+                       --out reports/_candidate.json"
+          sudo chown -R "$(id -u):$(id -g)" reports tests/corpus bench/corpus/cache
+
+      - name: Compare candidate against current baseline
+        id: compare
+        # Fresh container needs bench deps reinstalled (numpy/psutil are not
+        # in the production image). See bench-pr.yml for the same pattern.
+        run: |
+          set +e
+          docker run --rm -v "$(pwd):/work" -w /work \
+            pare:baseline-${{ github.run_id }} \
+            bash -c "pip install --no-cache-dir -q -r requirements-bench.txt && \
+                     python -m bench.compare reports/baseline.core.json reports/_candidate.json \
+                       --threshold-pct 10 --format markdown" > /tmp/compare.md
+          ec=$?
+          set -e
+          echo "exit=${ec}" >> "$GITHUB_OUTPUT"
+          # exit 0 = clean; non-zero = regressions/improvements crossed threshold
+          if [ "$ec" = "0" ]; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Promote candidate to baseline (clean path)
+        if: steps.compare.outputs.clean == 'true'
+        run: |
+          mv reports/_candidate.json reports/baseline.core.json
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- reports/baseline.core.json; then
+            echo "::notice::baseline.core.json is byte-identical after refresh; nothing to commit."
+          else
+            git add reports/baseline.core.json
+            git commit -m "chore(bench): refresh baseline.core.json from main@${{ github.sha }} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Open drift issue (dirty path)
+        if: steps.compare.outputs.clean == 'false'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "bench: baseline drift detected on main@${{ github.sha }}"
+          content-filepath: /tmp/compare.md
+          labels: bench, drift
+
+      - name: Upload candidate artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-candidate-${{ github.run_id }}
+          path: reports/_candidate.json
+          retention-days: 30

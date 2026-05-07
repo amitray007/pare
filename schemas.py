@@ -81,19 +81,30 @@ class OptimizeResponse(BaseModel):
 
 
 class EstimateResponse(BaseModel):
-    """Response from the /estimate endpoint."""
+    """Response from the /estimate endpoint.
+
+    `fallback_reason` is populated when the fitted estimator attempted but fell back to the
+    direct-encode-sample path.  When the fitted path was never attempted (mode=off, unsupported
+    format) or succeeded, `fallback_reason` is None.  This field is a stable groupby key for
+    accuracy analysis — do not branch on `path` alone.
+
+    CHANGELOG advisory: clients that branch on ``confidence == "high"`` should note that
+    fitted-estimator paths return ``confidence="medium"`` by design; this is not a regression.
+    """
 
     original_size: int
     original_format: str
     dimensions: dict
-    color_type: Optional[str] = None
-    bit_depth: Optional[int] = None
+    color_type: str | None = None
+    bit_depth: int | None = None
     estimated_optimized_size: int
     estimated_reduction_percent: float
     optimization_potential: str
     method: str
     already_optimized: bool
     confidence: str
+    path: str | None = None
+    fallback_reason: str | None = None
 
 
 class ErrorResponse(BaseModel):

@@ -30,7 +30,7 @@ Each helper mirrors the corresponding optimizer's encoding settings. Quality cla
 | `_heic_sample_bpp` | `optimizers/heic.py` `_reencode` | `clamp_quality(config.quality)` (offset=10, lo=30, hi=90) |
 | `_avif_sample_bpp` | `optimizers/avif.py` `_reencode` | `clamp_quality(config.quality)` (offset=10, lo=30, hi=90), speed=6 |
 | `_jxl_sample_bpp` | `optimizers/jxl.py` `_reencode` | `clamp_quality(config.quality, hi=95)` |
-| `_webp_sample_bpp` | `optimizers/webp.py` Pillow path | `config.quality`, method=4 |
+| `_webp_sample_bpp` | `optimizers/webp.py` Pillow path | `config.quality`, method=4 (q<50) or 3 (q>=50) |
 | `_png_sample_bpp` | `optimizers/png.py` pipeline | oxipng level + optional pngquant quantization |
 
 **IMPORTANT:** When changing quality mappings or encoding parameters in an optimizer, update the corresponding `_*_sample_bpp()` helper to match. For HEIC/AVIF/JXL, both the optimizer and BPP helper use `clamp_quality()`, so changes to the quality range constants in the optimizer class are automatically reflected.

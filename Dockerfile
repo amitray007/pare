@@ -33,10 +33,9 @@ COPY --from=mozjpeg-builder /opt/mozjpeg/bin/jpegtran /usr/local/bin/jpegtran
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pngquant \
     gifsicle \
-    webp \
-    libheif-dev \
-    libde265-dev \
-    libaom-dev \
+    libheif1 \
+    libde265-0 \
+    libaom3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

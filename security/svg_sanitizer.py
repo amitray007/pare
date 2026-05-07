@@ -52,6 +52,13 @@ def sanitize_svg(data: bytes) -> bytes:
     Strips all script tags, event handlers, external references,
     and data: URIs.
 
+    Internal entity declarations (e.g. Wikimedia SVGs that use <!ENTITY st0 "…">
+    as CSS shorthand) are allowed — they are pure string substitution within the
+    document and involve no external fetching.  XXE is still blocked via
+    forbid_external=True, which rejects any SYSTEM/PUBLIC entity that tries to
+    resolve an external resource.  Recursive entity expansion (billion-laughs) is
+    bounded by expat's built-in amplification limit (~8192× by default).
+
     Args:
         data: Raw SVG bytes (UTF-8 encoded XML).
 
@@ -62,7 +69,11 @@ def sanitize_svg(data: bytes) -> bytes:
         OptimizationError: If SVG is malformed XML.
     """
     try:
-        root = ET.fromstring(data)
+        # forbid_entities=False: allow safe internal entity declarations.
+        # forbid_external=True: still block SYSTEM/PUBLIC external entity refs (XXE).
+        # forbid_dtd left at False default so the DOCTYPE block that houses the
+        # internal declarations is permitted.
+        root = ET.fromstring(data, forbid_entities=False, forbid_external=True)
     except ET.ParseError as e:
         raise OptimizationError(f"Malformed SVG XML: {e}")
 

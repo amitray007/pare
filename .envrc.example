@@ -1,0 +1,14 @@
+# .envrc.example — copy to .envrc and run `direnv allow` to activate.
+#
+# This file documents environment variables that change local runtime behavior.
+# None of these affect production (Cloud Run picks up its own env via Secret Manager /
+# Cloud Run service config). Safe to enable in a venv-based local dev setup.
+
+# Enable JPEG XL support (optimizer + bench cases).
+# Requires: cjxl/djxl on PATH and jxlpy in the venv.
+# Check with:
+#   which cjxl djxl
+#   .venv/bin/python -c "from jxlpy import JXLPyEncoder, JXLPyDecoder; print('ok')"
+# Without this flag, `python -m bench.run --fmt jxl` raises UnsupportedFormatError
+# for every JXL case.
+export ENABLE_JXL=true

@@ -102,7 +102,7 @@ async def test_avif_reencode_success(avif_optimizer):
     with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
         with patch.object(avif_optimizer, "_reencode_from_img", return_value=b"small"):
             result = await avif_optimizer.optimize(
-                b"larger original avif", OptimizationConfig(strip_metadata=False)
+                b"larger original avif", OptimizationConfig(quality=60, strip_metadata=False)
             )
     assert result.method == "avif-reencode"
 
@@ -189,7 +189,7 @@ async def test_heic_reencode_success(heic_optimizer):
     with patch.object(heic_optimizer, "_open_image", return_value=_mock_img()):
         with patch.object(heic_optimizer, "_reencode_from_img", return_value=b"small"):
             result = await heic_optimizer.optimize(
-                b"larger original heic", OptimizationConfig(strip_metadata=False)
+                b"larger original heic", OptimizationConfig(quality=60, strip_metadata=False)
             )
     assert result.method == "heic-reencode"
 
@@ -247,33 +247,6 @@ async def test_webp_pillow_optimization(webp_optimizer):
 
 
 @pytest.mark.asyncio
-async def test_webp_cwebp_fallback(webp_optimizer):
-    """When Pillow result is poor, tries cwebp fallback."""
-    img = Image.new("RGB", (10, 10), (255, 0, 0))
-    buf = io.BytesIO()
-    img.save(buf, format="WEBP", quality=50)
-    data = buf.getvalue()
-    # Mock _encode_webp to return data that's >= input (triggering cwebp win)
-    with patch.object(webp_optimizer, "_encode_webp", return_value=data):
-        with patch.object(webp_optimizer, "_cwebp_fallback", return_value=b"tiny"):
-            result = await webp_optimizer.optimize(data, OptimizationConfig(quality=60))
-    assert result.method == "cwebp"
-
-
-@pytest.mark.asyncio
-async def test_webp_cwebp_fallback_none(webp_optimizer):
-    """cwebp fallback returns None (not available) -> uses Pillow result."""
-    img = Image.new("RGB", (10, 10))
-    buf = io.BytesIO()
-    img.save(buf, format="WEBP", quality=50)
-    data = buf.getvalue()
-    with patch.object(webp_optimizer, "_encode_webp", return_value=data):
-        with patch.object(webp_optimizer, "_cwebp_fallback", return_value=None):
-            result = await webp_optimizer.optimize(data, OptimizationConfig(quality=60))
-    assert result.success
-
-
-@pytest.mark.asyncio
 async def test_webp_max_reduction_cap(webp_optimizer):
     """max_reduction caps output."""
     img = Image.new("RGB", (100, 100), (255, 0, 0))
@@ -307,14 +280,6 @@ def test_webp_pillow_animated():
     assert is_animated
     result = opt._encode_webp(img, 60, is_animated)
     assert len(result) > 0
-
-
-@pytest.mark.asyncio
-async def test_webp_cwebp_not_available(webp_optimizer):
-    """cwebp not on PATH -> returns None."""
-    with patch("shutil.which", return_value=None):
-        result = await webp_optimizer._cwebp_fallback(b"data", 80)
-    assert result is None
 
 
 # --- GIF Optimizer ---

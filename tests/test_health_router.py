@@ -12,7 +12,7 @@ def test_check_tools_all_available():
     """All tools available -> all True."""
     with patch("shutil.which", return_value="/usr/bin/tool"):
         results = check_tools()
-    for name in ("pngquant", "jpegtran", "gifsicle", "cwebp"):
+    for name in ("pngquant", "jpegtran", "gifsicle"):
         assert results[name] is True
 
 
@@ -20,7 +20,7 @@ def test_check_tools_none_available():
     """No CLI tools on PATH -> all False."""
     with patch("shutil.which", return_value=None):
         results = check_tools()
-    for name in ("pngquant", "jpegtran", "gifsicle", "cwebp"):
+    for name in ("pngquant", "jpegtran", "gifsicle"):
         assert results[name] is False
 
 
@@ -71,7 +71,6 @@ def test_health_endpoint_all_ok(client):
             "cjpeg",
             "jpegtran",
             "gifsicle",
-            "cwebp",
             "oxipng",
             "pillow_heif",
             "scour",

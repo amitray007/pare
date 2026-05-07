@@ -35,12 +35,15 @@ if settings.enable_jxl:
 async def optimize_image(
     data: bytes,
     config: OptimizationConfig,
+    fmt: ImageFormat | None = None,
 ) -> OptimizeResult:
     """Detect format and dispatch to the correct optimizer.
 
     Args:
         data: Raw image bytes.
         config: Optimization parameters.
+        fmt: Pre-detected image format. When provided, skips the magic-byte
+            scan (saves ~1-3ms). When None, format is detected from data.
 
     Returns:
         OptimizeResult with optimized bytes and stats.
@@ -48,7 +51,8 @@ async def optimize_image(
     Raises:
         UnsupportedFormatError: If format is not recognized.
     """
-    fmt = detect_format(data)
+    if fmt is None:
+        fmt = detect_format(data)
     optimizer = OPTIMIZERS.get(fmt)
     if optimizer is None:
         from exceptions import UnsupportedFormatError

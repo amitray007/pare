@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pare — Optimization Health</title>
+  <style>
+    /* ------------------------------------------------------------------ */
+    /* Reset + custom properties                                           */
+    /* ------------------------------------------------------------------ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #21253a;
+      --border: #2a2d3a;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --accent: #6366f1;
+      --accent2: #f59e0b;
+      --accent3: #10b981;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --ok: #10b981;
+      --radius: 8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8f9fc;
+        --surface: #ffffff;
+        --surface2: #f1f3f8;
+        --border: #dde1ec;
+        --text: #1a1d27;
+        --muted: #5c6475;
+        --accent: #4f51d4;
+        --accent2: #d97706;
+        --accent3: #059669;
+        --danger: #dc2626;
+        --warn: #d97706;
+        --ok: #059669;
+      }
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 24px 16px 64px;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Layout                                                              */
+    /* ------------------------------------------------------------------ */
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Header                                                              */
+    /* ------------------------------------------------------------------ */
+    header {
+      max-width: 1100px;
+      margin: 0 auto 28px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+    }
+
+    header h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    header h1 span { color: var(--accent); }
+
+    .meta {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Section headings                                                    */
+    /* ------------------------------------------------------------------ */
+    .section-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 16px;
+    }
+
+    section { margin-bottom: 36px; }
+
+    /* ------------------------------------------------------------------ */
+    /* KPI strip                                                           */
+    /* ------------------------------------------------------------------ */
+    #kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 36px;
+    }
+
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .kpi-label {
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .kpi-value {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+    }
+
+    .kpi-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Scorecard grid                                                      */
+    /* ------------------------------------------------------------------ */
+    #scorecard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
+    }
+
+    .fmt-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.15s;
+    }
+
+    .fmt-card:hover { border-color: var(--accent); }
+
+    .fmt-card.status-fail { border-left: 3px solid var(--danger); }
+    .fmt-card.status-warn { border-left: 3px solid var(--warn); }
+    .fmt-card.status-ok   { border-left: 3px solid var(--ok); }
+
+    .fmt-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .fmt-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      font-family: var(--mono);
+      color: var(--text);
+      flex: 1;
+    }
+
+    .fmt-status-icon {
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .fmt-reduction {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--ok);
+    }
+
+    /* Metric rows inside a card */
+    .fmt-metrics {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .metric-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 0.80rem;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      min-width: 90px;
+      flex-shrink: 0;
+    }
+
+    .metric-value {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.70rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge-ok   { background: rgba(16,185,129,0.12); color: var(--ok); border: 1px solid rgba(16,185,129,0.3); }
+    .badge-warn { background: rgba(245,158,11,0.12); color: var(--warn); border: 1px solid rgba(245,158,11,0.3); }
+    .badge-fail { background: rgba(239,68,68,0.12); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+    .badge-na   { background: rgba(136,146,164,0.10); color: var(--muted); border: 1px solid rgba(136,146,164,0.2); }
+
+    .fmt-summary {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.45;
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+    }
+
+    .speed-buckets {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .speed-chip {
+      font-size: 0.68rem;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .speed-chip-ok   { background: rgba(16,185,129,0.12); color: var(--ok); }
+    .speed-chip-warn { background: rgba(245,158,11,0.12); color: var(--warn); }
+    .speed-chip-fail { background: rgba(239,68,68,0.12); color: var(--danger); }
+
+    /* ------------------------------------------------------------------ */
+    /* Samples link                                                        */
+    /* ------------------------------------------------------------------ */
+    #link-to-samples {
+      text-align: center;
+      padding: 20px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 36px;
+    }
+
+    #link-to-samples a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    #link-to-samples a:hover { text-decoration: underline; }
+
+    /* ------------------------------------------------------------------ */
+    /* Trends section                                                      */
+    /* ------------------------------------------------------------------ */
+    #trends { display: flex; flex-direction: column; gap: 24px; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar label { font-size: 0.82rem; color: var(--muted); }
+
+    .toolbar select {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 5px 10px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .toolbar select:focus { border-color: var(--accent); }
+
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    /* Shared card shell */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+    }
+
+    .card h2 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 14px;
+    }
+
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* Recent runs table */
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.80rem;
+    }
+
+    th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    tr:hover td { background: rgba(255,255,255,0.03); }
+
+    .sha {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+    }
+
+    .err { color: var(--danger); }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    /* Loading / notice states */
+    .notice {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    /* Trend loading placeholder */
+    #trends-placeholder { display: none; }
+
+    /* Quick-mode RSS caveat label */
+    .rss-note {
+      font-size: 0.70rem;
+      font-weight: 400;
+      color: var(--warn);
+      margin-left: 6px;
+      cursor: help;
+      border-bottom: 1px dashed var(--warn);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ======================================================================
+     Header
+====================================================================== -->
+<header>
+  <h1>Pare <span>— Optimization Health</span></h1>
+  <div class="meta" id="header-meta">Loading…</div>
+</header>
+
+<div class="wrap">
+
+<!-- ======================================================================
+     KPI strip
+====================================================================== -->
+<section id="kpis-section">
+  <p class="section-title">At a glance</p>
+  <div id="kpis">
+    <div class="kpi-card">
+      <span class="kpi-label">Avg size reduction</span>
+      <span class="kpi-value" id="kpi-reduction">—</span>
+      <span class="kpi-sub">across all formats &amp; buckets</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Quality</span>
+      <span class="kpi-value" id="kpi-quality">—</span>
+      <span class="kpi-sub">formats within SSIM threshold</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Speed</span>
+      <span class="kpi-value" id="kpi-speed">—</span>
+      <span class="kpi-sub">format-bucket combos within SLO</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Estimator accuracy</span>
+      <span class="kpi-value" id="kpi-accuracy">—</span>
+      <span class="kpi-sub">formats within ±15% p95 size error</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     Per-format scorecard
+====================================================================== -->
+<section>
+  <p class="section-title">Per-format status</p>
+  <div id="scorecard-grid">
+    <div class="notice" id="scorecard-loading">Loading scorecard…</div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     Samples link
+====================================================================== -->
+<section id="link-to-samples">
+  <a href="quality-samples/">See worst-case visual samples per format →</a>
+</section>
+
+<!-- ======================================================================
+     Trends (lazy-loaded via IntersectionObserver)
+====================================================================== -->
+<section id="trends-section">
+  <p class="section-title">Performance trends</p>
+
+  <div id="trends">
+    <div class="notice" id="trends-placeholder">
+      Trend charts load when this section scrolls into view…
+    </div>
+
+    <!-- These are hidden until Chart.js is loaded -->
+    <div id="trends-content" style="display:none; flex-direction:column; gap:24px;">
+
+      <div class="toolbar">
+        <label for="fmt-select">Format:</label>
+        <select id="fmt-select">
+          <option value="all">all</option>
+        </select>
+      </div>
+
+      <div class="charts">
+        <div class="card">
+          <h2>p50 wall-time (ms)</h2>
+          <div class="chart-wrap"><canvas id="chart-p50"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>p95 wall-time (ms)</h2>
+          <div class="chart-wrap"><canvas id="chart-p95"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>peak RSS (KB, parent + children) <span id="rss-mode-note" class="rss-note" style="display:none"></span></h2>
+          <div class="chart-wrap"><canvas id="chart-rss"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Recent runs</h2>
+        <div class="table-wrap">
+          <table id="runs-table">
+            <thead>
+              <tr>
+                <th>SHA</th>
+                <th>Date</th>
+                <th>Subject</th>
+                <th>Mode</th>
+                <th>Cases</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody id="runs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- #trends-content -->
+  </div><!-- #trends -->
+</section>
+
+</div><!-- .wrap -->
+
+<script>
+/* =========================================================================
+   Inline scorecard data — embedded at build time, no extra fetch needed.
+   Value is a JSON object: {records, kpis, meta} or null if unavailable.
+========================================================================= */
+const SCORECARD = __SCORECARD_JSON__;
+
+/* =========================================================================
+   Status helpers
+========================================================================= */
+function statusIcon(s) {
+  if (s === "fail") return "❌";
+  if (s === "warn") return "⚠️";
+  if (s === "ok")   return "✅";
+  return "—";
+}
+
+function badgeClass(s) {
+  if (s === "ok")   return "badge-ok";
+  if (s === "warn") return "badge-warn";
+  if (s === "fail") return "badge-fail";
+  return "badge-na";
+}
+
+function speedChipClass(s) {
+  if (s === "ok")   return "speed-chip-ok";
+  if (s === "warn") return "speed-chip-warn";
+  return "speed-chip-fail";
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/* =========================================================================
+   Render scorecard
+========================================================================= */
+function renderScorecard(data) {
+  const grid = document.getElementById("scorecard-grid");
+  grid.innerHTML = "";
+
+  if (!data || !data.records || data.records.length === 0) {
+    grid.innerHTML = `<div class="notice">
+      Scorecard data not yet available — first pr-mode run on main will populate it.<br>
+      <small>Run: <code>python -m bench.run --mode pr --manifest core --out /tmp/pr.json</code></small>
+    </div>`;
+    return;
+  }
+
+  // KPI strip
+  const kpis = data.kpis || {};
+  const meta = data.meta || {};
+  document.getElementById("kpi-reduction").textContent =
+    kpis.avg_reduction_pct != null ? `↓ ${kpis.avg_reduction_pct.toFixed(1)}%` : "—";
+  document.getElementById("kpi-quality").textContent =
+    kpis.quality_total > 0 ? `${kpis.quality_green}/${kpis.quality_total}` : "—";
+  document.getElementById("kpi-speed").textContent =
+    kpis.speed_total > 0 ? `${kpis.speed_green}/${kpis.speed_total}` : "—";
+  document.getElementById("kpi-accuracy").textContent =
+    kpis.accuracy_total > 0 ? `${kpis.accuracy_green}/${kpis.accuracy_total}` : "—";
+
+  // Header meta
+  const isPr = meta.is_pr_mode;
+  const modeTag = isPr ? "pr-mode" : "quick-mode";
+  const ts = meta.timestamp ? meta.timestamp.split("T")[0] : "unknown";
+  const branch = meta.branch || "?";
+  const commit = meta.commit || "?";
+  document.getElementById("header-meta").textContent =
+    `Last updated: ${ts} · ${branch}@${commit} · ${modeTag}`;
+
+  // Per-format cards
+  for (const r of data.records) {
+    const card = document.createElement("div");
+    card.className = `fmt-card status-${r.overall_status}`;
+
+    // -- Speed buckets
+    const buckets = Object.entries(r.speed_by_bucket || {}).sort(([a],[b]) => {
+      const order = ["tiny","small","medium","large","xlarge"];
+      return order.indexOf(a) - order.indexOf(b);
+    });
+    const speedChips = buckets.map(([bkt, info]) =>
+      `<span class="speed-chip ${speedChipClass(info.status)}" title="${bkt}: p95=${info.p95_ms}ms / SLO=${info.slo_ms}ms">${bkt[0].toUpperCase()} ${info.p95_ms}ms</span>`
+    ).join("");
+
+    // -- Quality row
+    let qualityHtml = "";
+    if (r.quality) {
+      const q = r.quality;
+      qualityHtml = `
+        <div class="metric-row">
+          <span class="metric-label">SSIM p50</span>
+          <span class="metric-value">${q.ssim_p50.toFixed(3)}</span>
+          <span class="badge ${badgeClass(q.status)}">${statusIcon(q.status)}</span>
+          ${q.n_below > 0 ? `<span class="badge badge-warn">${q.n_below} below threshold</span>` : ""}
+        </div>`;
+    } else if (!isPr) {
+      qualityHtml = `
+        <div class="metric-row">
+          <span class="metric-label">Quality</span>
+          <span class="badge badge-na">— quick-mode only</span>
+        </div>`;
+    }
+
+    // -- Accuracy row
+    let accuracyHtml = "";
+    if (r.accuracy) {
+      const a = r.accuracy;
+      accuracyHtml = `
+        <div class="metric-row">
+          <span class="metric-label">Est. error p95</span>
+          <span class="metric-value">±${a.size_rel_error_p95.toFixed(1)}%</span>
+          <span class="badge ${badgeClass(a.status)}">${statusIcon(a.status)}</span>
+        </div>`;
+    } else if (!isPr) {
+      accuracyHtml = `
+        <div class="metric-row">
+          <span class="metric-label">Accuracy</span>
+          <span class="badge badge-na">— quick-mode only</span>
+        </div>`;
+    }
+
+    card.innerHTML = `
+      <div class="fmt-header">
+        <span class="fmt-name">${escHtml(r.format.toUpperCase())}</span>
+        <span class="fmt-reduction">↓ ${r.median_reduction_pct.toFixed(0)}%</span>
+        <span class="fmt-status-icon" title="${r.overall_status}">${statusIcon(r.overall_status)}</span>
+      </div>
+      <div class="fmt-metrics">
+        <div class="metric-row">
+          <span class="metric-label">Speed (p95)</span>
+          <div class="speed-buckets">${speedChips}</div>
+        </div>
+        ${qualityHtml}
+        ${accuracyHtml}
+      </div>
+      <div class="fmt-summary">${escHtml(r.summary)}</div>
+    `;
+    grid.appendChild(card);
+  }
+}
+
+/* =========================================================================
+   Trend charts — lazy-loaded via IntersectionObserver
+========================================================================= */
+const PALETTE = [
+  "#6366f1","#f59e0b","#10b981","#3b82f6","#ec4899",
+  "#8b5cf6","#14b8a6","#f97316","#a3e635","#e879f9",
+  "#fb7185","#38bdf8",
+];
+
+let HISTORY = null;
+let CHARTS = {};
+let ACTIVE_FMT = "all";
+let chartsLoaded = false;
+
+function makeChart(id, label) {
+  const ctx = document.getElementById(id).getContext("2d");
+  return new Chart(ctx, {
+    type: "line",
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: { boxWidth: 10, padding: 14, usePointStyle: true, pointStyle: "circle" },
+        },
+        tooltip: {
+          backgroundColor: "#1a1d27",
+          borderColor: "#2a2d3a",
+          borderWidth: 1,
+          titleColor: "#e2e8f0",
+          bodyColor: "#8892a4",
+          padding: 10,
+          callbacks: {
+            label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(1) : "–"}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
+          grid: { color: "#1f2232" },
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: "#1f2232" },
+        },
+      },
+    },
+  });
+}
+
+function allFormats(runs) {
+  const fmts = new Set();
+  for (const r of runs) {
+    for (const f of Object.keys(r.by_format || {})) fmts.add(f);
+  }
+  return Array.from(fmts).sort();
+}
+
+function buildDatasets(runs, metric, fmts) {
+  return fmts.map((fmt, i) => ({
+    label: fmt,
+    data: runs.map((r) => {
+      const bf = r.by_format || {};
+      return bf[fmt] != null ? bf[fmt][metric] : null;
+    }),
+    borderColor: PALETTE[i % PALETTE.length],
+    backgroundColor: PALETTE[i % PALETTE.length] + "22",
+    borderWidth: 2,
+    pointRadius: runs.length <= 5 ? 4 : 2,
+    pointHoverRadius: 5,
+    tension: 0.3,
+    fill: false,
+    spanGaps: true,
+  }));
+}
+
+function updateCharts(runs, fmts) {
+  const labels = runs.map((r) => `${r.short_sha} ${r.iso_date}`);
+  const p50ds  = buildDatasets(runs, "p50_ms",    fmts);
+  const p95ds  = buildDatasets(runs, "p95_ms",    fmts);
+  const rssds  = buildDatasets(runs, "peak_rss_kb", fmts);
+  function refresh(chart, datasets) {
+    chart.data.labels = labels;
+    chart.data.datasets = datasets;
+    chart.update("none");
+  }
+  refresh(CHARTS.p50, p50ds);
+  refresh(CHARTS.p95, p95ds);
+  refresh(CHARTS.rss, rssds);
+}
+
+function filteredRuns(runs, fmt) {
+  if (fmt === "all") return runs;
+  return runs.filter((r) => (r.by_format || {})[fmt] != null);
+}
+
+function filteredFmts(allFmts, fmt) {
+  if (fmt === "all") return allFmts;
+  return allFmts.includes(fmt) ? [fmt] : [];
+}
+
+function renderTable(runs) {
+  const tbody = document.getElementById("runs-tbody");
+  tbody.innerHTML = "";
+  const recent = [...runs].reverse().slice(0, 20);
+  if (!recent.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 6; td.className = "empty"; td.textContent = "No runs yet";
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  for (const r of recent) {
+    const tr = document.createElement("tr");
+    const modeLabel = r.mode || "quick";
+    tr.innerHTML = `
+      <td><span class="sha">${r.short_sha}</span></td>
+      <td>${r.iso_date}</td>
+      <td>${escHtml(r.subject)}</td>
+      <td>${escHtml(modeLabel)}</td>
+      <td>${r.n_cases}</td>
+      <td class="${r.n_errors > 0 ? "err" : ""}">${r.n_errors || 0}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function updateRssNote(runs) {
+  const noteEl = document.getElementById("rss-mode-note");
+  if (!noteEl) return;
+  // Show a warning if any visible run is quick-mode (repeat=1 means RSS is
+  // process-wide at measurement time, not per-case isolated).
+  const hasQuick = runs.some((r) => !r.mode || r.mode === "quick");
+  if (hasQuick) {
+    noteEl.style.display = "inline";
+    noteEl.title =
+      "One or more runs here used --mode quick (repeat=1). " +
+      "In quick mode, peak_rss_kb is the process-wide RSS at the measurement " +
+      "window — not per-case isolated. Values are typically identical across " +
+      "cases in the same run and are not meaningful for per-case comparison. " +
+      "Use --mode memory for per-case isolated RSS measurements.";
+    noteEl.textContent = "⚠ quick-mode: process-wide RSS, not per-case";
+  } else {
+    noteEl.style.display = "none";
+  }
+}
+
+function redraw() {
+  const runs = filteredRuns(HISTORY.runs || [], ACTIVE_FMT);
+  const fmts = filteredFmts(allFormats(HISTORY.runs || []), ACTIVE_FMT);
+  updateCharts(runs, fmts);
+  renderTable(runs);
+  updateRssNote(runs);
+}
+
+async function loadAndInitTrends() {
+  if (chartsLoaded) return;
+  chartsLoaded = true;
+
+  // Show content area while Chart.js loads.
+  const placeholder = document.getElementById("trends-placeholder");
+  const content = document.getElementById("trends-content");
+  if (placeholder) placeholder.textContent = "Loading Chart.js…";
+
+  // Dynamically load Chart.js from CDN (deferred until scroll).
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js";
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+
+  // Fetch trend data.
+  let history;
+  try {
+    const resp = await fetch("data/history.json");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    history = await resp.json();
+  } catch (err) {
+    if (placeholder) {
+      placeholder.style.display = "block";
+      placeholder.textContent = "Failed to load trend data: " + err.message;
+    }
+    return;
+  }
+
+  HISTORY = history;
+
+  // Show content, hide placeholder.
+  if (placeholder) placeholder.style.display = "none";
+  if (content) {
+    content.style.display = "flex";
+    content.style.flexDirection = "column";
+  }
+
+  // Populate format dropdown.
+  const sel = document.getElementById("fmt-select");
+  const fmts = allFormats(history.runs || []);
+  for (const f of fmts) {
+    const opt = document.createElement("option");
+    opt.value = f; opt.textContent = f;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener("change", () => { ACTIVE_FMT = sel.value; redraw(); });
+
+  // Chart.js global defaults.
+  Chart.defaults.color = "#8892a4";
+  Chart.defaults.borderColor = "#2a2d3a";
+  Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  Chart.defaults.font.size = 11;
+
+  CHARTS.p50 = makeChart("chart-p50", "p50_ms");
+  CHARTS.p95 = makeChart("chart-p95", "p95_ms");
+  CHARTS.rss = makeChart("chart-rss", "peak_rss_kb");
+
+  redraw();
+}
+
+/* =========================================================================
+   Bootstrap
+========================================================================= */
+(function init() {
+  // Render scorecard immediately from inline data.
+  renderScorecard(SCORECARD);
+
+  // If scorecard had no meta, set a fallback header.
+  const meta = document.getElementById("header-meta");
+  if (meta.textContent === "Loading…") {
+    meta.textContent = "Pare bench dashboard";
+  }
+
+  // Lazy-load trend charts via IntersectionObserver.
+  const trendsSection = document.getElementById("trends-section");
+  if ("IntersectionObserver" in window) {
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        obs.disconnect();
+        loadAndInitTrends();
+      }
+    }, { rootMargin: "200px" });
+    obs.observe(trendsSection);
+  } else {
+    // Fallback: load immediately.
+    loadAndInitTrends();
+  }
+})();
+</script>
+
+</body>
+</html>

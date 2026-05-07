@@ -39,14 +39,19 @@ htmlcov/
 # Distribution
 *.whl
 
-# Benchmark reports
-reports/
+# Benchmark reports (ad-hoc runs — keep out of git)
+reports/*
+# …except the pinned baseline that CI compares against
+!reports/baseline*.json
 
 # Test corpus (downloaded Unsplash images, ~1.9GB)
 tests/corpus/
 
 # Benchmark dashboard data
 .benchmark-data/
+
+# Bench fetcher cache (hash-pinned downloads, not checked in)
+bench/corpus/cache/
 
 # Custom Ignores
 nul
