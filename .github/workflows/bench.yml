@@ -39,7 +39,7 @@ jobs:
   bench:
     name: Bench (${{ inputs.mode }} / ${{ inputs.manifest }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4

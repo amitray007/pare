@@ -240,6 +240,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
             alpha=args.alpha,
             allow_mismatched_mode=allow_mode,
             allow_mismatched_cpu_count=allow_cpu,
+            reduction_threshold_pp=args.reduction_threshold_pp,
+            size_threshold_pct=args.size_threshold_pct,
+            estimation_threshold_pp=args.estimation_threshold_pp,
         )
     except ModeMismatchError as e:
         # Hard error: modes are incompatible and user did not opt in.
@@ -288,23 +291,23 @@ def cmd_compare(args: argparse.Namespace) -> int:
                 "head": asdict(b),
             }
 
-        print(
-            json.dumps(
-                {
-                    "metadata": {
-                        "baseline": str(Path(args.baseline).name),
-                        "head": str(Path(args.head).name),
-                        "conditions": conditions,
-                    },
-                    "regressions": [asdict(d) for d in result.regressions],
-                    "improvements": [asdict(d) for d in result.improvements],
-                    "all": [asdict(d) for d in result.diffs],
-                    "only_in_a": result.only_in_a,
-                    "only_in_b": result.only_in_b,
-                },
-                indent=2,
-            )
-        )
+        payload: dict[str, Any] = {
+            "metadata": {
+                "baseline": str(Path(args.baseline).name),
+                "head": str(Path(args.head).name),
+                "conditions": conditions,
+            },
+            "regressions": [asdict(d) for d in result.regressions],
+            "improvements": [asdict(d) for d in result.improvements],
+            "all": [asdict(d) for d in result.diffs],
+            "only_in_a": result.only_in_a,
+            "only_in_b": result.only_in_b,
+            "compression": [asdict(d) for d in result.compression_diffs],
+            "estimation": [asdict(d) for d in result.estimation_diffs],
+        }
+        if result.error_count_delta is not None:
+            payload["error_count_delta"] = asdict(result.error_count_delta)
+        print(json.dumps(payload, indent=2))
     return result.exit_code
 
 
@@ -450,6 +453,27 @@ def build_parser() -> argparse.ArgumentParser:
             "Use only for cross-machine debugging where you accept that wall_ms numbers "
             "are not directly comparable."
         ),
+    )
+    p_cmp.add_argument(
+        "--reduction-threshold-pp",
+        type=float,
+        default=3.0,
+        dest="reduction_threshold_pp",
+        help="reduction_pct drop (in percentage points) flagged as a compression regression. Default: 3.0",
+    )
+    p_cmp.add_argument(
+        "--size-threshold-pct",
+        type=float,
+        default=5.0,
+        dest="size_threshold_pct",
+        help="optimized_size growth (in percent) flagged as a compression regression. Default: 5.0",
+    )
+    p_cmp.add_argument(
+        "--estimation-threshold-pp",
+        type=float,
+        default=10.0,
+        dest="estimation_threshold_pp",
+        help="absolute size_rel_error growth (pp) flagged as an estimation regression. Default: 10.0",
     )
     p_cmp.set_defaults(func=cmd_compare)
 

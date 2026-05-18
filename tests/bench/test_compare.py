@@ -18,7 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from bench.runner.compare import CompareResult, HostMismatchError, compare
+from bench.runner.compare import (
+    CompareResult,
+    HostMismatchError,
+    compare,
+)
 from bench.runner.report.json_writer import HostInfo, RunMetadata, write_run
 from bench.runner.report.markdown import build_format_rollup, format_compare_label  # noqa: E402
 
@@ -306,6 +310,74 @@ def _write_with_cpu(tmp_path: Path, name: str, iters: list, cpu_count: int) -> P
     return p
 
 
+def _metadata_with_mode(mode: str = "quick") -> RunMetadata:
+    return RunMetadata(
+        mode=mode,
+        config={"warmup": 0, "repeat": 1},
+        manifest_name="core",
+        manifest_sha256="abc123" * 10,
+    )
+
+
+def _write_with_metadata(tmp_path: Path, name: str, iters: list, mode: str = "quick") -> Path:
+    p = tmp_path / name
+    write_run(_metadata_with_mode(mode), iters, p)
+    return p
+
+
+def _iter_with_compression(
+    case_id: str,
+    wall_ms: float,
+    method: str = "pngquant + oxipng",
+    reduction_pct: float = 65.0,
+    optimized_size: int = 22938,
+    fmt: str = "png",
+) -> dict:
+    it = _iter(case_id, wall_ms, fmt=fmt)
+    it["method"] = method
+    it["reduction_pct"] = reduction_pct
+    it["optimized_size"] = optimized_size
+    return it
+
+
+def _iter_with_accuracy(
+    case_id: str,
+    wall_ms: float,
+    path: str = "direct_encode_sample",
+    size_rel_error_pct: float = 5.0,
+    reduction_pct: float = 60.0,
+    method: str = "pngquant",
+    optimized_size: int = 26214,
+    fmt: str = "png",
+) -> dict:
+    it = _iter(case_id, wall_ms, fmt=fmt)
+    it["method"] = method
+    it["reduction_pct"] = reduction_pct
+    it["optimized_size"] = optimized_size
+    it["estimate"] = {
+        "wall_ms": wall_ms,
+        "predicted_size": optimized_size,
+        "predicted_reduction_pct": reduction_pct,
+        "method": method,
+        "confidence": 0.9,
+        "already_optimized": False,
+        "path": path,
+    }
+    it["optimize"] = {
+        "wall_ms": wall_ms,
+        "actual_size": optimized_size,
+        "actual_reduction_pct": reduction_pct,
+        "method": method,
+    }
+    it["accuracy"] = {
+        "size_abs_error_bytes": 0,
+        "size_rel_error_pct": size_rel_error_pct,
+        "reduction_abs_error_pct": 0.0,
+        "reduction_abs_error_pct_abs": abs(size_rel_error_pct),
+    }
+    return it
+
+
 class TestCpuCountMismatch:
     def test_raises_on_cpu_count_mismatch(self, tmp_path: Path):
         a = _write_with_cpu(tmp_path, "a.json", [_iter("img.png@high", 100.0)], cpu_count=4)
@@ -330,3 +402,233 @@ class TestCpuCountMismatch:
         b = _write_with_cpu(tmp_path, "b.json", [_iter("img.png@high", 100.0)], cpu_count=4)
         result = compare(a, b)
         assert isinstance(result, CompareResult)
+
+
+# ---------------------------------------------------------------------------
+# Compression axis
+# ---------------------------------------------------------------------------
+
+
+class TestCompressionDiff:
+    def test_method_downgrade_to_none_is_regression(self, tmp_path: Path):
+        """baseline method="pngquant + oxipng" 65% → head method="none" 0% is a regression."""
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [
+                _iter_with_compression(
+                    "img.png@high",
+                    100.0,
+                    method="pngquant + oxipng",
+                    reduction_pct=65.0,
+                    optimized_size=22938,
+                )
+            ],
+        )
+        b = _write_with_metadata(
+            tmp_path,
+            "b.json",
+            [
+                _iter_with_compression(
+                    "img.png@high", 100.0, method="none", reduction_pct=0.0, optimized_size=65536
+                )
+            ],
+        )
+        result = compare(a, b)
+        assert len(result.compression_diffs) == 1
+        d = result.compression_diffs[0]
+        assert d.method_downgraded_to_none is True
+        assert d.threshold_breach is True
+        assert result.exit_code == 1
+
+    def test_reduction_drop_above_threshold_is_regression(self, tmp_path: Path):
+        """head reduction drops 5pp (> 3pp default threshold) → reduction_regressed."""
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [
+                _iter_with_compression(
+                    "img.png@high", 100.0, reduction_pct=65.0, optimized_size=22938
+                )
+            ],
+        )
+        b = _write_with_metadata(
+            tmp_path,
+            "b.json",
+            [
+                _iter_with_compression(
+                    "img.png@high", 100.0, reduction_pct=60.0, optimized_size=26214
+                )
+            ],
+        )
+        result = compare(a, b)
+        assert len(result.compression_diffs) == 1
+        d = result.compression_diffs[0]
+        assert d.reduction_regressed is True
+        assert d.threshold_breach is True
+        assert result.exit_code == 1
+
+    def test_reduction_drop_below_threshold_is_ok(self, tmp_path: Path):
+        """head reduction drops 1pp (< 3pp threshold) → no regression."""
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [
+                _iter_with_compression(
+                    "img.png@high", 100.0, reduction_pct=65.0, optimized_size=22938
+                )
+            ],
+        )
+        b = _write_with_metadata(
+            tmp_path,
+            "b.json",
+            [
+                _iter_with_compression(
+                    "img.png@high", 100.0, reduction_pct=64.0, optimized_size=23592
+                )
+            ],
+        )
+        result = compare(a, b)
+        assert len(result.compression_diffs) == 1
+        d = result.compression_diffs[0]
+        assert d.reduction_regressed is False
+        assert result.exit_code == 0
+
+    def test_size_growth_above_threshold_is_regression(self, tmp_path: Path):
+        """head optimized_size grows 10% (> 5% threshold) → size_regressed."""
+        base_size = 22938
+        head_size = int(base_size * 1.10)
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [_iter_with_compression("img.png@high", 100.0, optimized_size=base_size)],
+        )
+        b = _write_with_metadata(
+            tmp_path,
+            "b.json",
+            [_iter_with_compression("img.png@high", 100.0, optimized_size=head_size)],
+        )
+        result = compare(a, b)
+        assert len(result.compression_diffs) == 1
+        d = result.compression_diffs[0]
+        assert d.size_regressed is True
+        assert d.threshold_breach is True
+
+    def test_no_compression_change_is_ok(self, tmp_path: Path):
+        """Identical method/reduction/size → no diffs flagged."""
+        it = _iter_with_compression("img.png@high", 100.0)
+        a = _write_with_metadata(tmp_path, "a.json", [it])
+        b = _write_with_metadata(tmp_path, "b.json", [it])
+        result = compare(a, b)
+        assert len(result.compression_diffs) == 1
+        d = result.compression_diffs[0]
+        assert d.threshold_breach is False
+        assert d.method_downgraded_to_none is False
+        assert d.reduction_regressed is False
+        assert d.size_regressed is False
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Estimation axis
+# ---------------------------------------------------------------------------
+
+
+class TestEstimationDiff:
+    def test_error_growth_above_threshold_is_regression(self, tmp_path: Path):
+        """baseline error 5%, head error 20% (Δ=+15pp > 10pp threshold) → error_regressed."""
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [_iter_with_accuracy("img.png@high", 100.0, size_rel_error_pct=5.0)],
+            mode="accuracy",
+        )
+        b = _write_with_metadata(
+            tmp_path,
+            "b.json",
+            [_iter_with_accuracy("img.png@high", 100.0, size_rel_error_pct=20.0)],
+            mode="accuracy",
+        )
+        result = compare(a, b, allow_mismatched_mode=True)
+        assert len(result.estimation_diffs) == 1
+        d = result.estimation_diffs[0]
+        assert d.error_regressed is True
+        assert d.threshold_breach is True
+        assert result.exit_code == 1
+
+    def test_path_shift_alone_is_not_regression(self, tmp_path: Path):
+        """Path shifts from direct_encode_sample → generic_fallback_sample but error unchanged."""
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [
+                _iter_with_accuracy(
+                    "img.png@high", 100.0, path="direct_encode_sample", size_rel_error_pct=5.0
+                )
+            ],
+            mode="accuracy",
+        )
+        b = _write_with_metadata(
+            tmp_path,
+            "b.json",
+            [
+                _iter_with_accuracy(
+                    "img.png@high", 100.0, path="generic_fallback_sample", size_rel_error_pct=5.0
+                )
+            ],
+            mode="accuracy",
+        )
+        result = compare(a, b, allow_mismatched_mode=True)
+        assert len(result.estimation_diffs) == 1
+        d = result.estimation_diffs[0]
+        assert d.path_shifted is True
+        assert d.error_regressed is False
+        assert result.exit_code == 0
+
+    def test_estimation_skipped_when_data_missing(self, tmp_path: Path):
+        """One side has accuracy fields, other doesn't → estimation_diffs == [], no error."""
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [_iter("img.png@high", 100.0)],  # quick-mode, no accuracy fields
+        )
+        b = _write_with_metadata(
+            tmp_path,
+            "b.json",
+            [_iter_with_accuracy("img.png@high", 100.0, size_rel_error_pct=5.0)],
+            mode="accuracy",
+        )
+        result = compare(a, b, allow_mismatched_mode=True)
+        assert result.estimation_diffs == []
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Error-count axis
+# ---------------------------------------------------------------------------
+
+
+class TestErrorCountDelta:
+    def test_head_only_error_is_regression(self, tmp_path: Path):
+        """baseline has no errors, head has 1 case errored → regressed=True, exit 1."""
+        a = _write_with_metadata(
+            tmp_path,
+            "a.json",
+            [_iter("img.png@high", 100.0)],
+        )
+        error_iter = {
+            "case_id": "img.png@high",
+            "name": "img",
+            "bucket": "small",
+            "format": "png",
+            "preset": "high",
+            "input_size": 65536,
+            "iteration": 0,
+            "error": "SomeError: something went wrong",
+        }
+        b = _write_with_metadata(tmp_path, "b.json", [error_iter])
+        result = compare(a, b)
+        assert result.error_count_delta is not None
+        assert result.error_count_delta.regressed is True
+        assert "img.png@high" in result.error_count_delta.head_only_errors
+        assert result.exit_code == 1
