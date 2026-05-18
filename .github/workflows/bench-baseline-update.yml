@@ -27,7 +27,7 @@ concurrency:
 jobs:
   baseline-refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     if: ${{ !contains(github.event.head_commit.message, '[skip bench-baseline]') && !contains(github.event.head_commit.message, '[skip ci]') }}
     steps:
       - name: Checkout main
@@ -53,12 +53,11 @@ jobs:
         # Accuracy mode is a superset of quick — it runs estimate + optimize
         # per case, capturing timing + compression + estimation data in one pass.
         #
-        # `--repeat 3 --warmup 1` is forward-compat: accuracy mode currently
-        # ignores these and runs a single iteration per case (the recorded
-        # config will show repeat=1). Compression and estimation metrics are
-        # deterministic so a single sample suffices for those axes. Timing
-        # comparisons currently fall through to the 25% noise-floor path until
-        # accuracy mode is updated to honor --repeat — see #31.
+        # `--repeat 2 --warmup 0`: accuracy mode now honors --repeat/--warmup.
+        # --repeat 3 --warmup 1 would give 4 iters × ~22 min = ~88 min (exceeds
+        # timeout). --repeat 2 --warmup 0 ≈ 44 min, fits the 50-min limit.
+        # Welch's t-test at n=2 is weak but avoids the 25% noise-floor fallback
+        # that fires when either side has fewer than 3 iterations.
         run: |
           mkdir -p reports tests/corpus bench/corpus/cache
           docker run --rm -v "$(pwd):/work" -w /work \
@@ -66,7 +65,7 @@ jobs:
             bash -c "pip install --no-cache-dir -r requirements-bench.txt && \
                      python -m bench.corpus build --manifest core && \
                      python -m bench.run --mode accuracy --manifest core \
-                       --repeat 3 --warmup 1 \
+                       --repeat 2 --warmup 0 \
                        --annotate ci=github \
                        --annotate kind=baseline-candidate \
                        --annotate sha=${{ github.sha }} \

@@ -196,16 +196,17 @@ The 15 standard 8-bit JXL cases all succeed. Deep-color support is a separate de
 
 ## CI integration
 
-Two workflows gate optimizer / estimator changes:
+Three workflows gate optimizer / estimator changes:
 
-- `.github/workflows/bench.yml` — `workflow_dispatch` (manual). Runs any mode you pick, posts a PR comment if the workflow runs on a branch with an open PR.
-- `.github/workflows/bench-baseline-update.yml` — automatic on `push` to `main` touching `optimizers/`, `estimation/`, `utils/`, `bench/`, `schemas.py`, `requirements*.txt`, or `Dockerfile`. Drift-detects and either auto-refreshes the baseline or opens a drift issue.
+- `.github/workflows/bench-pr.yml` — automatic on `pull_request` events touching `optimizers/`, `estimation/`, `utils/`, `bench/`, `schemas.py`, `requirements*.txt`, `Dockerfile`, or the pinned baseline itself. Posts a sticky four-section comment on the PR (Timing / Compression / Estimation / Errors); fails CI on regression in any axis. Concurrency cancels in-flight runs on new pushes so only the latest commit's bench result is comment-visible.
+- `.github/workflows/bench.yml` — `workflow_dispatch` (manual). Runs any mode you pick, posts a PR comment if the workflow runs on a branch with an open PR. Use for ad-hoc bench experiments (e.g. `--mode timing --repeat 5`) that the auto PR workflow doesn't cover.
+- `.github/workflows/bench-baseline-update.yml` — automatic on `push` to `main` touching the same paths as bench-pr.yml. Drift-detects and either auto-refreshes the baseline or opens a drift issue.
 
 **Baseline location**: `reports/baseline.core.json` — checked into the repo (unignored via `.gitignore`). Despite the `.core` suffix, the file is produced by `--mode accuracy`, which is a superset of quick (timing + compression) plus estimation-accuracy data.
 
 **What `bench-baseline-update.yml` does after a merge to main**:
 1. Builds the Docker image (GHA layer cache).
-2. Inside the container, runs `python -m bench.corpus build --manifest core` then `python -m bench.run --mode accuracy --manifest core --repeat 3 --warmup 1 --out reports/_candidate.json`. Accuracy mode captures estimate + optimize per case. **Note**: accuracy mode currently ignores `--repeat`/`--warmup` and runs a single iteration per case — the flags are forward-compat for when accuracy mode is updated. Compression and estimation are deterministic so single-sample is correct for those axes; timing comparisons fall through to the 25% noise-floor path until accuracy mode honors `--repeat`.
+2. Inside the container, runs `python -m bench.corpus build --manifest core` then `python -m bench.run --mode accuracy --manifest core --repeat 2 --warmup 0 --out reports/_candidate.json`. Accuracy mode honors `--repeat`/`--warmup`, producing 2 measured iterations per case. `--repeat 2` keeps total runtime ≈ 44 min (within the 50-min timeout); Welch's t-test at n=2 avoids the 25% noise-floor fallback that fires at n<3.
 3. Runs `python -m bench.compare reports/baseline.core.json reports/_candidate.json --threshold-pct 10 --format markdown`. Compare emits four sections:
    - **Timing** — `wall_ms` deltas via Welch's t-test + Cohen's d (or noise-floor at <3 iters)
    - **Compression** — `method` downgrades to `"none"`, `reduction_pct` drops ≥ 3 pp, `optimized_size` growth ≥ 5%
@@ -226,7 +227,7 @@ Two workflows gate optimizer / estimator changes:
 ```bash
 python -m bench.corpus build --manifest core
 python -m bench.run --mode accuracy --manifest core \
-  --repeat 3 --warmup 1 \
+  --repeat 2 --warmup 0 \
   --annotate "env=local-venv-bootstrap" \
   --out reports/baseline.core.json
 git add reports/baseline.core.json
@@ -269,7 +270,7 @@ The bench dashboard at `https://amitray007.github.io/pare/` shows per-format tim
 across the git history of `reports/baseline.core.json`. Regenerated on every main merge that
 touches the baseline. Source: `bench/dashboard/build.py`.
 
-The dashboard is purely informational — it doesn't gate any CI; for that, use `bench.yml` or `bench-baseline-update.yml`.
+The dashboard is purely informational — it doesn't gate any CI; for that, use `bench-pr.yml` (auto on PRs), `bench.yml` (manual), or `bench-baseline-update.yml` (auto on main).
 
 **Memory measurements caveat:** `peak_rss_kb`, `parent_peak_rss_kb`, and `children_peak_rss_kb`
 are only per-case isolated under `--mode memory`. Under `--mode quick` (`repeat=1`), these fields

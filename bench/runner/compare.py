@@ -6,10 +6,15 @@ and Cohen's d on the same — both must clear thresholds for a regression
 to be flagged. This combination defends against false alarms from
 either large-n inflated significance or single-outlier-driven means.
 
-When either side has fewer than 3 iterations (e.g. quick mode with 1
+When either side has fewer than 2 iterations (e.g. quick mode with 1
 iteration), Welch's t-test is meaningless (p is always 1.0, d is always
 0.0). In that case we fall back to a noise-floor check: flag as
-regression iff |delta%| >= noise_floor_pct (default 25%).
+regression iff |delta%| >= noise_floor_pct (default 25%). At n=2 the
+t-test engages with 1 degree of freedom — wide CI, but honest signal.
+
+The noise-floor gate is skipped entirely when the baseline median is
+below noise_floor_min_ms (default 5.0 ms): a 30% delta on a 0.5 ms
+case is measurement quantization, not signal.
 
 Exit code semantics:
 
@@ -41,7 +46,8 @@ from bench.runner.stats import (
 )
 
 # Minimum iterations on each side before we trust the stats-based gate.
-_STATS_MIN_ITERS = 3
+# n=2 still enables Welch's t-test (1 degree of freedom — wide CI, but functional).
+_STATS_MIN_ITERS = 2
 
 
 @dataclass
@@ -143,6 +149,7 @@ class CompareResult:
     only_in_b: list[str] = field(default_factory=list)
     threshold_pct: float = 10.0
     noise_floor_pct: float = 25.0
+    noise_floor_min_ms: float = 5.0
     alpha: float = 0.05
     # Conditions from each run — populated by compare().
     a_conditions: RunConditions | None = None
@@ -305,6 +312,7 @@ def compare(
     *,
     threshold_pct: float = 10.0,
     noise_floor_pct: float = 25.0,
+    noise_floor_min_ms: float = 5.0,
     alpha: float = 0.05,
     min_effect_size: float = 0.5,
     allow_mismatched_mode: bool = False,
@@ -315,9 +323,12 @@ def compare(
 ) -> CompareResult:
     """Welch's-t + Cohen's-d diff between two runs.
 
-    When either side has fewer than 3 iterations, falls back to a pure
+    When either side has fewer than 2 iterations, falls back to a pure
     |delta%| check at the higher noise_floor_pct threshold instead of the
-    stats-backed gate.
+    stats-backed gate. At n=2 the t-test engages with 1 degree of freedom.
+
+    The noise-floor gate is skipped when baseline_median_ms < noise_floor_min_ms
+    (default 5.0): avoids flagging sub-ms quantization noise as a regression.
 
     Before computing diffs, validates that the two runs are comparable:
     - mode must match (e.g. both "quick" or both "timing"); mismatches raise
@@ -378,11 +389,17 @@ def compare(
         low_power = min(len(a_walls), len(b_walls)) < _STATS_MIN_ITERS
 
         if low_power:
-            # Skip stats — they're meaningless with <3 iterations.
+            # Skip stats — they're meaningless with <2 iterations.
             p = 1.0
             d = 0.0
             significant = False
-            threshold_breach = abs(delta_pct) >= noise_floor_pct
+            # Skip the relative gate on sub-noise_floor_min_ms cases: a 30% delta on
+            # a 0.5 ms case is measurement quantization, not signal. The absolute
+            # floor preserves the gate's meaning at meaningful timescales.
+            if a_med < noise_floor_min_ms:
+                threshold_breach = False
+            else:
+                threshold_breach = abs(delta_pct) >= noise_floor_pct
         else:
             _, p, _ = welch_t_test(a_walls, b_walls)
             d = cohens_d(a_walls, b_walls)
@@ -487,6 +504,7 @@ def compare(
         only_in_b=only_in_b,
         threshold_pct=threshold_pct,
         noise_floor_pct=noise_floor_pct,
+        noise_floor_min_ms=noise_floor_min_ms,
         alpha=alpha,
         a_conditions=a_cond,
         b_conditions=b_cond,
@@ -556,6 +574,7 @@ def render_compare_markdown(result: CompareResult) -> str:
     lines.append("")
     lines.append(
         f"_threshold={result.threshold_pct}%, noise-floor={result.noise_floor_pct}%, "
+        f"noise-floor-min={result.noise_floor_min_ms}ms, "
         f"α={result.alpha}, cases compared={len(result.diffs)}, "
         f"regressions={len(result.regressions)}, "
         f"noise_floor_flags={len(result.noise_floor_flags)}, "

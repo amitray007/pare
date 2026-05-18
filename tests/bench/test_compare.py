@@ -700,3 +700,46 @@ class TestEstimationAsymmetricNotice:
         assert result.estimation_asymmetric is False
         md = render_compare_markdown(result)
         assert "Estimation gating skipped" not in md
+
+
+# ---------------------------------------------------------------------------
+# noise_floor_min_ms guard (Fix C)
+# ---------------------------------------------------------------------------
+
+
+def test_noise_floor_skipped_below_min_ms(tmp_path: Path):
+    """Sub-noise_floor_min_ms cases get a free pass on the relative gate.
+
+    A 0.5ms → 0.7ms case is +40% relative but only 0.2ms absolute —
+    pure quantization noise on shared CI. Should NOT flag.
+    """
+    a = _write(tmp_path, "a.json", [_iter("img.png@high", 0.5)])
+    b = _write(tmp_path, "b.json", [_iter("img.png@high", 0.7)])
+    result = compare(a, b, threshold_pct=10.0, noise_floor_pct=25.0, noise_floor_min_ms=5.0)
+    d = result.diffs[0]
+    assert d.iters_low_power is True
+    assert d.threshold_breach is False, "Sub-5ms case should not flag despite +40% relative delta"
+    assert result.noise_floor_flags == []
+    assert result.exit_code == 0
+
+
+def test_noise_floor_fires_at_or_above_min_ms(tmp_path: Path):
+    """Cases at or above noise_floor_min_ms still subject to the relative gate."""
+    a = _write(tmp_path, "a.json", [_iter("img.png@high", 100.0)])
+    b = _write(tmp_path, "b.json", [_iter("img.png@high", 140.0)])  # +40%, well above 25%
+    result = compare(a, b, threshold_pct=10.0, noise_floor_pct=25.0, noise_floor_min_ms=5.0)
+    d = result.diffs[0]
+    assert d.iters_low_power is True
+    assert d.threshold_breach is True, "100ms+ case should still flag at +40%"
+    assert len(result.noise_floor_flags) == 1
+
+
+def test_stats_engages_at_n_equals_2(tmp_path: Path):
+    """With 2 iterations on each side, Welch's t-test path (not noise-floor) fires."""
+    a_iters = [_iter("img.png@high", 100.0, iteration=0), _iter("img.png@high", 100.1, iteration=1)]
+    b_iters = [_iter("img.png@high", 200.0, iteration=0), _iter("img.png@high", 200.1, iteration=1)]
+    a = _write(tmp_path, "a.json", a_iters)
+    b = _write(tmp_path, "b.json", b_iters)
+    result = compare(a, b, threshold_pct=10.0, noise_floor_pct=25.0)
+    d = result.diffs[0]
+    assert d.iters_low_power is False, "n=2 each side should engage stats path, not noise-floor"

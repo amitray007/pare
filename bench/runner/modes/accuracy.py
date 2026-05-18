@@ -51,7 +51,7 @@ def _compute_error(
     }
 
 
-async def _run_one_accuracy_case(case: Case) -> dict[str, Any]:
+async def _run_one_accuracy_case(case: Case, iteration: int = 0) -> dict[str, Any]:
     input_data = case.load()
     config = OptimizationConfig(quality=case.quality)
 
@@ -62,7 +62,7 @@ async def _run_one_accuracy_case(case: Case) -> dict[str, Any]:
         "format": case.fmt,
         "preset": case.preset,
         "input_size": case.input_size,
-        "iteration": 0,
+        "iteration": iteration,
     }
 
     # --- Estimate phase ---
@@ -148,40 +148,53 @@ async def _run_one_accuracy_case(case: Case) -> dict[str, Any]:
     }
 
 
-async def run_accuracy(cases: list[Case]) -> list[dict[str, Any]]:
-    """Sequentially run one estimate + optimize per case.
+async def run_accuracy(
+    cases: list[Case],
+    repeat: int = 1,
+    warmup: int = 0,
+) -> list[dict[str, Any]]:
+    """Sequentially run (warmup + repeat) estimate+optimize iterations per case.
 
+    Warmup iterations are not recorded — their results are discarded.
+    The ``repeat`` measured iterations are recorded with iteration=0..repeat-1.
     Sequential by design: clean wall-time isolation per case, matching
-    quick mode's rationale. Returns one dict per case; failures have
-    ``error.phase`` set instead of the normal per-stage data.
+    quick mode's rationale.
     """
     results: list[dict[str, Any]] = []
     for case in cases:
-        try:
-            result = await _run_one_accuracy_case(case)
-            results.append(result)
-        except Exception as exc:
-            # Outer guard: should not normally fire since _run_one_accuracy_case
-            # catches its own exceptions, but keeps the runner alive under any
-            # unexpected error (e.g. case.load() fails).
-            logger.warning("case %s unexpected failure: %s", case.case_id, exc)
-            results.append(
-                {
-                    "case_id": case.case_id,
-                    "name": case.name,
-                    "bucket": case.bucket,
-                    "format": case.fmt,
-                    "preset": case.preset,
-                    "iteration": 0,
-                    "error": {
-                        "phase": "load",
-                        "message": f"{type(exc).__name__}: {exc}",
-                    },
-                }
-            )
+        for _ in range(warmup):
+            try:
+                await _run_one_accuracy_case(case, iteration=0)
+            except Exception as exc:
+                logger.warning("warmup failed for %s: %s", case.case_id, exc)
+        for i in range(repeat):
+            try:
+                result = await _run_one_accuracy_case(case, iteration=i)
+                results.append(result)
+            except Exception as exc:
+                logger.warning("case %s unexpected failure on iter %d: %s", case.case_id, i, exc)
+                results.append(
+                    {
+                        "case_id": case.case_id,
+                        "name": case.name,
+                        "bucket": case.bucket,
+                        "format": case.fmt,
+                        "preset": case.preset,
+                        "input_size": case.input_size,
+                        "iteration": i,
+                        "error": {
+                            "phase": "unexpected",
+                            "message": f"{type(exc).__name__}: {exc}",
+                        },
+                    }
+                )
     return results
 
 
-def run_accuracy_sync(cases: list[Case]) -> list[dict[str, Any]]:
+def run_accuracy_sync(
+    cases: list[Case],
+    repeat: int = 1,
+    warmup: int = 0,
+) -> list[dict[str, Any]]:
     """Synchronous wrapper for use from ``bench.runner.cli``."""
-    return asyncio.run(run_accuracy(cases))
+    return asyncio.run(run_accuracy(cases, repeat=repeat, warmup=warmup))

@@ -1,0 +1,146 @@
+name: Bench (PR)
+
+# Auto-runs on PRs that touch code paths capable of moving bench results.
+# Posts (or updates) a single sticky comment on the PR with the four-section
+# diff: Timing / Compression / Estimation / Errors. Hidden HTML signature
+# `<!-- pare-bench-comment -->` ensures repeat pushes update the same
+# comment rather than creating new ones. Job fails (red ❌) if compare
+# detects regressions in any axis.
+
+on:
+  pull_request:
+    paths:
+      - 'optimizers/**'
+      - 'estimation/**'
+      - 'utils/**'
+      - 'bench/**'
+      - 'schemas.py'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'Dockerfile'
+      - 'reports/baseline.core.json'
+      - '.github/workflows/bench-pr.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # Cancel older runs on the same PR when new commits push — saves CI minutes
+  # and prevents stale comments from racing to update.
+  group: bench-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: Bench PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build pare image (with layer cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: pare:pr-${{ github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build corpus + run accuracy mode in container
+        # Same shape as bench-baseline-update.yml — accuracy mode is a superset
+        # of quick (timing + compression + estimation in one pass). Uses the
+        # same `--repeat 2 --warmup 0` so PR results are directly comparable
+        # to the pinned baseline's iteration shape.
+        run: |
+          mkdir -p reports tests/corpus bench/corpus/cache
+          docker run --rm -v "$(pwd):/work" -w /work \
+            pare:pr-${{ github.run_id }} \
+            bash -c "pip install --no-cache-dir -r requirements-bench.txt && \
+                     python -m bench.corpus build --manifest core && \
+                     python -m bench.run --mode accuracy --manifest core \
+                       --repeat 2 --warmup 0 \
+                       --annotate ci=github \
+                       --annotate kind=pr-head \
+                       --annotate pr=${{ github.event.pull_request.number }} \
+                       --annotate sha=${{ github.event.pull_request.head.sha }} \
+                       --out reports/_head.json"
+          sudo chown -R "$(id -u):$(id -g)" reports tests/corpus bench/corpus/cache
+
+      - name: Compare PR head against pinned baseline
+        id: compare
+        run: |
+          BASELINE="reports/baseline.core.json"
+          if [ ! -f "$BASELINE" ]; then
+            echo "no-baseline=true" >> "$GITHUB_OUTPUT"
+            printf '_No baseline found at `%s`. This PR likely modifies the pinned baseline itself — uploading head report only._\n\n' "$BASELINE" > /tmp/compare.md
+            docker run --rm -v "$(pwd):/work" -w /work \
+              pare:pr-${{ github.run_id }} \
+              bash -c "pip install --no-cache-dir -q -r requirements-bench.txt && \
+                       python -m bench.run report reports/_head.json --format markdown" \
+              >> /tmp/compare.md
+            echo "compare-exit=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "no-baseline=false" >> "$GITHUB_OUTPUT"
+            set +e
+            docker run --rm -v "$(pwd):/work" -w /work \
+              pare:pr-${{ github.run_id }} \
+              bash -c "pip install --no-cache-dir -q -r requirements-bench.txt && \
+                       python -m bench.compare \"$BASELINE\" reports/_head.json \
+                         --threshold-pct 10 --format markdown" > /tmp/compare.md
+            echo "compare-exit=$?" >> "$GITHUB_OUTPUT"
+            set -e
+          fi
+
+      - name: Compose bench comment
+        run: |
+          {
+            echo '<!-- pare-bench-comment -->'
+            echo ""
+            echo "## Pare bench — PR #${{ github.event.pull_request.number }}"
+            echo ""
+            echo "_Run: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · Commit: \`${{ github.event.pull_request.head.sha }}\` · Mode: \`accuracy\` / \`core\` · Threshold: \`±10%\`_"
+            echo ""
+            cat /tmp/compare.md
+            echo ""
+            echo "<sub>Auto-posted by \`.github/workflows/bench-pr.yml\`. Re-runs on every push; this comment updates in place.</sub>"
+          } > /tmp/comment.md
+
+      - name: Find existing bench comment on PR
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: '<!-- pare-bench-comment -->'
+          direction: last
+
+      - name: Post or update PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: /tmp/comment.md
+          edit-mode: replace
+
+      - name: Upload head artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-pr-head-${{ github.run_id }}
+          path: reports/_head.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Fail if regression detected
+        if: steps.compare.outputs.no-baseline == 'false' && steps.compare.outputs.compare-exit != '0'
+        run: |
+          echo "::error::bench.compare detected regressions; see the PR comment for the per-axis breakdown."
+          exit 1
