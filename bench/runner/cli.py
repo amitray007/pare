@@ -146,8 +146,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         config = {"warmup": 0, "repeat": 1, "tracemalloc": True}
         iterations = run_memory_sync(cases)
     elif args.mode == "accuracy":
-        config = {"warmup": 0, "repeat": 1, "stages": ["estimate", "optimize"]}
-        iterations = run_accuracy_sync(cases)
+        config = {
+            "warmup": args.warmup,
+            "repeat": args.repeat,
+            "stages": ["estimate", "optimize"],
+        }
+        iterations = run_accuracy_sync(cases, repeat=args.repeat, warmup=args.warmup)
     elif args.mode == "quality":
         config = {
             "warmup": 0,

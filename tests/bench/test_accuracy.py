@@ -258,3 +258,80 @@ def test_accuracy_error_signs(tmp_path: Path):
         f"predicted_reduction=50.0% < actual_reduction={actual_reduction:.1f}%"
     )
     assert acc["reduction_abs_error_pct_abs"] > 0
+
+
+# ---------------------------------------------------------------------------
+# repeat / warmup tests
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_patches(case: Case):
+    """Return (fake_est, fake_opt) mocks suitable for patching estimate + optimize_image."""
+    fake_est = EstimateResponse(
+        original_size=case.input_size,
+        original_format="png",
+        dimensions={"width": 128, "height": 96},
+        color_type="rgb",
+        bit_depth=8,
+        estimated_optimized_size=case.input_size // 2,
+        estimated_reduction_percent=50.0,
+        optimization_potential="high",
+        method="exact",
+        already_optimized=False,
+        confidence="high",
+    )
+    fake_opt = OptimizeResult(
+        success=True,
+        original_size=case.input_size,
+        optimized_size=case.input_size // 2,
+        reduction_percent=50.0,
+        format="png",
+        method="oxipng",
+        optimized_bytes=b"x" * (case.input_size // 2),
+    )
+    return fake_est, fake_opt
+
+
+def test_accuracy_mode_honors_repeat(tmp_path: Path):
+    """With repeat=3, accuracy mode must produce 3 iterations per case."""
+    case = _make_small_case(tmp_path)
+    fake_est, fake_opt = _make_fake_patches(case)
+
+    with patch(
+        "bench.runner.modes.accuracy.estimate",
+        new=AsyncMock(return_value=fake_est),
+    ):
+        with patch(
+            "bench.runner.modes.accuracy.optimize_image",
+            new=AsyncMock(return_value=fake_opt),
+        ):
+            results = run_accuracy_sync([case], repeat=3, warmup=0)
+
+    assert len(results) == 3
+    assert all(r["case_id"] == case.case_id for r in results)
+    assert {r["iteration"] for r in results} == {0, 1, 2}
+
+
+def test_accuracy_mode_warmup_iterations_discarded(tmp_path: Path):
+    """Warmup iterations must not appear in results; only measured iters are recorded."""
+    case = _make_small_case(tmp_path)
+    fake_est, fake_opt = _make_fake_patches(case)
+
+    call_count = 0
+
+    async def counting_estimate(data, config):
+        nonlocal call_count
+        call_count += 1
+        return fake_est
+
+    with patch("bench.runner.modes.accuracy.estimate", new=counting_estimate):
+        with patch(
+            "bench.runner.modes.accuracy.optimize_image",
+            new=AsyncMock(return_value=fake_opt),
+        ):
+            results = run_accuracy_sync([case], repeat=1, warmup=2)
+
+    # Only 1 measured result, but estimate was called 3 times total (2 warmup + 1 measured)
+    assert len(results) == 1
+    assert results[0]["iteration"] == 0
+    assert call_count == 3
