@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from bench.runner.compare import compare
-from bench.runner.report.json_writer import RunMetadata, write_run
+from bench.runner.compare import CompareResult, HostMismatchError, compare
+from bench.runner.report.json_writer import HostInfo, RunMetadata, write_run
 from bench.runner.report.markdown import build_format_rollup, format_compare_label  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -283,3 +283,50 @@ def test_rollup_low_power_improvement_counted_as_improvement(tmp_path: Path):
     assert r.n_regressions == 0, f"Expected 0 regressions, got {r.n_regressions}"
     # Status glyph should be ✅ (improvement) not ⚠ (noise_floor_regression)
     assert r.status == "✅", f"Expected '✅' status, got '{r.status}'"
+
+
+# ---------------------------------------------------------------------------
+# cpu_count mismatch guard
+# ---------------------------------------------------------------------------
+
+
+def _metadata_with_cpu(cpu_count: int) -> RunMetadata:
+    return RunMetadata(
+        mode="quick",
+        config={"warmup": 0, "repeat": 1},
+        manifest_name="core",
+        manifest_sha256="abc123" * 10,
+        host=HostInfo(platform="linux", cpu_count=cpu_count),
+    )
+
+
+def _write_with_cpu(tmp_path: Path, name: str, iters: list, cpu_count: int) -> Path:
+    p = tmp_path / name
+    write_run(_metadata_with_cpu(cpu_count), iters, p)
+    return p
+
+
+class TestCpuCountMismatch:
+    def test_raises_on_cpu_count_mismatch(self, tmp_path: Path):
+        a = _write_with_cpu(tmp_path, "a.json", [_iter("img.png@high", 100.0)], cpu_count=4)
+        b = _write_with_cpu(tmp_path, "b.json", [_iter("img.png@high", 100.0)], cpu_count=10)
+        with pytest.raises(HostMismatchError):
+            compare(a, b)
+
+    def test_allow_flag_bypasses(self, tmp_path: Path):
+        a = _write_with_cpu(tmp_path, "a.json", [_iter("img.png@high", 100.0)], cpu_count=4)
+        b = _write_with_cpu(tmp_path, "b.json", [_iter("img.png@high", 100.0)], cpu_count=10)
+        result = compare(a, b, allow_mismatched_cpu_count=True)
+        assert isinstance(result, CompareResult)
+
+    def test_zero_cpu_count_skips_check(self, tmp_path: Path):
+        a = _write_with_cpu(tmp_path, "a.json", [_iter("img.png@high", 100.0)], cpu_count=0)
+        b = _write_with_cpu(tmp_path, "b.json", [_iter("img.png@high", 100.0)], cpu_count=10)
+        result = compare(a, b)
+        assert isinstance(result, CompareResult)
+
+    def test_matched_cpu_count_no_raise(self, tmp_path: Path):
+        a = _write_with_cpu(tmp_path, "a.json", [_iter("img.png@high", 100.0)], cpu_count=4)
+        b = _write_with_cpu(tmp_path, "b.json", [_iter("img.png@high", 100.0)], cpu_count=4)
+        result = compare(a, b)
+        assert isinstance(result, CompareResult)

@@ -49,14 +49,17 @@ class RunConditions:
     mode: str
     isolate: bool
     platform: str
+    cpu_count: int
 
 
 def _extract_conditions(run: dict[str, Any]) -> RunConditions:
-    """Pull the three comparability fields out of a loaded run dict."""
+    """Pull the four comparability fields out of a loaded run dict."""
     mode = run.get("mode", "unknown")
     isolate = bool(run.get("config", {}).get("isolate", False))
     platform = run.get("host", {}).get("platform", "unknown")
-    return RunConditions(mode=mode, isolate=isolate, platform=platform)
+    # 0 is a sentinel meaning "not recorded" — skip the cpu_count check for older runs.
+    cpu_count = int(run.get("host", {}).get("cpu_count", 0))
+    return RunConditions(mode=mode, isolate=isolate, platform=platform, cpu_count=cpu_count)
 
 
 @dataclass
@@ -147,6 +150,12 @@ class ModeMismatchError(ValueError):
     pass
 
 
+class HostMismatchError(ValueError):
+    """Raised when two runs have incompatible host CPU counts and the caller did not opt in."""
+
+    pass
+
+
 def compare(
     a_path: Path,
     b_path: Path,
@@ -156,6 +165,7 @@ def compare(
     alpha: float = 0.05,
     min_effect_size: float = 0.5,
     allow_mismatched_mode: bool = False,
+    allow_mismatched_cpu_count: bool = False,
 ) -> CompareResult:
     """Welch's-t + Cohen's-d diff between two runs.
 
@@ -166,11 +176,14 @@ def compare(
     Before computing diffs, validates that the two runs are comparable:
     - mode must match (e.g. both "quick" or both "timing"); mismatches raise
       ModeMismatchError unless allow_mismatched_mode=True.
+    - cpu_count must match; mismatches raise HostMismatchError unless
+      allow_mismatched_cpu_count=True. cpu_count=0 (missing data) skips the check.
     - isolate flag and platform differences are surfaced via result.a_conditions /
       result.b_conditions; callers are responsible for emitting warnings.
 
     Raises:
         ModeMismatchError: if modes differ and allow_mismatched_mode is False.
+        HostMismatchError: if cpu_counts differ and allow_mismatched_cpu_count is False.
     """
     a_run = load_run(a_path)
     b_run = load_run(b_path)
@@ -184,6 +197,19 @@ def compare(
             f"baseline mode={a_cond.mode!r} but head mode={b_cond.mode!r} — "
             f"wall_ms is not comparable across modes. "
             f"Pass --allow-mismatched-mode to override."
+        )
+
+    # --- cpu_count check (hard error by default; 0 = missing data, skip) ---
+    if (
+        a_cond.cpu_count != 0
+        and b_cond.cpu_count != 0
+        and a_cond.cpu_count != b_cond.cpu_count
+        and not allow_mismatched_cpu_count
+    ):
+        raise HostMismatchError(
+            f"baseline host.cpu_count={a_cond.cpu_count} but head host.cpu_count={b_cond.cpu_count}"
+            f" — wall_ms is not comparable across CPU counts (multi-threaded codecs scale inversely"
+            f" with cores). Pass --allow-mismatched-cpu-count to override."
         )
 
     a_by_case = _wall_iterations_by_case(a_run)
@@ -263,6 +289,7 @@ def _render_conditions_section(result: CompareResult) -> str:
     lines.append(f"| **mode** | `{a.mode}` | `{b.mode}` |")
     lines.append(f"| **isolate** | `{a.isolate}` | `{b.isolate}` |")
     lines.append(f"| **platform** | `{a.platform}` | `{b.platform}` |")
+    lines.append(f"| **cpu_count** | `{a.cpu_count}` | `{b.cpu_count}` |")
 
     warnings: list[str] = []
     if a.mode != b.mode:
@@ -278,6 +305,12 @@ def _render_conditions_section(result: CompareResult) -> str:
         warnings.append(
             f"Platform mismatch (`{a.platform}` vs `{b.platform}`) — "
             f"Pillow/zlib version drift across OSes may affect timings."
+        )
+    if a.cpu_count != 0 and b.cpu_count != 0 and a.cpu_count != b.cpu_count:
+        warnings.append(
+            f"CPU count mismatch (`{a.cpu_count}` vs `{b.cpu_count}`) — "
+            f"wall_ms is not comparable across CPU counts (multi-threaded codecs scale inversely"
+            f" with cores)."
         )
 
     if warnings:

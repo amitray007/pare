@@ -10,7 +10,7 @@
 
     python -m bench.compare A.json B.json [--threshold-pct N] [--alpha A]
                             [--allow-mismatched-mode] [--allow-mismatched-isolate]
-                            [--allow-mismatched-platform]
+                            [--allow-mismatched-platform] [--allow-mismatched-cpu-count]
     python -m bench.run report RUN.json [--format markdown|json]
 
 Exit codes for `compare`:
@@ -30,7 +30,12 @@ from typing import Any
 
 from bench.corpus.cli import _load_manifest, _manifest_path
 from bench.runner.case import DEFAULT_PRESETS, load_cases
-from bench.runner.compare import ModeMismatchError, compare, render_compare_markdown
+from bench.runner.compare import (
+    HostMismatchError,
+    ModeMismatchError,
+    compare,
+    render_compare_markdown,
+)
 from bench.runner.modes.accuracy import run_accuracy_sync
 from bench.runner.modes.load import run_load_sync
 from bench.runner.modes.memory import run_memory_sync
@@ -224,6 +229,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     allow_mode = getattr(args, "allow_mismatched_mode", False)
     allow_isolate = getattr(args, "allow_mismatched_isolate", False)
     allow_platform = getattr(args, "allow_mismatched_platform", False)
+    allow_cpu = getattr(args, "allow_mismatched_cpu_count", False)
 
     try:
         result = compare(
@@ -233,9 +239,13 @@ def cmd_compare(args: argparse.Namespace) -> int:
             noise_floor_pct=args.noise_floor_pct,
             alpha=args.alpha,
             allow_mismatched_mode=allow_mode,
+            allow_mismatched_cpu_count=allow_cpu,
         )
     except ModeMismatchError as e:
         # Hard error: modes are incompatible and user did not opt in.
+        print(f"compare: comparability error: {e}", file=sys.stderr)
+        return 2
+    except HostMismatchError as e:
         print(f"compare: comparability error: {e}", file=sys.stderr)
         return 2
     except (ValueError, KeyError) as e:
@@ -429,6 +439,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "suppress the platform-mismatch WARNING. "
             "Pillow/zlib version drift across OSes may affect timings."
+        ),
+    )
+    p_cmp.add_argument(
+        "--allow-mismatched-cpu-count",
+        action="store_true",
+        dest="allow_mismatched_cpu_count",
+        help=(
+            "skip the cpu_count-mismatch error and compute diffs anyway. "
+            "Use only for cross-machine debugging where you accept that wall_ms numbers "
+            "are not directly comparable."
         ),
     )
     p_cmp.set_defaults(func=cmd_compare)
