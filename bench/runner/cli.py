@@ -241,6 +241,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
             Path(args.head),
             threshold_pct=args.threshold_pct,
             noise_floor_pct=args.noise_floor_pct,
+            noise_floor_min_ms=args.noise_floor_min_ms,
             alpha=args.alpha,
             allow_mismatched_mode=allow_mode,
             allow_mismatched_cpu_count=allow_cpu,
@@ -415,8 +416,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=25.0,
         help=(
-            "delta%% threshold used when either side has fewer than 3 iterations "
+            "delta%% threshold used when either side has fewer than 2 iterations "
             "(noise-floor path). Default: 25.0"
+        ),
+    )
+    p_cmp.add_argument(
+        "--noise-floor-min-ms",
+        type=float,
+        default=5.0,
+        help=(
+            "absolute ms floor for the noise-floor gate. Cases with baseline median "
+            "below this are NOT flagged by relative threshold (sub-ms quantization noise). "
+            "Default: 5.0"
         ),
     )
     p_cmp.add_argument("--alpha", type=float, default=0.05)
