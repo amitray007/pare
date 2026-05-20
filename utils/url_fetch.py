@@ -14,6 +14,13 @@ logger = logging.getLogger("pare.utils.url_fetch")
 _client: httpx.AsyncClient | None = None
 _client_lock = asyncio.Lock()
 
+# Browser-style Accept header. Mirrors what Chrome/Firefox send for <img> tags.
+# Some CDNs (notably Shopify) content-negotiate on Accept and return 404 for
+# the default Accept: */*  — image/* in the offer is required to receive the
+# actual image. The */*;q=0.5 fallback keeps us compatible with origins that
+# serve images as application/octet-stream.
+_IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/apng,image/svg+xml,image/*;q=0.8,*/*;q=0.5"
+
 
 async def _get_client() -> httpx.AsyncClient:
     """Return the shared AsyncClient, creating it on first call."""
@@ -71,7 +78,10 @@ async def fetch_image(url: str, is_authenticated: bool = False) -> bytes:
     try:
         for _hop in range(max_redirects + 1):
             async with client.stream(
-                "GET", current_url, timeout=httpx.Timeout(timeout)
+                "GET",
+                current_url,
+                headers={"Accept": _IMAGE_ACCEPT_HEADER},
+                timeout=httpx.Timeout(timeout),
             ) as response:
                 if response.is_redirect:
                     if response.next_request is None:
@@ -177,7 +187,7 @@ async def fetch_partial(
             async with client.stream(
                 "GET",
                 current_url,
-                headers={"Range": f"bytes={start}-{end}"},
+                headers={"Range": f"bytes={start}-{end}", "Accept": _IMAGE_ACCEPT_HEADER},
                 timeout=httpx.Timeout(timeout),
             ) as response:
                 if response.is_redirect:
