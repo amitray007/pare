@@ -36,6 +36,14 @@ class PillowReencodeOptimizer(BaseOptimizer):
 
     Subclasses MAY set:
         extra_save_kwargs: Additional kwargs passed to Pillow save (default {})
+        reencode_at_lossless_presets: Run the lossy re-encode path even at
+            lossless presets (quality >= 70), alongside metadata strip.
+            Set this when the format's "strip" is a lossless re-encode that
+            cannot shrink typical lossy sources (HEIC: lossless HEVC output
+            is ~2x the size of a lossy original, so strip alone makes the
+            LOW preset a guaranteed no-op on camera files). The re-encode
+            quality is still clamped (>= 70 maps to quality_max), so this
+            stays conservative.
 
     Subclasses MUST override:
         _ensure_plugin(): Import/register the format's Pillow plugin.
@@ -51,6 +59,7 @@ class PillowReencodeOptimizer(BaseOptimizer):
     quality_max: int = 90
     quality_offset: int = 10
     extra_save_kwargs: dict | None = None
+    reencode_at_lossless_presets: bool = False
 
     def _ensure_plugin(self) -> None:
         """Import/register the format's Pillow plugin.
@@ -73,16 +82,19 @@ class PillowReencodeOptimizer(BaseOptimizer):
         At lossy presets (quality < 70), only re-encode runs — strip never wins
         on lossy presets across the corpus, so skipping it eliminates the
         img.copy() allocation and the wasted encode round-trip.
-        At lossless presets (quality >= 70), only strip runs (reencode is skipped).
+        At lossless presets (quality >= 70), strip runs; re-encode also runs
+        when reencode_at_lossless_presets is set (clamped to quality_max, so
+        it stays conservative), and both compete on size.
         Both paths are sequential; a single img is decoded once and reused.
         """
         img = await asyncio.to_thread(self._open_image, data)
 
         # At lossy presets, strip never beats reencode; skip it to avoid the
         # img.copy() + encode overhead.  At lossless presets (quality >= 70),
-        # skip reencode — strip is the only meaningful lossless path.
+        # strip runs — and formats whose lossless strip can't shrink lossy
+        # sources (reencode_at_lossless_presets) also run the clamped reencode.
         skip_strip = config.quality < 70
-        skip_reencode = config.quality >= 70
+        skip_reencode = config.quality >= 70 and not self.reencode_at_lossless_presets
 
         results = []
         method_names = []

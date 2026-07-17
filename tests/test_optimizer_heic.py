@@ -70,6 +70,65 @@ async def test_heic_quality_tiers(heic_optimizer):
     )
 
 
+def _make_photo_heic(quality=95, size=(640, 480)):
+    """Photo-like HEIC (gradient + noise) so encode sizes behave like real photos."""
+    import random
+
+    rng = random.Random(1234)
+    img = Image.new("RGB", size)
+    px = img.load()
+    w, h = size
+    for y in range(h):
+        for x in range(0, w, 2):
+            v = (
+                (x * 255 // w + rng.randint(-20, 20)) % 256,
+                (y * 255 // h + rng.randint(-20, 20)) % 256,
+                ((x + y) // 4 + rng.randint(-20, 20)) % 256,
+            )
+            px[x, y] = v
+            px[min(x + 1, w - 1), y] = v
+    buf = io.BytesIO()
+    img.save(buf, format="HEIF", quality=quality)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_HEIC, reason="HEIC not available")
+async def test_heic_low_preset_shrinks_high_quality_original(heic_optimizer):
+    """quality >= 70 must still be able to shrink a lossy high-quality original.
+
+    HEIC's metadata strip is a lossless HEVC re-encode that is always larger
+    than a lossy source, so the clamped q=90 re-encode must stay in the race —
+    otherwise the LOW/default preset is a guaranteed no-op on camera files.
+    """
+    data = _make_photo_heic(quality=95)
+    result = await heic_optimizer.optimize(data, OptimizationConfig(quality=80))
+    assert result.success
+    assert result.method == "heic-reencode"
+    assert result.optimized_size < result.original_size
+
+
+@pytest.mark.asyncio
+async def test_heic_low_preset_attempts_both_strip_and_reencode():
+    """At quality >= 70 with strip enabled, HEIC tries strip AND clamped reencode."""
+    from unittest.mock import MagicMock
+
+    opt = HeicOptimizer()
+    mock_img = MagicMock(spec=Image.Image)
+    mock_img.info = {}
+    mock_img.size = (100, 100)
+    original = b"x" * 100
+    with patch.object(opt, "_open_image", return_value=mock_img):
+        with (
+            patch.object(opt, "_strip_metadata_from_img", return_value=b"s" * 90) as strip_mock,
+            patch.object(opt, "_reencode_from_img", return_value=b"r" * 50) as reencode_mock,
+        ):
+            result = await opt.optimize(original, OptimizationConfig(quality=80))
+    strip_mock.assert_called_once()
+    reencode_mock.assert_called_once()
+    assert result.method == "heic-reencode"
+
+
 @pytest.mark.asyncio
 async def test_heic_both_fail():
     """Both methods fail: returns method='none'."""

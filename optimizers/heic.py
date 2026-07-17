@@ -14,7 +14,8 @@ class HeicOptimizer(PillowReencodeOptimizer):
     Quality thresholds (via clamp_quality with offset=10, lo=30, hi=90):
     - quality < 50 (HIGH):  HEIC q=50, aggressive re-encode
     - quality < 70 (MEDIUM): HEIC q=70, moderate re-encode
-    - quality >= 70 (LOW):  HEIC q=90, conservative re-encode
+    - quality >= 70 (LOW):  HEIC q=90 conservative re-encode vs lossless
+      metadata strip, smallest wins
     """
 
     format = ImageFormat.HEIC
@@ -24,6 +25,13 @@ class HeicOptimizer(PillowReencodeOptimizer):
     quality_min = 30
     quality_max = 90
     quality_offset = 10
+    # HEIC strip is a LOSSLESS HEVC re-encode (quality=-1) whose output is
+    # ~2x the size of a lossy camera original — on real-world HEICs it can
+    # never win, which made the LOW preset a guaranteed no-op. Keep the
+    # clamped q=90 re-encode in the race at quality >= 70 so lossless
+    # presets can still shrink lossy sources. The estimator's
+    # _heic_sample_bpp models this same re-encode at all quality levels.
+    reencode_at_lossless_presets = True
 
     def _ensure_plugin(self):
         import pillow_heif

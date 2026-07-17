@@ -139,6 +139,26 @@ async def test_avif_both_fail(avif_optimizer):
     assert result.method == "none"
 
 
+@pytest.mark.asyncio
+async def test_avif_lossless_preset_still_skips_reencode(avif_optimizer):
+    """AVIF keeps the base-class default: no lossy reencode at quality >= 70.
+
+    Only HEIC opts into reencode_at_lossless_presets (its lossless strip can't
+    shrink lossy sources); AVIF's strip path must remain the sole method here.
+    """
+    with patch.object(avif_optimizer, "_open_image", return_value=_mock_img()):
+        with (
+            patch.object(avif_optimizer, "_strip_metadata_from_img", return_value=b"s") as strip,
+            patch.object(avif_optimizer, "_reencode_from_img", return_value=b"r") as reencode,
+        ):
+            result = await avif_optimizer.optimize(
+                b"original avif bytes", OptimizationConfig(quality=80, strip_metadata=True)
+            )
+    strip.assert_called_once()
+    reencode.assert_not_called()
+    assert result.method == "metadata-strip"
+
+
 # --- HEIC Optimizer ---
 
 
