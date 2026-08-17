@@ -27,7 +27,12 @@ steps:
       - '--platform=managed'
       - '--concurrency=32'
       - '--timeout=300'
-      - '--update-env-vars=MEMORY_BUDGET_MB=7168,MAX_QUEUE_DEPTH=32'
+      # MEMORY_BUDGET_MB is intentionally not set here: it is coupled to the
+      # container's --memory shape, which lives on the live service config (not CI).
+      # Setting it here would reset the budget on every deploy and could let
+      # CompressionGate admit more concurrent work than the container can hold.
+      - '--update-env-vars=MAX_QUEUE_DEPTH=32'
+      - '--update-labels=commit-sha=$COMMIT_SHA'
 
 substitutions:
   _DOCKERFILE: 'Dockerfile'
