@@ -8,6 +8,11 @@ Determinism note: Pillow's default font rendering is build-dependent. The
 pixel-hash determinism contract will catch any drift on a fresh machine —
 the corrective action is to regenerate (and update) the manifest hashes.
 A vendored DejaVuSans.ttf at `bench/corpus/fonts/` is a v1 followup.
+
+This already bit once: Pillow 12 shipped an updated bundled font, which changed
+the rendered pixels for `text_screenshot_*` and `path_text_on_flat_*` and forced
+a manifest reseal. Until a font is vendored, every Pillow major bump is expected
+to require the same reseal.
 """
 
 from __future__ import annotations
