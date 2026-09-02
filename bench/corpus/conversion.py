@@ -19,7 +19,7 @@ Format coverage in v1:
 | BMP    |   ✓    |     —    |     —      |                                      |
 | TIFF   |   ✓    |     —    |     —      |                                      |
 | HEIC   |   ✓    |     —    |     ✓      | typed-buffer via pillow_heif 0.22+   |
-| AVIF   |   ✓    |     —    |     ✓      | typed-buffer via pillow_heif 0.22+   |
+| AVIF   |   ✓    |     —    |     8-bit  | via pillow_avif (8-bit encoder only) |
 | JXL    |   ✓*   |     —    |     ✓      | native 10/12-bit via jxlpy encoder   |
 | SVG    |   ✓†   |     —    |     —      | vector pass-through (bytes in)       |
 | SVGZ   |   ✓†   |     —    |     —      | gzip of SVG, mtime=0                 |
@@ -35,9 +35,13 @@ Deep-color encoding (10/12-bit):
   - JXL: natively supported via `jxlpy.JXLPyEncoder` typed buffers.  Pass a
     uint16 ndarray; bit depth is auto-detected from the array's max value
     (max < 1024 → 10-bit, max < 4096 → 12-bit, else 16-bit).
-  - HEIC/AVIF: supported via `pillow_heif.from_bytes()` typed-buffer API
+  - HEIC: supported via `pillow_heif.from_bytes()` typed-buffer API
     (pillow_heif ≥ 0.22).  Raises `FormatNotSupportedError` if the installed
     version does not support the typed-buffer path.
+  - AVIF: no high-bit-depth encoder is available (pillow-heif 1.0 dropped AVIF;
+    pillow_avif encodes 8-bit only), so deep-color sources are right-shifted to
+    8 bits.  Pillow decodes 10-bit AVIF to 8-bit RGB anyway, so the optimizer
+    never observed the extra depth.
   - All other formats: ndarray content raises `FormatNotSupportedError` because
     8-bit codecs cannot represent 10/12-bit pixel values without quantizing.
 
@@ -50,7 +54,6 @@ from __future__ import annotations
 
 import io
 import logging
-import warnings
 from typing import Callable
 
 import numpy as np
@@ -73,7 +76,7 @@ _JXL_AVAILABLE = False
 
 
 def _register_optional_plugins() -> None:
-    """Register pillow_heif (HEIC + AVIF) and pillow_jxl if installed.
+    """Register pillow_heif (HEIC), pillow_avif (AVIF) and pillow_jxl if installed.
 
     Idempotent — safe to call multiple times. Failures are logged but
     do not raise; affected formats just stay unavailable.
@@ -85,13 +88,18 @@ def _register_optional_plugins() -> None:
 
         pillow_heif.register_heif_opener()
         _HEIC_AVAILABLE = True
-        if hasattr(pillow_heif, "register_avif_opener"):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
-                pillow_heif.register_avif_opener()
-            _AVIF_AVAILABLE = True
     except ImportError:
-        logger.debug("pillow_heif unavailable; HEIC/AVIF skipped")
+        logger.debug("pillow_heif unavailable; HEIC skipped")
+
+    # AVIF comes from pillow_avif, not pillow_heif: pillow-heif 1.0 dropped AVIF
+    # support entirely.  This also matches production — optimizers/avif.py has
+    # always used pillow_avif — so the corpus and the optimizer share an encoder.
+    try:
+        import pillow_avif  # noqa: F401 — registers the AVIF plugin on import
+
+        _AVIF_AVAILABLE = True
+    except ImportError:
+        logger.debug("pillow_avif unavailable; AVIF skipped")
 
     try:
         import pillow_jxl  # noqa: F401
@@ -287,32 +295,34 @@ def _encode_heic_deep(arr: np.ndarray, *, quality: int = 85, bit_depth: int = 10
 
 
 def _encode_avif_deep(arr: np.ndarray, *, quality: int = 65, bit_depth: int = 10) -> bytes:
-    """Encode uint16 ndarray as AVIF via pillow_heif typed-buffer API.
+    """Encode uint16 ndarray as 8-bit AVIF, downshifting from `bit_depth`.
 
-    Same typed-buffer flow as HEIC but writes format='AVIF'.  Some older
-    pillow_heif builds only encode AVIF from 8-bit; raises `FormatNotSupportedError`
-    with a clear message if the typed-buffer save fails.
+    High-bit-depth AVIF encoding is no longer available: pillow-heif 1.0 dropped
+    AVIF entirely, and pillow_avif's encoder accepts only 8-bit input.  The array
+    is therefore right-shifted to 8 bits before encoding.
+
+    This loses no coverage in practice — Pillow decodes 10-bit AVIF to 8-bit RGB,
+    so `optimizers/avif.py` has never seen more than 8 bits per channel.  Genuine
+    high-bit-depth corpus coverage lives in the HEIC and JXL deep-color cases,
+    whose encoders do accept 10/12-bit input.
     """
-    import pillow_heif
+    import pillow_avif  # noqa: F401 — registers the AVIF plugin on import
 
     if bit_depth not in (10, 12):
         raise FormatNotSupportedError(
-            f"AVIF typed-buffer requires bit_depth in (10, 12); got {bit_depth}"
+            f"AVIF deep-color source requires bit_depth in (10, 12); got {bit_depth}"
         )
     h, w = arr.shape[:2]
     channels = arr.shape[2] if arr.ndim == 3 else 1
-    mode = f"RGB;{bit_depth}" if channels == 3 else f"RGBA;{bit_depth}"
+    mode = "RGB" if channels == 3 else "RGBA"
+    arr8 = (arr >> (bit_depth - 8)).astype(np.uint8)
     try:
-        img = pillow_heif.from_bytes(mode=mode, size=(w, h), data=arr.tobytes(order="C"))
+        img = Image.fromarray(arr8, mode=mode)
         buf = io.BytesIO()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            img.save(buf, format="AVIF", quality=quality)
+        img.save(buf, format="AVIF", quality=quality)
         return buf.getvalue()
     except Exception as exc:
-        raise FormatNotSupportedError(
-            f"pillow_heif AVIF typed-buffer encode failed: {exc}"
-        ) from exc
+        raise FormatNotSupportedError(f"pillow_avif AVIF encode failed: {exc}") from exc
 
 
 def _encode_heic(content: Synthesized, *, quality: int = 85) -> bytes:
@@ -329,15 +339,13 @@ def _encode_heic(content: Synthesized, *, quality: int = 85) -> bytes:
 
 def _encode_avif(content: Synthesized, *, quality: int = 65) -> bytes:
     if not _AVIF_AVAILABLE:
-        raise FormatNotSupportedError("pillow_heif AVIF support not installed")
+        raise FormatNotSupportedError("pillow_avif not installed")
     if isinstance(content, np.ndarray):
         bit_depth = _detect_bit_depth(content)
         return _encode_avif_deep(content, quality=quality, bit_depth=bit_depth)
     img = _to_rgb(_first_frame(content))
     buf = io.BytesIO()
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        img.save(buf, format="AVIF", quality=quality)
+    img.save(buf, format="AVIF", quality=quality)
     return buf.getvalue()
 
 
