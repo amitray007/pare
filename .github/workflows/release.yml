@@ -52,7 +52,12 @@ jobs:
           MINOR=$(echo "$VERSION" | cut -d. -f2)
           PATCH=$(echo "$VERSION" | cut -d. -f3)
 
-          MSG="$HEAD_COMMIT_MESSAGE"
+          # Only the subject line is scanned for bump keywords. Scanning the whole
+          # message means prose that merely mentions "[major]" — a changelog note,
+          # or a PR body explaining the keywords — silently cuts a major release.
+          # That happened on #52, which shipped v1.0.0 instead of v0.0.23 because
+          # its body contained a table documenting the keywords.
+          MSG="$(printf '%s' "$HEAD_COMMIT_MESSAGE" | head -n 1)"
 
           if echo "$MSG" | grep -qi '\[major\]'; then
             MAJOR=$((MAJOR + 1))
