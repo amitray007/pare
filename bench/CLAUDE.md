@@ -44,7 +44,11 @@ A new `expected_byte_sha256` field (`dict[str, str] | None`) was added to `Manif
 - **Vector entries** (SVG/SVGZ): Byte-level SHA-256 of the raw source bytes is canonical (field `expected_byte_sha256["source"]`). SVG sources are XML; no pixel data exists. Encoded bytes are deterministic across platforms (no SIMD variance), so a flat `{format: sha256}` mapping suffices.
 - **Deep-color entries** (10/12-bit): Pixel-level SHA-256 is computed from the raw `numpy.uint16` array bytes (dtype + shape are baked into the digest, so a 10-bit and a 16-bit array of the same logical pixels never collide). See `manifest.py:pixel_sha256()`.
 - `random.Random(seed)` instances only — never mutate the global PRNG.
-- Fonts vendored at `bench/corpus/fonts/` (Pillow's default font is build-dependent).
+- Fonts: **not yet vendored** — `bench/corpus/synthesis/text.py` and `pathological.py` still call
+  `ImageFont.load_default()`, so rendered text depends on the font Pillow bundles. Pillow 12 shipped
+  an updated font and forced a reseal of `text_screenshot_small_png`,
+  `path_text_on_flat_small_jpeg` and `text_screenshot_medium_jpeg`. Expect the same on each Pillow
+  major until a font is vendored at `bench/corpus/fonts/`.
 - Fetched raster entries: pixel hash computed from decoded source image (same `pixel_sha256()` function). Source URL SHA-256 guards against corrupt downloads; pixel SHA-256 guards against CDN re-encoding.
 - Fetched vector entries (`fetched_vector` content_kind): source SHA-256 guards against corrupt downloads. The builder writes bytes directly to disk — no `Image.open()` is called.
 
@@ -54,7 +58,9 @@ A new `expected_byte_sha256` field (`dict[str, str] | None`) was added to `Manif
 
 **JXL** — natively supported via `jxlpy.JXLPyEncoder` typed buffers. Accepts uint16 pixel data directly and encodes with the correct bit depth in the output container. The decoder (`jxlpy.JXLPyDecoder`) round-trips `bits_per_sample` in the info dict.
 
-**HEIC/AVIF** — supported via `pillow_heif.from_bytes()` typed-buffer API (modes like `RGB;10`). Requires pillow_heif ≥ 0.22. Both succeed on pillow_heif 0.22.0 (tested). Raises `FormatNotSupportedError` with a descriptive message if the typed-buffer path fails.
+**HEIC** — supported via `pillow_heif.from_bytes()` typed-buffer API (modes like `RGB;10`). Requires pillow_heif ≥ 0.22. Raises `FormatNotSupportedError` with a descriptive message if the typed-buffer path fails.
+
+**AVIF** — 8-bit only. pillow-heif 1.0 dropped AVIF entirely, and `pillow_avif`'s encoder accepts only 8-bit input, so `_encode_avif_deep()` right-shifts deep-color sources to 8 bits. No coverage is lost: Pillow decodes 10-bit AVIF to 8-bit RGB, so `optimizers/avif.py` never observes more than 8 bits per channel (tracked in #48). AVIF registration comes from `pillow_avif`, matching production.
 
 **All other formats** (PNG, JPEG, WebP, GIF, BMP, TIFF, APNG) — ndarray content raises `FormatNotSupportedError` because 8-bit codecs cannot represent 10/12-bit pixel values without quantizing. This is intentional and correct.
 
