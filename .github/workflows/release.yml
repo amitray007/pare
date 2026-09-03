@@ -39,6 +39,12 @@ jobs:
 
       - name: Determine version bump
         id: next_version
+        # HEAD_COMMIT_MESSAGE is passed via env, not interpolated into the script.
+        # A `${{ }}` expression is substituted into the script text before bash
+        # parses it, so backticks, $(...) or quotes in a commit message execute as
+        # code. This broke on d816457, whose body contained backticked identifiers.
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           TAG="${{ steps.latest_tag.outputs.tag }}"
           VERSION="${TAG#v}"
@@ -46,7 +52,7 @@ jobs:
           MINOR=$(echo "$VERSION" | cut -d. -f2)
           PATCH=$(echo "$VERSION" | cut -d. -f3)
 
-          MSG="${{ github.event.head_commit.message }}"
+          MSG="$HEAD_COMMIT_MESSAGE"
 
           if echo "$MSG" | grep -qi '\[major\]'; then
             MAJOR=$((MAJOR + 1))
