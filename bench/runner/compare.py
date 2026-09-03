@@ -327,8 +327,10 @@ def compare(
     |delta%| check at the higher noise_floor_pct threshold instead of the
     stats-backed gate. At n=2 the t-test engages with 1 degree of freedom.
 
-    The noise-floor gate is skipped when baseline_median_ms < noise_floor_min_ms
+    Both gates are skipped when baseline_median_ms < noise_floor_min_ms
     (default 5.0): avoids flagging sub-ms quantization noise as a regression.
+    This floor applies on the statistical path too — a t-test over clustered
+    sub-millisecond readings reports p≈0 despite a negligible absolute delta.
 
     Before computing diffs, validates that the two runs are comparable:
     - mode must match (e.g. both "quick" or both "timing"); mismatches raise
@@ -388,25 +390,31 @@ def compare(
 
         low_power = min(len(a_walls), len(b_walls)) < _STATS_MIN_ITERS
 
+        # Skip the relative gate on sub-noise_floor_min_ms cases: a 30% delta on
+        # a 0.5 ms case is measurement quantization, not signal. The absolute
+        # floor preserves the gate's meaning at meaningful timescales.
+        #
+        # This applies on both paths. The statistical path needs it *more*, not
+        # less: a t-test over tightly-clustered sub-millisecond readings reports
+        # p≈0 because the variance is tiny, even though the absolute difference
+        # is a fraction of a millisecond. Gating threshold_breach suppresses the
+        # regression flag and the improvement label symmetrically, since both
+        # require threshold_breach.
+        above_floor = a_med >= noise_floor_min_ms
+
         if low_power:
             # Skip stats — they're meaningless with <2 iterations.
             p = 1.0
             d = 0.0
             significant = False
-            # Skip the relative gate on sub-noise_floor_min_ms cases: a 30% delta on
-            # a 0.5 ms case is measurement quantization, not signal. The absolute
-            # floor preserves the gate's meaning at meaningful timescales.
-            if a_med < noise_floor_min_ms:
-                threshold_breach = False
-            else:
-                threshold_breach = abs(delta_pct) >= noise_floor_pct
+            threshold_breach = above_floor and abs(delta_pct) >= noise_floor_pct
         else:
             _, p, _ = welch_t_test(a_walls, b_walls)
             d = cohens_d(a_walls, b_walls)
             significant = differs_significantly(
                 a_walls, b_walls, alpha=alpha, min_effect_size=min_effect_size
             )
-            threshold_breach = abs(delta_pct) >= threshold_pct
+            threshold_breach = above_floor and abs(delta_pct) >= threshold_pct
 
         diffs.append(
             CaseDiff(
