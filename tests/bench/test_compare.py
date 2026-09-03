@@ -857,3 +857,30 @@ def test_compare_accepts_runs_without_the_new_host_fields(tmp_path: Path):
     result = compare(a, b, threshold_pct=10.0)
     assert result.exit_code == 0
     assert result.diffs
+
+
+def test_libavif_probe_records_failure_instead_of_omitting(monkeypatch):
+    """A broken-but-installed plugin must not look identical to an absent one.
+
+    libavif ships inside the pillow-avif-plugin wheel and is the most likely
+    cause of an AVIF-only timing or compression shift (#46). Silently dropping
+    the key on any exception would remove exactly the signal it exists to carry.
+    """
+    import sys
+    import types
+
+    from bench.corpus.manifest import collect_library_versions
+
+    broken = types.ModuleType("pillow_avif")
+
+    class _Boom:
+        def __getattr__(self, name):
+            raise RuntimeError("extension failed to load")
+
+    broken._avif = _Boom()
+    monkeypatch.setitem(sys.modules, "pillow_avif", broken)
+
+    versions = collect_library_versions()
+    assert versions.get("libavif", "").startswith(
+        "unknown ("
+    ), "a readable-but-broken plugin must record a failure marker, not vanish"

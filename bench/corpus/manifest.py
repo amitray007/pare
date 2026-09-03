@@ -485,7 +485,13 @@ def collect_library_versions() -> dict[str, str]:
         from pillow_avif import _avif
 
         versions["libavif"] = _avif.libavif_version
-    except Exception:
+    except ImportError:
+        # Plugin genuinely absent — AVIF cases will be skipped anyway.
         pass
+    except Exception as exc:
+        # Installed but unreadable (extension failed to load, attribute moved in a
+        # future release). Record the failure rather than omitting the key, so an
+        # AVIF timing shift is not silently left without its most likely cause.
+        versions["libavif"] = f"unknown ({type(exc).__name__})"
 
     return versions

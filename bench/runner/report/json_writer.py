@@ -11,8 +11,11 @@ Top-level structure:
       "mode": "quick|timing|memory",
       "config": { ... },                  # warmup/repeat/seed/shuffle/etc.
       "git": { "commit", "branch", "dirty" },
-      "host": { "platform", "cpu_count", "rss_unit" },
-      "library_versions": { "Pillow": "10.4.0", ... },
+      "host": { "platform", "cpu_count", "rss_unit",
+                "python_version", "python_implementation",
+                "machine", "platform_release" },
+      "library_versions": { "Pillow": "12.3.0", "scour": "0.38.2",
+                            "libavif": "1.3.0", ... },
       "manifest": { "name", "sha256" },
       "annotations": { "key": "val", ... },     # from --annotate KEY=VAL
       "iterations": [ ... ],                    # one entry per iteration
