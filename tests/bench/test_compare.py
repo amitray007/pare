@@ -743,3 +743,60 @@ def test_stats_engages_at_n_equals_2(tmp_path: Path):
     result = compare(a, b, threshold_pct=10.0, noise_floor_pct=25.0)
     d = result.diffs[0]
     assert d.iters_low_power is False, "n=2 each side should engage stats path, not noise-floor"
+
+
+def test_noise_floor_applies_on_statistical_path(tmp_path: Path):
+    """Sub-noise_floor_min_ms cases must not flag on the stats path either.
+
+    Regression test for the real-world case: CI runs `--repeat 2`, which engages
+    the Welch's-t path rather than the noise-floor fallback. A 0.05ms -> 0.08ms
+    AVIF skip-path case is +60% relative but 0.03ms absolute. Because the readings
+    are tightly clustered, the t-test reports p~=0 and Cohen's d is enormous, so
+    without an absolute floor the case is labelled a significant regression.
+    """
+    a_iters = [_iter("img.avif@low", 0.05, iteration=0), _iter("img.avif@low", 0.051, iteration=1)]
+    b_iters = [_iter("img.avif@low", 0.080, iteration=0), _iter("img.avif@low", 0.081, iteration=1)]
+    a = _write(tmp_path, "a.json", a_iters)
+    b = _write(tmp_path, "b.json", b_iters)
+    result = compare(a, b, threshold_pct=10.0, noise_floor_pct=25.0, noise_floor_min_ms=5.0)
+    d = result.diffs[0]
+
+    assert d.iters_low_power is False, "n=2 should engage the stats path"
+    assert d.delta_pct > 50.0, "sanity: the relative delta really is large"
+    assert d.significant is True, "sanity: the t-test really does find significance"
+    assert d.threshold_breach is False, "sub-5ms case must not breach on the stats path"
+    assert result.regressions == []
+    assert result.exit_code == 0
+
+
+def test_statistical_path_still_flags_above_floor(tmp_path: Path):
+    """The floor must not mask genuine regressions at meaningful timescales."""
+    a_iters = [_iter("img.png@high", 100.0, iteration=0), _iter("img.png@high", 100.1, iteration=1)]
+    b_iters = [_iter("img.png@high", 140.0, iteration=0), _iter("img.png@high", 140.1, iteration=1)]
+    a = _write(tmp_path, "a.json", a_iters)
+    b = _write(tmp_path, "b.json", b_iters)
+    result = compare(a, b, threshold_pct=10.0, noise_floor_pct=25.0, noise_floor_min_ms=5.0)
+    d = result.diffs[0]
+
+    assert d.iters_low_power is False
+    assert d.threshold_breach is True, "100ms -> 140ms is well above the floor and must flag"
+    assert len(result.regressions) == 1
+    assert result.exit_code != 0
+
+
+def test_noise_floor_suppresses_improvements_symmetrically(tmp_path: Path):
+    """A sub-floor speedup must not be counted as an improvement either.
+
+    Improvements also require threshold_breach, so gating it keeps the floor
+    direction-neutral — sub-millisecond noise is not evidence either way.
+    """
+    a_iters = [_iter("img.avif@low", 0.080, iteration=0), _iter("img.avif@low", 0.081, iteration=1)]
+    b_iters = [_iter("img.avif@low", 0.050, iteration=0), _iter("img.avif@low", 0.051, iteration=1)]
+    a = _write(tmp_path, "a.json", a_iters)
+    b = _write(tmp_path, "b.json", b_iters)
+    result = compare(a, b, threshold_pct=10.0, noise_floor_pct=25.0, noise_floor_min_ms=5.0)
+    d = result.diffs[0]
+
+    assert d.delta_pct < -30.0, "sanity: this is a large relative speedup"
+    assert d.threshold_breach is False
+    assert result.improvements == []
