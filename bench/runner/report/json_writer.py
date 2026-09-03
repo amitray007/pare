@@ -11,8 +11,11 @@ Top-level structure:
       "mode": "quick|timing|memory",
       "config": { ... },                  # warmup/repeat/seed/shuffle/etc.
       "git": { "commit", "branch", "dirty" },
-      "host": { "platform", "cpu_count", "rss_unit" },
-      "library_versions": { "Pillow": "10.4.0", ... },
+      "host": { "platform", "cpu_count", "rss_unit",
+                "python_version", "python_implementation",
+                "machine", "platform_release" },
+      "library_versions": { "Pillow": "12.3.0", "scour": "0.38.2",
+                            "libavif": "1.3.0", ... },
       "manifest": { "name", "sha256" },
       "annotations": { "key": "val", ... },     # from --annotate KEY=VAL
       "iterations": [ ... ],                    # one entry per iteration
@@ -26,7 +29,7 @@ import datetime as dt
 import hashlib
 import json
 import os
-import platform
+import platform as platform_mod
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
@@ -61,9 +64,22 @@ class GitInfo:
 
 @dataclass
 class HostInfo:
+    """Environment fingerprint for a run.
+
+    `platform` and `cpu_count` gate comparability in bench.compare. The rest are
+    diagnostic: when a format drifts without any code change, these are what
+    identify the cause. The May 2026 baseline recorded neither the Python version
+    nor the OS release, so a three-month SVG drift of +6.6% -> +10.8% could not be
+    attributed to anything (scour is pure Python and untouched by the optimizers).
+    """
+
     platform: str
     cpu_count: int
     rss_unit: str = "kb"
+    python_version: str = field(default_factory=lambda: platform_mod.python_version())
+    python_implementation: str = field(default_factory=lambda: platform_mod.python_implementation())
+    machine: str = field(default_factory=lambda: platform_mod.machine())
+    platform_release: str = field(default_factory=lambda: platform_mod.release())
 
 
 @dataclass
@@ -76,7 +92,7 @@ class RunMetadata:
     git: GitInfo = field(default_factory=GitInfo)
     host: HostInfo = field(
         default_factory=lambda: HostInfo(
-            platform=platform.system().lower(),
+            platform=platform_mod.system().lower(),
             cpu_count=_available_cpu_count(),
         )
     )

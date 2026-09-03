@@ -10,6 +10,7 @@ across CPU SIMD paths and library builds.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import os
 import platform
@@ -462,4 +463,35 @@ def collect_library_versions() -> dict[str, str]:
         versions["jxlpy"] = getattr(jxlpy, "__version__", "unknown")
     except ImportError:
         pass
+
+    # Packages that drive per-format timing but are not part of the pixel-hash
+    # contract. Recorded so a timing drift can be attributed: an SVG-only
+    # slowdown points at scour or defusedxml, an AVIF-only one at libavif.
+    for dist, key in (
+        ("scour", "scour"),
+        ("defusedxml", "defusedxml"),
+        ("pyoxipng", "pyoxipng"),
+        ("pillow-avif-plugin", "pillow_avif_plugin"),
+    ):
+        try:
+            versions[key] = importlib.metadata.version(dist)
+        except importlib.metadata.PackageNotFoundError:
+            pass
+
+    # libavif ships inside the pillow-avif-plugin wheel and retunes its quality
+    # scale between releases, so the bundled version matters independently of
+    # the Python package version.
+    try:
+        from pillow_avif import _avif
+
+        versions["libavif"] = _avif.libavif_version
+    except ImportError:
+        # Plugin genuinely absent — AVIF cases will be skipped anyway.
+        pass
+    except Exception as exc:
+        # Installed but unreadable (extension failed to load, attribute moved in a
+        # future release). Record the failure rather than omitting the key, so an
+        # AVIF timing shift is not silently left without its most likely cause.
+        versions["libavif"] = f"unknown ({type(exc).__name__})"
+
     return versions

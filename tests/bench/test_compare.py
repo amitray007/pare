@@ -800,3 +800,87 @@ def test_noise_floor_suppresses_improvements_symmetrically(tmp_path: Path):
     assert d.delta_pct < -30.0, "sanity: this is a large relative speedup"
     assert d.threshold_breach is False
     assert result.improvements == []
+
+
+# ---------------------------------------------------------------------------
+# run metadata fingerprint
+# ---------------------------------------------------------------------------
+
+
+def test_host_info_records_environment_fingerprint():
+    """HostInfo carries enough detail to attribute an unexplained timing drift.
+
+    The May 2026 baseline recorded only platform/cpu_count, so a three-month SVG
+    slowdown could not be traced to a Python or OS change.
+    """
+    host = HostInfo(platform="linux", cpu_count=4)
+    assert host.python_version.count(".") >= 1
+    assert host.python_implementation
+    assert host.machine
+    # platform_release can legitimately be empty on exotic hosts; the attribute
+    # must exist either way so downstream readers never KeyError.
+    assert hasattr(host, "platform_release")
+
+
+def test_library_versions_cover_timing_relevant_packages():
+    """Packages that drive per-format timing are recorded, not just Pillow.
+
+    An SVG-only regression should point at scour; an AVIF-only one at libavif,
+    which ships inside the pillow-avif-plugin wheel and retunes its quality
+    scale between releases.
+    """
+    from bench.corpus.manifest import collect_library_versions
+
+    versions = collect_library_versions()
+    # Always installed via requirements.txt.
+    for pkg in ("Pillow", "scour", "defusedxml"):
+        assert pkg in versions, f"{pkg} missing from library_versions"
+
+
+def test_compare_accepts_runs_without_the_new_host_fields(tmp_path: Path):
+    """Baselines predating the richer fingerprint must still compare.
+
+    reports/baseline.core.json was generated before these fields existed; a
+    KeyError here would break every comparison against a historical baseline.
+    """
+    import json
+
+    a = _write(tmp_path, "a.json", [_iter("img.png@high", 100.0)])
+    b = _write(tmp_path, "b.json", [_iter("img.png@high", 101.0)])
+
+    # Strip the new fields to emulate an older run file.
+    for path in (a, b):
+        run = json.loads(path.read_text())
+        run["host"] = {"platform": "linux", "cpu_count": 4, "rss_unit": "kb"}
+        path.write_text(json.dumps(run))
+
+    result = compare(a, b, threshold_pct=10.0)
+    assert result.exit_code == 0
+    assert result.diffs
+
+
+def test_libavif_probe_records_failure_instead_of_omitting(monkeypatch):
+    """A broken-but-installed plugin must not look identical to an absent one.
+
+    libavif ships inside the pillow-avif-plugin wheel and is the most likely
+    cause of an AVIF-only timing or compression shift (#46). Silently dropping
+    the key on any exception would remove exactly the signal it exists to carry.
+    """
+    import sys
+    import types
+
+    from bench.corpus.manifest import collect_library_versions
+
+    broken = types.ModuleType("pillow_avif")
+
+    class _Boom:
+        def __getattr__(self, name):
+            raise RuntimeError("extension failed to load")
+
+    broken._avif = _Boom()
+    monkeypatch.setitem(sys.modules, "pillow_avif", broken)
+
+    versions = collect_library_versions()
+    assert versions.get("libavif", "").startswith(
+        "unknown ("
+    ), "a readable-but-broken plugin must record a failure marker, not vanish"
