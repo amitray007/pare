@@ -2,10 +2,9 @@
   "manifest_version": 1,
   "manifest_name": "core",
   "library_versions": {
-    "Pillow": "10.4.0",
+    "Pillow": "12.3.0",
     "numpy": "2.4.4",
-    "pillow_heif": "0.22.0",
-    "jxlpy": "0.9.5"
+    "pillow_heif": "1.6.0"
   },
   "entries": [
     {
@@ -158,7 +157,7 @@
       "tags": [
         "text"
       ],
-      "expected_pixel_sha256": "4bd6ffaf41fd98d33e51428a7084ab53e7fa875d6ea30d6576e7d40f5a849dd9"
+      "expected_pixel_sha256": "886bd0a5aa92b5dc4340f0c52796f99e9dca9883eac72ff8a3658848c4e83295"
     },
     {
       "name": "path_thin_gradient_small_jpeg",
@@ -190,7 +189,7 @@
         "pathological",
         "chroma"
       ],
-      "expected_pixel_sha256": "897dd96f52e6d04d03c6ffa8160e940f9540c92aefc9e7ce77d885ac3b02db17"
+      "expected_pixel_sha256": "1ec4856486c20585924ae72ba415f2a57cfe3e528523f106e15b8f1b2ce72a69"
     },
     {
       "name": "animated_translation_small_apng",
@@ -1243,7 +1242,7 @@
       "tags": [
         "text"
       ],
-      "expected_pixel_sha256": "26a3211c1623084fbc99494972d2756f0d86a37bf7a3e2f74313e98e74e8bf8a"
+      "expected_pixel_sha256": "86c311a113b56f03d8d040d01c5a2dcd51942ac9cc4e9913f278f3451277c9c8"
     },
     {
       "name": "text_screenshot_large_jpeg",

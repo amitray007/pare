@@ -1,8 +1,12 @@
 fastapi>=0.109.0,<1.0.0
 uvicorn[standard]>=0.27.0,<1.0.0
-Pillow>=10.2.0,<11.0.0
-pillow-heif>=0.14.0,<1.0.0
-pillow-avif-plugin>=1.4.0,<2.0.0
+Pillow>=12.3.0,<13.0.0
+pillow-heif>=1.3.0,<2.0.0
+# Pinned: 1.6.0 bundles libavif 1.4.2, which retunes the quality scale and
+# shifts AVIF compression (photographic ~-20pp reduction at the HIGH preset).
+# 1.5.5 keeps libavif 1.3.0 and preserves current AVIF output byte-for-byte.
+# Unpinning requires recalibrating the quality breakpoints in optimizers/avif.py.
+pillow-avif-plugin==1.5.5
 pyoxipng>=9.0.0,<10.0.0
 scour>=0.38.0,<1.0.0
 python-multipart>=0.0.6,<1.0.0
